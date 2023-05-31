@@ -1,0 +1,8 @@
+README.md
+setup.py
+lcasr/__init__.py
+lcasr.egg-info/PKG-INFO
+lcasr.egg-info/SOURCES.txt
+lcasr.egg-info/dependency_links.txt
+lcasr.egg-info/requires.txt
+lcasr.egg-info/top_level.txt

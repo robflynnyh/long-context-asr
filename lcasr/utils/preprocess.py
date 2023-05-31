@@ -31,7 +31,7 @@ def stage_1(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--ogg_path', type=str)
+    parser.add_argument('--ogg_path', type=str, default='')
     parser.add_argument('--top_level_split', type=str, default='0', help='corpus is partitioned into folders 0-7, this dictates which folder to process, this is done to parallelize the process')
     parser.add_argument('--stage', type=str, default='0', help='0: convert ogg to spectograms')
 
@@ -40,4 +40,5 @@ if __name__ == '__main__':
     stage = int(args.stage)
     
     if stage == 0:
+        assert os.path.exists(args.ogg_path), 'ogg_path does not exist'
         stage_1(args)
