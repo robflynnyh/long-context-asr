@@ -93,8 +93,11 @@ class SCConformerXL(nn.Module):
         '''
         audio_signal: (batch_size, time, feat)
         length: (batch_size,)
+        cached_kvs: (kv i.e 2, batch_size, layers, heads, time, head_dim)
         '''
         return self.forward_for_export(audio_signal=audio_signal, decoder=self.decoder, length=length, cached_kvs=cached_kvs, cached_kv_lengths=cached_kv_lengths)
+
+
 
     def forward_for_export(self, audio_signal, decoder, length = None, cached_kvs = None, cached_kv_lengths = None):
         max_audio_length: int = audio_signal.size(-1)
@@ -113,7 +116,7 @@ class SCConformerXL(nn.Module):
         full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
         full_kv_mask = torch.arange(full_kv_lengths.max(), device=audio_signal.device).expand(audio_signal.size(0), full_kv_lengths.max()) >= full_kv_lengths.unsqueeze(1)
         qmask, kmask = ~mask, ~full_kv_mask
-        att_mask = ~(rearrange(qmask, 'b n -> b () n ()') * rearrange(kmask, 'b n -> b () () n'))
+        att_mask = (rearrange(qmask, 'b n -> b () n ()') * rearrange(kmask, 'b n -> b () () n'))
         pad_mask = mask
 
         iterim_posteriors = []
@@ -141,7 +144,7 @@ class SCConformerXL(nn.Module):
             kvs_to_cache.append(kv_to_cache) # possibly detach and move to cpu ?    
             
             if lth != len(self.layers) - 1:
-                iterim_logits = decoder(encoder_output=audio_signal, logits=True)
+                iterim_logits = decoder(x=audio_signal, logits=True)
                 iterim_post = torch.nn.functional.softmax(iterim_logits, dim=-1)
                 iterim_logposteriors = torch.log(iterim_post)
                 iterim_posteriors.append(iterim_logposteriors)
@@ -152,7 +155,6 @@ class SCConformerXL(nn.Module):
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
-        
         return {
             'audio_signal': audio_signal,
             'iterim_posteriors': iterim_posteriors,
@@ -161,6 +163,8 @@ class SCConformerXL(nn.Module):
             'full_kv_lengths': full_kv_lengths,
         }
 
+    def print_total_params(self, only_trainable = False):
+        print('Total trainable params: ', sum(p.numel() for p in self.parameters() if p.requires_grad)) if only_trainable else print('Total params: ', sum(p.numel() for p in self.parameters()))
 
 class PreNorm(nn.Module): # applies normalization before fn
     def __init__(self, d_model, fn, norm = DEFAULT_NORM):
@@ -295,10 +299,10 @@ class Attention(nn.Module):
 
 
     
-    def attatch_cache(self, kv, cached_kv, cached_kv_indices):
+    def attatch_cache(self, kv, cached_kv):
         kv = torch.stack(kv, dim=0)
-        if cached_kv is None or cached_kv_indices is None:
-            return kv, kv
+        if cached_kv is None:
+            return kv
         kv = kv.unsqueeze(0).expand(2, *kv.shape) # expand as cached_kv contatins current and above layer # these are coupled so gather only needs to be done once
         new_kv = torch.cat([cached_kv, kv], dim=-2)
         return new_kv
@@ -318,7 +322,7 @@ class Attention(nn.Module):
         out = rearrange(out, "b h n d -> b n (h d)")
         out = self.out_proj(out)
 
-        return out, kv.half() 
+        return out, kv
 
 
 class ASRLinearSCDecoder(nn.Module):
@@ -327,6 +331,7 @@ class ASRLinearSCDecoder(nn.Module):
         # Add 1 for blank char
         self.num_classes = vocab_size + 1
         self.ff = nn.Linear(d_model, self.num_classes)
+        self.reprojection = nn.Linear(self.num_classes, d_model)
         self.norm = DEFAULT_NORM(d_model) if norm else nn.Identity()
 
     def forward(self, x, logits=False):
@@ -335,7 +340,10 @@ class ASRLinearSCDecoder(nn.Module):
         x = F.log_softmax(x, dim=-1) if not logits else x
         return x
 
-    def integrate_projections(self, encoder_out, proj1):
-        return encoder_out + proj1
+    def project_back(self, x):
+        return self.reprojection(x)
+
+    def integrate_projections(self, x, proj1):
+        return x + proj1
 
 
