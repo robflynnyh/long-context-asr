@@ -2,7 +2,7 @@ import os
 import subprocess
 
 TOPDIRS = [f'{el}' for el in range(8)]
-BASEPATH = '/mnt/parscratch/users/acp21rjf/'
+BASEPATH = '/mnt/parscratch/users/acp21rjf/spotify/audio/'
 
 def create_bash_file(path):
     '''
@@ -13,7 +13,7 @@ def create_bash_file(path):
         f.write(\
 f'''#!/bin/bash
 #SBATCH --time=03:30:00
-#SBATCH --mem=16GB
+#SBATCH --mem=32GB
 
 module load Anaconda3/2022.10
 source activate a100
@@ -29,7 +29,6 @@ for topdir in TOPDIRS:
         bfile = create_bash_file(path)
         # lauch job
         subprocess.run(['sbatch', bfile])
-
 
 
 
