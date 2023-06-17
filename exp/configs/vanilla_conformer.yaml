@@ -1,0 +1,19 @@
+
+model:
+  feat_in: 64
+  n_layers: 32
+  d_model: 256
+  n_heads: 8
+  head_dim: 32
+  dropout_ff: 0.0
+  dropout_attn: 0.0
+  dropout_conv: 0.0
+  checkpoint_every_n_layers: 1
+  subsampling_factor: 4
+  conv_kernel_size: 31
+
+optimizer:
+  lr: 1e-4
+
+scheduler:
+  warmup_steps: 10000

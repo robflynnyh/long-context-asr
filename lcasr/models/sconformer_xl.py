@@ -16,7 +16,7 @@ class SCConformerXL(nn.Module):
     def __init__(
         self,
         vocab_size = 128,
-        feat_in = 80,
+        feat_in = 64,
         n_layers = 12,
         d_model = 256,
         n_heads = 8,
@@ -164,7 +164,10 @@ class SCConformerXL(nn.Module):
         }
 
     def print_total_params(self, only_trainable = False):
-        print('Total trainable params: ', sum(p.numel() for p in self.parameters() if p.requires_grad)) if only_trainable else print('Total params: ', sum(p.numel() for p in self.parameters()))
+        total = sum(p.numel() for p in self.parameters() if p.requires_grad) if only_trainable else sum(p.numel() for p in self.parameters())
+        pstr = 'Total trainable params: ' if only_trainable else 'Total params: '
+        print(f'{pstr}: ', total/1e6, 'M')
+        return total
 
 class PreNorm(nn.Module): # applies normalization before fn
     def __init__(self, d_model, fn, norm = DEFAULT_NORM):
