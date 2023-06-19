@@ -1,7 +1,7 @@
 
 model:
   feat_in: 64
-  n_layers: 32
+  n_layers: 3
   d_model: 256
   n_heads: 8
   head_dim: 32
@@ -17,3 +17,8 @@ optimizer:
 
 scheduler:
   warmup_steps: 10000
+
+audio_chunking:
+  size: 1024
+  overlap: 192
+  

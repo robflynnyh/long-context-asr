@@ -7,6 +7,7 @@ from lcasr.models.sconformer_xl import SCConformerXL
 from omegaconf.omegaconf import OmegaConf
 
 from lcasr.utils.audio_tools import SimpleDataloader
+from lcasr.utils.audio_tools import chunk_spectogram
 
 from apex.optimizers import FusedAdam
 from torch.optim import Adam
@@ -29,18 +30,33 @@ def load_optimizer(config:str, model:torch.nn.Module):
         raise ValueError('Unknown device')
     return optimizer
 
-def train(model:torch.nn.Module, dataloader:SimpleDataloader, optimizer, device):
+def train(
+        args:argparse.Namespace,
+        model:torch.nn.Module, 
+        dataloader:torch.utils.data.DataLoader, 
+        optimizer:torch.optim.Optimizer, 
+        device:torch.device
+    ):
     model.train()
     model_dtype = next(model.parameters()).dtype
     for batch in tqdm(dataloader):
-        audio, txt = batch['audio'], batch['txt']
-        audio = audio.to(device, dtype=model_dtype)
-        txt = txt.to(device)
-        optimizer.zero_grad()
-        loss = model(audio, txt)
-        loss.backward()
-        optimizer.step()
-        print(loss.item())
+        chunks = batch['chunks']
+
+        for ix, chunk_json in enumerate(chunks):
+            print(f'chunk {ix}/{len(chunks)}')
+            audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
+            txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
+            print(audio.shape, txt.shape)
+            audio = audio.to(device, dtype=model_dtype)
+            out = model(audio)
+            print(out.keys())
+            
+        # txt = txt.to(device)
+        # optimizer.zero_grad()
+        # loss = model(audio, txt)
+        # loss.backward()
+        # optimizer.step()
+        # print(loss.item())
 
 def main(args):
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
@@ -49,9 +65,13 @@ def main(args):
     paired_data = lcasr.utils.audio_tools.load_json('/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json')
     dataloader = SimpleDataloader(paired_data, tokenizer, batch_size=args.batch_size)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    if device.type == 'cuda':
+        torch.backends.cuda.enable_flash_sdp(enabled=True) # enable flash attention if cuda for faster training
+
     model = model.to(device)
     optimizer = load_optimizer(args.config, model)
-    train(model, dataloader, optimizer, device)
+    train(args, model, dataloader, optimizer, device)
 
 
 

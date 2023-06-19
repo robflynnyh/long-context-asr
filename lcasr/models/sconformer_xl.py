@@ -155,8 +155,10 @@ class SCConformerXL(nn.Module):
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
+        final_posts = decoder(x=audio_signal, logits=False)
+
         return {
-            'audio_signal': audio_signal,
+            'final_posteriors': final_posts,
             'iterim_posteriors': iterim_posteriors,
             'kvs_to_cache': kvs_to_cache,
             'length': length,
