@@ -39,6 +39,7 @@ def train(
     ):
     model.train()
     model_dtype = next(model.parameters()).dtype
+    ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='mean')
     for batch in tqdm(dataloader):
         chunks = batch['chunks']
 
@@ -48,7 +49,10 @@ def train(
             txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
             print(audio.shape, txt.shape)
             audio = audio.to(device, dtype=model_dtype)
-            out = model(audio)
+            out = model(audio_signal = audio, length = a_lengths)
+            print(out['final_posteriors'].shape, out['iterim_posteriors'].shape)
+            loss = ctc_loss_fn(out['final_posteriors'].transpose(0,1), txt, out['length'], t_lengths)
+            print(loss.item())
             print(out.keys())
             
         # txt = txt.to(device)
