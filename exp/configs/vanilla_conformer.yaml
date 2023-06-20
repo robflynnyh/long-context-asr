@@ -13,12 +13,12 @@ model:
   conv_kernel_size: 31
 
 optimizer:
-  lr: 1e-4
+  lr: 1e-6
 
 scheduler:
   warmup_steps: 10000
 
 audio_chunking:
-  size: 1024
-  overlap: 192
+  size: 256
+  overlap: 24
   

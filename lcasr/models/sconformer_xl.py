@@ -12,6 +12,14 @@ ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling = subsampling.ConvSubsampling
 DEFAULT_NORM = apex.normalization.FusedRMSNorm
 
+'''
+chunk 127/129
+torch.Size([2, 64, 2048]) torch.Size([2, 22])
+tensor([2048,  438])
+nan
+
+'''
+
 class SCConformerXL(nn.Module):
     def __init__(
         self,

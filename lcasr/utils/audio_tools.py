@@ -6,6 +6,8 @@ from tqdm import tqdm
 import json
 import sentencepiece as spm
 from einops import rearrange
+import subprocess
+import numpy as np
 
 def load(path:str) -> Tuple[torch.Tensor, int]:
     waveform, sample_rate = torchaudio.load(path)
@@ -129,8 +131,26 @@ def pair_audio_txt(
         with open(save_path, 'w') as f:
             json.dump(pair_f, f)
         print(f'pairs saved to {save_path}')
-
     return pair_f
+
+def get_audio_duration(audio_path:str) -> float:
+    '''returns duration of audio in seconds using ffprobe'''
+    command = f'ffprobe -i "{audio_path}" -show_entries format=duration -v quiet -of csv="p=0"'
+    duration = subprocess.check_output(command, shell=True)
+    return float(duration)
+
+def append_timings_to_json(
+        paired_json_path:str = '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
+    ):
+    pairs = load_json(paired_json_path)
+    for key in tqdm(list(pairs.keys())):
+        audio_ogg_path = pairs[key]['audio'].replace('.spec.pt', '.ogg')
+        duration = get_audio_duration(audio_ogg_path)
+        pairs[key]['duration'] = duration
+
+    with open(paired_json_path, 'w') as f:
+        json.dump(pairs, f)
+    print(f'pairs saved to {paired_json_path}')
 
 def retrieve_all_text(
         audio_txt_pairs_f:str = '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json',
@@ -185,15 +205,33 @@ def load_sample(entry:Dict[str, str]) -> Tuple[torch.Tensor, torch.Tensor]:
 
 
 class SimpleDataset(torch.utils.data.Dataset):
-    def __init__(self, pairs:Dict[str, Dict[str, str]]):
+    def __init__(
+            self, 
+            pairs:Dict[str, Dict[str, str]],
+            batch_size:int = 8,
+            subgroup_shuffle_size:int = 16,
+        ):
+        self.batch_size = batch_size
+        self.subgroup_shuffle_size = subgroup_shuffle_size
         self.pairs = pairs
-        self.keys = list(pairs.keys())
+        self.items = sorted(list(pairs.items()), key=lambda x: x[1]['duration'])
+        self.create_batches()
+
+    def create_batches(self):
+        np.random.seed(1234)
+        indices = np.arange(len(self))
+        indices = [np.random.permutation(indices[i:i+self.subgroup_shuffle_size]) for i in range(0, len(indices), self.subgroup_shuffle_size)]
+        indices = np.concatenate(indices)
+        indices = [indices[i:i+self.batch_size] for i in range(0, len(indices), self.batch_size)]
+        np.random.shuffle(indices)
+        indices = np.concatenate(indices)
+        self.items = [self.items[i] for i in indices]
 
     def __len__(self):
-        return len(self.keys)
+        return len(self.items)
 
     def __getitem__(self, idx):
-        audio, txt = load_sample(self.pairs[self.keys[idx]])
+        audio, txt = load_sample(self.pairs[self.items[idx][0]])
         txt = txt['results'][-1]['alternatives'][0]['words']
 
         audio = rearrange(audio, '() f t -> t f')
@@ -258,11 +296,11 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         chunk_size:int = 2048,
         chunk_overlap:int = 192,
     ):
-        self.dataset = SimpleDataset(pairs)
+        self.dataset = SimpleDataset(pairs, batch_size = batch_size, subgroup_shuffle_size = 64)
         super().__init__(
                 self.dataset, 
                 batch_size = batch_size, 
-                shuffle = True, 
+                shuffle = False, 
                 num_workers = 0, 
                 pin_memory = False, 
                 collate_fn = collate_fn(
