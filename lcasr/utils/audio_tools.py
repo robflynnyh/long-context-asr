@@ -296,7 +296,7 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         chunk_size:int = 2048,
         chunk_overlap:int = 192,
     ):
-        self.dataset = SimpleDataset(pairs, batch_size = batch_size, subgroup_shuffle_size = 64)
+        self.dataset = SimpleDataset(pairs, batch_size = batch_size, subgroup_shuffle_size = 1024)
         super().__init__(
                 self.dataset, 
                 batch_size = batch_size, 

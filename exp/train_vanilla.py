@@ -9,6 +9,9 @@ from omegaconf.omegaconf import OmegaConf
 from lcasr.utils.audio_tools import SimpleDataloader
 from lcasr.utils.audio_tools import chunk_spectogram
 
+from torch.cuda.amp import GradScaler
+from torch import autocast
+
 from apex.optimizers import FusedAdam
 from torch.optim import Adam
 
@@ -31,11 +34,14 @@ def load_optimizer(config:Dict, model:torch.nn.Module):
 def backwards_pass(
         loss:torch.Tensor,
         optimizer:torch.optim.Optimizer,
+        scaler:GradScaler,
         scheduler:torch.optim.lr_scheduler._LRScheduler = None,
     ):
     optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+
+    scaler.scale(loss).backward()
+    scaler.step(optimizer)
+    scaler.update()
 
     if scheduler is not None:
         scheduler.step()
@@ -47,37 +53,75 @@ def train(
         optimizer:torch.optim.Optimizer, 
         device:torch.device
     ):
+    scaler = GradScaler()
+
     model.train()
     model_dtype = next(model.parameters()).dtype
     ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='mean')
 
+    overlap = args.config.audio_chunking['overlap']
+    ds_overlap = overlap // model.subsampling_factor
+    backprop_every = args.backprop_every
+
+
     cur_tokens_in_loss = 0
     cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
 
-    for batch in tqdm(dataloader):
+    pbar = tqdm(dataloader)
+    for batch in pbar:
         chunks = batch['chunks']
         
         last_prob_set = None # last set of probabilities output by model
+        prev_selection_mask = None # selection mask from previous chunk
 
         for ix, chunk_json in enumerate(chunks):
             print(f'chunk {ix}/{len(chunks)}')
+            
             audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
             txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
-            print(audio.shape, txt.shape)
-            audio = audio.to(device, dtype=model_dtype)
-            out = model(audio_signal = audio, length = a_lengths)
-            print(a_lengths)
-            loss = ctc_loss_fn(out['final_posteriors'].transpose(0,1), txt, out['length'], t_lengths)
-            backwards_pass(loss, optimizer)
-            print(loss.item())
-            print(out.keys())
+            selection_mask = chunk_json['selection_mask']
+
+            cur_selection_mask = None
+            if prev_selection_mask != None and not torch.allclose(selection_mask, prev_selection_mask):
+                cur_selection_mask = selection_mask[prev_selection_mask]
+                
+
+
+            audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
+
+            with autocast(device.type, dtype=torch.bfloat16):
+                out = model(audio_signal = audio, length = a_lengths)
+                # check for nan
+                cur_probs = out['final_posteriors'].clone()
+                B,N,C = cur_probs.shape 
+
+                if last_prob_set != None:
+                    if cur_selection_mask != None:
+                        last_prob_set = last_prob_set[cur_selection_mask]
+                    interp_factor = model.overlap_interp_factor
+                    cur_probs[:,:ds_overlap] *= interp_factor
+                    o_len = cur_probs[:,:ds_overlap].shape[1]
+                    o_len = min(o_len, ds_overlap)
+                    cur_probs[:,:ds_overlap] += (1-interp_factor) * last_prob_set[:, -o_len:]
+
+                last_prob_set = out['final_posteriors'].clone()
+                loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths)
+
+            cur_loss += loss
             
-        # txt = txt.to(device)
-        # optimizer.zero_grad()
-        # loss = model(audio, txt)
-        # loss.backward()
-        # optimizer.step()
-        # print(loss.item())
+            cur_tokens_in_loss += B * N
+
+            if cur_tokens_in_loss > backprop_every:
+                cur_loss /= cur_tokens_in_loss
+                print(f'loss: {cur_loss.item()}')
+                backwards_pass(cur_loss, optimizer, scaler)
+                cur_tokens_in_loss =0
+                last_prob_set.detach_()
+                cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
+
+            prev_selection_mask = selection_mask.clone()
+
+
 
 def main(args):
     args.config = OmegaConf.load(args.config)
@@ -85,16 +129,20 @@ def main(args):
     model = load_model(args.config, tokenizer.vocab_size())
     tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json('/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json')
-    print(args.config.audio_chunking)
+
     dataloader = SimpleDataloader(
         pairs = paired_data, 
         tokenizer = tokenizer, 
         batch_size = args.batch_size,
+        chunk_size = args.config.audio_chunking['size'],
+        chunk_overlap = args.config.audio_chunking['overlap'],
     )
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     if device.type == 'cuda':
-        torch.backends.cuda.enable_flash_sdp(enabled=True) # enable flash attention if cuda for faster training
+        print('-- Enabling flash attention --')
+        torch.backends.cuda.enable_flash_sdp(enabled=False) # enable flash attention if cuda for faster training
 
     model = model.to(device)
     optimizer = load_optimizer(args.config, model)
@@ -106,6 +154,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-config', '--config', type=str, required=True, help='path to config file')
     parser.add_argument('-b', '--batch_size', type=int, default=3, help='batch size')
+    parser.add_argument('-bprop', '--backprop_every', type=int, default=20000, help='backprop every n tokens')
 
     args = parser.parse_args()
     main(args)

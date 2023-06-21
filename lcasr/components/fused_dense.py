@@ -12,8 +12,8 @@ from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.cuda.amp import custom_bwd, custom_fwd
 
-import fused_dense_cuda  # from apex
-#import fused_dense_lib as fused_dense_cuda
+#import fused_dense_cuda  # from apex
+import fused_dense_lib as fused_dense_cuda
 
 from flash_attn.ops.activations import gelu_bwd, relu_bwd, sqrelu_fwd, sqrelu_bwd
 from flash_attn.utils.distributed import all_gather_raw, reduce_scatter_raw, all_reduce_raw
@@ -99,9 +99,11 @@ class FusedDenseFunc(torch.autograd.Function):
             assert ctx.compute_weight_gradient
             if process_group is not None and sequence_parallel:
                 handle_x.wait()
+
             grad_weight, grad_bias = fused_dense_cuda.linear_bias_wgrad(
                 total_x.reshape(batch_dim, total_x.shape[-1]), grad_output, ctx.needs_input_grad[2]
             )
+
         else:
             grad_weight = None
             grad_bias = grad_output if ctx.needs_input_grad[2] else None
