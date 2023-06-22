@@ -16,6 +16,10 @@ ConvSubsampling = subsampling.ConvSubsampling
 DEFAULT_NORM = apex.normalization.FusedRMSNorm
 
 from flash_attn.flash_attention import FlashAttention
+from flash_attn.modules.mha import FlashCrossAttention
+from flash_attn.bert_padding import unpad_input
+
+#from .flash_attention import FlashAttention
 '''
 chunk 127/129
 torch.Size([2, 64, 2048]) torch.Size([2, 22])
@@ -126,24 +130,24 @@ class SCConformerXL(nn.Module):
         ## create masks
         
         mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
+    
+    
         full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
+        #print(full_kv_lengths, '333333333')
 
-        if cached_kv_lengths is None and length.max() == length.min():
-            att_mask = None
+        if length.max() == length.min():
+            att_mask, mask = None, None
         else:
             full_kv_mask = torch.arange(full_kv_lengths.max(), device=audio_signal.device).expand(audio_signal.size(0), full_kv_lengths.max()) >= full_kv_lengths.unsqueeze(1)
             if audio_signal.device.type == 'cuda':
-                att_mask = full_kv_mask
+                att_mask = ~full_kv_mask
             else:
                 qmask, kmask = ~mask, ~full_kv_mask
                 att_mask = ~(rearrange(qmask, 'b n -> b () n ()') * rearrange(kmask, 'b n -> b () () n'))
                 att_mask = att_mask.to(audio_signal.dtype) * -torch.finfo(audio_signal.dtype).max
-            # print(att_mask.to(audio_signal.dtype))
-            # exit()
 
-        pad_mask = mask if length.max() != length.min() else None
+        pad_mask = mask 
         
-
         iterim_posteriors = []
 
         kvs_to_cache = []
@@ -156,6 +160,7 @@ class SCConformerXL(nn.Module):
                     audio_signal, # x
                     att_mask, # att_mask
                     pad_mask, # pad_mask
+                    length,
                     current_layer_kvs
                 )
     
@@ -164,6 +169,7 @@ class SCConformerXL(nn.Module):
                     x = audio_signal, 
                     attn_mask = att_mask, 
                     pad_mask = pad_mask,
+                    length = length,
                     cached_kv = current_layer_kvs
                 )
                 
@@ -273,10 +279,11 @@ class ConformerLayer(nn.Module):
 
             
 
-    def forward(self, x, attn_mask, pad_mask, cached_kv = None):
+    def forward(self, x, attn_mask, pad_mask, length, cached_kv = None):
         '''
         pad_mask: mask for padding used in conv layers
         attn_mask: attn_mask this should include the cached keys and values
+        length: list of lengths of the input sequence
         cached_kv: kvs from previous block-reccurrent time step
         '''
 
@@ -284,13 +291,14 @@ class ConformerLayer(nn.Module):
 
         attn_out, kv_to_cache = self.attend(
             x = x,
+            length = length,
             attn_mask = attn_mask,
             pad_mask = pad_mask,
             cached_kv = cached_kv,
         )
         x = self.do_attn_out(attn_out) + x
         
-        x = self.do_conv(self.conv(x, pad_mask = pad_mask)) + x
+        x = self.do_conv(self.conv(x, pad_mask = pad_mask))
     
         x = self.do_ff(self.ff2(x)) + x
 
@@ -327,49 +335,73 @@ class Attention(nn.Module):
 
         self.dropout_p = dropout
 
-        self.flash_attn_fn = FlashAttention(softmax_scale = head_dim ** -0.5, attention_dropout = dropout)
+        # softmax_scale is set to None but will default to 1/sqrt(d_k) in FlashAttention
+        self.flash_attn_fn = FlashAttention(softmax_scale = None, attention_dropout = dropout)
+        self.flash_attn_c_fn = FlashCrossAttention(softmax_scale = None, attention_dropout = dropout)
+        ##
 
         self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=bias)
         self.qkv = lambda x: rearrange(self.qkv_proj(x), "b n (h d qkv) -> qkv b n h d", qkv=3, h=n_heads, d=head_dim)
 
         self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=bias)
 
-
     
     def attatch_cache(self, kv, cached_kv):
-        kv = torch.stack(kv, dim=0)
+        kv = torch.stack(kv, dim=2)
         if cached_kv is None:
             return kv
+        print(cached_kv.shape, kv.shape, '0000')
         new_kv = torch.cat([cached_kv, kv], dim=1)
         return new_kv
 
 
-    def forward(self, x, attn_mask=None, pad_mask=None, cached_kv=None):
+    def forward(self, x, length, attn_mask=None, pad_mask=None, cached_kv=None):
         B, N, C, H, D = *x.shape, self.n_heads, self.head_dim
         #print(x.shape, mask.shape)
 
-        if pad_mask != None:
+        if pad_mask is not None:
             x = x.masked_fill(pad_mask.unsqueeze(-1), 0)
-            attn_mask = attn_mask.half()
-
         
         q, k, v = self.qkv(x)
 
         kv = self.attatch_cache([k, v], cached_kv)
-        k, v = kv
-       
+     
         #torch.backends.cuda.enable_flash_sdp(enabled = False) # enable flash attention if cuda for faster training
 
         if x.device.type == 'cuda':
-            q, k, v = q.contiguous(), k.contiguous(), v.contiguous()
+            q, kv = q.contiguous(), kv.contiguous()
             if q.dtype == torch.float32:
-                q, k, v = q.half(), k.half(), v.half()
-                
-            qkv = torch.stack([q, k, v], dim=2)
-            out = self.flash_attn_fn(qkv, attn_mask)[0]
+                q, kv = q.half(), kv.half()
+
+            if kv.shape[1] == q.shape[1]: # if kv_seq_len == q_seq_len use self attention else use cross attention
+                qkv = torch.cat([q[:,:,None], kv], dim=2)
+                out = self.flash_attn_fn(qkv, attn_mask)[0]
+            else:
+                out = self.flash_attn_c_fn(q, kv)
+                if attn_mask is None:
+                    print(q.shape,1)
+                    out = self.flash_attn_c_fn(q, kv)
+                else:
+                    cu_seq_lens = F.pad(torch.cumsum(length, dim=0, dtype=torch.torch.int32), (1, 0))
+                    max_seqlen = length.max().item()
+                    k_seq_lens = attn_mask.sum(-1, dtype=torch.torch.int32)
+                    k_cu_seq_lens = F.pad(torch.cumsum(k_seq_lens, dim=0, dtype=torch.torch.int32), (1, 0))
+                    max_k_seq_len = k_seq_lens.max().item()
+                    out = self.flash_attn_c_fn(
+                        rearrange(q, 'b s ... -> (b s) ...'), 
+                        rearrange(kv, 'b s ... -> (b s) ...'), 
+                        cu_seqlens = cu_seq_lens, 
+                        max_seqlen = max_seqlen, 
+                        cu_seqlens_k = k_cu_seq_lens, 
+                        max_seqlen_k = max_k_seq_len
+                    )
+                    out = rearrange(out, '(b s) ... -> b s ...', b = B)
+                    print(out.shape, '-------------')
+
             out = out.to(x.dtype)
             out = rearrange(out, "b n h d -> b n (h d)")
         else:
+            k, v = kv
             out = torch.nn.functional.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
 
         if pad_mask != None:

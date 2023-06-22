@@ -115,7 +115,7 @@ def train(
                 cur_loss /= cur_tokens_in_loss
                 print(f'loss: {cur_loss.item()}')
                 backwards_pass(cur_loss, optimizer, scaler)
-                cur_tokens_in_loss =0
+                cur_tokens_in_loss = 0
                 last_prob_set.detach_()
                 cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
 
@@ -139,10 +139,7 @@ def main(args):
     )
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    if device.type == 'cuda':
-        print('-- Enabling flash attention --')
-        torch.backends.cuda.enable_flash_sdp(enabled=False) # enable flash attention if cuda for faster training
+
 
     model = model.to(device)
     optimizer = load_optimizer(args.config, model)

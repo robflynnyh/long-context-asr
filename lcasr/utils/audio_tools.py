@@ -34,7 +34,7 @@ def to_spectogram(waveform:torch.Tensor):
         win_length = 320,
         hop_length = 160,
         n_fft = 2 ** math.ceil(math.log2(320)), # 512
-        n_mels = 64,
+        n_mels = 80,
         normalized = 'window'
     )(waveform)
 
@@ -84,7 +84,14 @@ def chunk_text_json(
         
     return splits
         
-
+def delete_all_spectograms(pairs:str = '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'):
+    pairs = load_json(pairs)
+    sure = input(f'Are you sure you want to delete {len(pairs)} spectograms? (y/n)')
+    if sure == 'y':
+        for k in tqdm(list(pairs.keys())):
+            os.remove(pairs[k]['audio'])
+    else:
+        print('Aborted')
 
 
 def load_json(jfile:str) -> Dict:
