@@ -60,7 +60,7 @@ def train(
     ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='mean')
 
     overlap = args.config.audio_chunking['overlap']
-    ds_overlap = overlap // model.subsampling_factor
+    ds_overlap = overlap // 4 # 4 is the subsampling factor
     backprop_every = args.backprop_every
 
 
@@ -91,11 +91,31 @@ def train(
             audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
 
             with autocast(device.type, dtype=torch.bfloat16):
-                cached_kvs = last_kv_set
+                cached_kvs = last_kv_set.clone() if last_kv_set != None else None
                 cached_kv_lengths = torch.LongTensor([cached_kvs.shape[1]] * cached_kvs.shape[0]).to(device) if cached_kvs != None else None
-                out = model(audio_signal = audio, length = a_lengths, cached_kvs = cached_kvs, cached_kv_lengths = cached_kv_lengths)
+
+                if cur_selection_mask != None and cached_kvs != None:
+                    cached_kvs = cached_kvs[cur_selection_mask]
+                    cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
                 
-                last_kv_set = out['kvs_to_cache'].clone()
+                out = model(
+                    audio_signal = audio, 
+                    length = a_lengths, 
+                    cached_kvs = cached_kvs, 
+                    cached_kv_lengths = cached_kv_lengths
+                )
+                
+                out_kvs = out['kvs_to_cache'].clone()
+                if last_kv_set != None:
+                    if cur_selection_mask != None:
+                        last_kv_set = last_kv_set[cur_selection_mask]
+                    interp_factor = model.overlap_interp_factor_kvs
+                    out_kvs[:,:ds_overlap] *= interp_factor
+                    o_len = out_kvs[:,:ds_overlap].shape[1]
+                    o_len = min(o_len, ds_overlap)
+                    out_kvs[:,:ds_overlap] += (1-interp_factor) * last_kv_set[:, -o_len:]
+
+                last_kv_set = out_kvs[:, -args.max_seq_len:].clone()
             
                 # check for nan
                 cur_probs = out['final_posteriors'].clone()
@@ -104,7 +124,7 @@ def train(
                 if last_prob_set != None:
                     if cur_selection_mask != None:
                         last_prob_set = last_prob_set[cur_selection_mask]
-                    interp_factor = model.overlap_interp_factor
+                    interp_factor = model.overlap_interp_factor_logits
                     cur_probs[:,:ds_overlap] *= interp_factor
                     o_len = cur_probs[:,:ds_overlap].shape[1]
                     o_len = min(o_len, ds_overlap)
@@ -117,7 +137,7 @@ def train(
             
             cur_tokens_in_loss += B * N
 
-            if cur_tokens_in_loss > backprop_every:
+            if cur_tokens_in_loss > backprop_every: # or ix == len(chunks) - 1:
                 cur_loss /= cur_tokens_in_loss
                 print(f'loss: {cur_loss.item()}')
                 backwards_pass(cur_loss, optimizer, scaler)
@@ -159,6 +179,7 @@ if __name__ == '__main__':
     parser.add_argument('-config', '--config', type=str, required=True, help='path to config file')
     parser.add_argument('-b', '--batch_size', type=int, default=3, help='batch size')
     parser.add_argument('-bprop', '--backprop_every', type=int, default=20000, help='backprop every n tokens')
+    parser.add_argument('-max_seq', '--max_seq_len', type=int, default=50000, help='max sequence length')
 
     args = parser.parse_args()
     main(args)

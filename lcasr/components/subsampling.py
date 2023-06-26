@@ -42,7 +42,22 @@ class StackingSubsampling(torch.nn.Module):
         lengths = torch.div(lengths + pad_size, self.subsampling_factor, rounding_mode='floor')
         return x, lengths
 
+class DepthwiseSeparable(torch.nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding):
+        super(DepthwiseSeparable, self).__init__()
+        exp_f = 1
+        intermid_c = int(out_channels*exp_f)
+        self.pointwise_in = torch.nn.Conv1d(in_channels, intermid_c, kernel_size=1, stride=1, padding=0)
+        self.depthwise = torch.nn.Conv1d(intermid_c, intermid_c, kernel_size, stride=stride, padding=padding, groups=intermid_c)
+        self.pointwise = torch.nn.Conv1d(intermid_c, out_channels, kernel_size=1, stride=1, padding=0)
+        self.act = nn.GELU() # hmm
 
+    def forward(self, x):
+        x = self.pointwise_in(x)
+        x = self.act(x)
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        return x
 
 class ConvSubsampling(torch.nn.Module):
     """Convolutional subsampling which supports VGGNet and striding approach introduced in:
@@ -57,8 +72,9 @@ class ConvSubsampling(torch.nn.Module):
         activation (Module): activation function, default is nn.ReLU()
     """
 
-    def __init__(self, subsampling, subsampling_factor, feat_in, feat_out, conv_channels, activation=nn.ReLU(), stride=2, kernel_size=3):
+    def __init__(self, feat_in, feat_out, conv_channels, activation=nn.ReLU(), stride=2, kernel_size=3):
         super(ConvSubsampling, self).__init__()
+        subsampling, subsampling_factor = 'striding', 4
         self._subsampling = subsampling
 
         if subsampling_factor % 2 != 0:
@@ -143,13 +159,95 @@ class ConvSubsampling(torch.nn.Module):
         if self._subsampling == 'striding':
             # added in order to prevent slowdown in torch.nn.Conv2d with bfloat16 / CUDNN v8 API
             # to be removed once the above is fixed in cudnn
-            with torch.cuda.amp.autocast(dtype=torch.float32):
-                x = self.conv(x)
+            
+            #with torch.cuda.amp.autocast(dtype=torch.float32):
+            x = self.conv(x)
         else:
             x = self.conv(x)
 
         b, c, t, f = x.size()
         x = self.out(x.transpose(1, 2).reshape(b, t, -1))
+        return x, lengths
+
+class ConvSubsampling_(torch.nn.Module):
+    """Convolutional subsampling which supports VGGNet and striding approach introduced in:
+    VGGNet Subsampling: Transformer-transducer: end-to-end speech recognition with self-attention (https://arxiv.org/pdf/1910.12977.pdf)
+    Striding Subsampling: "Speech-Transformer: A No-Recurrence Sequence-to-Sequence Model for Speech Recognition" by Linhao Dong et al. (https://ieeexplore.ieee.org/document/8462506)
+    Args:
+        subsampling (str): The subsampling technique from {"vggnet", "striding"}
+        subsampling_factor (int): The subsampling factor which should be a power of 2
+        feat_in (int): size of the input features
+        feat_out (int): size of the output features
+        conv_channels (int): Number of channels for the convolution layers.
+        activation (Module): activation function, default is nn.ReLU()
+    """
+
+    def __init__(self, feat_in, feat_out, conv_channels, activation=nn.ReLU(), stride=2, kernel_size=3):
+        super(ConvSubsampling_, self).__init__()
+        self._sampling_num = int(math.log(4, 2))
+
+        in_channels = 1
+        
+        self._ceil_mode = False
+
+       
+        self._padding = 1
+        self._stride = stride
+        self._kernel_size = kernel_size
+        self._ceil_mode = False
+    
+        self.convset1 = []
+        self.convset2 = []
+        
+        self.convset1.append(
+            torch.nn.Conv2d(
+                in_channels=in_channels,
+                out_channels=conv_channels,
+                kernel_size=self._kernel_size,
+                stride=self._stride,
+                padding=self._padding,
+            )
+        )
+        self.convset1.append(activation)
+        in_channels = conv_channels
+        self.convset2.append(
+            DepthwiseSeparable(
+                in_channels = feat_out * (feat_in//2), 
+                out_channels = conv_channels,
+                kernel_size = self._kernel_size,
+                stride = self._stride,
+                padding = self._padding
+            )
+        )
+        self.convset2.append(activation)
+
+        in_length = torch.tensor(feat_in, dtype=torch.float)
+        out_length = calc_length(
+            in_length,
+            padding=self._padding,
+            kernel_size=self._kernel_size,
+            stride=self._stride,
+            ceil_mode=self._ceil_mode,
+            repeat_num=self._sampling_num,
+        )
+        self.out = torch.nn.Linear(conv_channels * int(out_length), feat_out)
+        self.convset1 = torch.nn.Sequential(*self.convset1)
+        self.convset2 = torch.nn.Sequential(*self.convset2)
+
+    def forward(self, x, lengths):
+        lengths = calc_length(
+            lengths,
+            padding=self._padding,
+            kernel_size=self._kernel_size,
+            stride=self._stride,
+            ceil_mode=self._ceil_mode,
+            repeat_num=self._sampling_num,
+        )
+        x = x.unsqueeze(1)
+        #with torch.cuda.amp.autocast(dtype=torch.float32):
+        x = self.convset1(x)
+        x = self.convset2(rearrange(x, 'b c t f -> b (c f) t')).transpose(1, 2)
+
         return x, lengths
 
 

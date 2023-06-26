@@ -60,7 +60,7 @@ def train(
     ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='mean')
 
     overlap = args.config.audio_chunking['overlap']
-    ds_overlap = overlap // model.subsampling_factor
+    ds_overlap = overlap // 4 # 4 is the subsampling factor
     backprop_every = args.backprop_every
 
 
@@ -98,7 +98,7 @@ def train(
                 if last_prob_set != None:
                     if cur_selection_mask != None:
                         last_prob_set = last_prob_set[cur_selection_mask]
-                    interp_factor = model.overlap_interp_factor
+                    interp_factor = model.overlap_interp_factor_logits
                     cur_probs[:,:ds_overlap] *= interp_factor
                     o_len = cur_probs[:,:ds_overlap].shape[1]
                     o_len = min(o_len, ds_overlap)
