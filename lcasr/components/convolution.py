@@ -13,7 +13,7 @@ class ConformerConvolution(nn.Module):
             self, 
             d_model, 
             kernel_size, 
-            norm_type='batch_norm', 
+            norm_type='batch_renorm', 
             ):
 
         super(ConformerConvolution, self).__init__()

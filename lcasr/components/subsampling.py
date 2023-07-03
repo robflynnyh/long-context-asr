@@ -18,7 +18,6 @@ import torch
 from einops import rearrange
 import torch.nn as nn
 
-
 class StackingSubsampling(torch.nn.Module):
     """Stacking subsampling which simply stacks consecutive frames to reduce the sampling rate
     Args:
@@ -155,6 +154,7 @@ class ConvSubsampling(torch.nn.Module):
             ceil_mode=self._ceil_mode,
             repeat_num=self._sampling_num,
         )
+        
         x = x.unsqueeze(1)
         if self._subsampling == 'striding':
             # added in order to prevent slowdown in torch.nn.Conv2d with bfloat16 / CUDNN v8 API

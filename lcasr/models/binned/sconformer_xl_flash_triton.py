@@ -16,15 +16,19 @@ ConvSubsampling = subsampling.ConvSubsampling
 DEFAULT_NORM = apex.normalization.FusedRMSNorm
 
 from flash_attn.flash_attention import FlashAttention
-from flash_attn.modules.mha import FlashCrossAttention
-from flash_attn.bert_padding import unpad_input, pad_input
-
+from flash_attn.flash_attn_triton import flash_attn_func
+'''
+chunk 127/129
+torch.Size([2, 64, 2048]) torch.Size([2, 22])
+ten sor([2048,  438])
+nan
+'''
 
 class SCConformerXL(nn.Module):
     def __init__(
         self,
         vocab_size = 128,
-        feat_in = 80,
+        feat_in = 64,
         n_layers = 12,
         d_model = 256,
         n_heads = 8,
@@ -34,6 +38,7 @@ class SCConformerXL(nn.Module):
         dropout_conv = 0.0,
         dropout_attn = 0.0,
         checkpoint_every_n_layers = 1,
+        subsampling_factor = 4,
         conv_kernel_size = 31,
         **kwargs
     ):
@@ -47,12 +52,11 @@ class SCConformerXL(nn.Module):
         self.expansion_factor = expansion_factor
         self.conv_kernel_size = conv_kernel_size
 
-        self.flash_attn = kwargs.get('flash_attn', True)
-
         self.checkpoint_every_n_layers = checkpoint_every_n_layers
+        
+        self.subsampling_factor = subsampling_factor
 
-        self.overlap_interp_factor_logits = nn.Parameter(torch.tensor(0.5))
-        self.overlap_interp_factor_kvs = nn.Parameter(torch.tensor(0.5))
+        self.overlap_interp_factor = nn.Parameter(torch.tensor(0.5))
 
         self.dropout_ff = dropout_ff
         self.dropout_conv = dropout_conv
@@ -64,10 +68,12 @@ class SCConformerXL(nn.Module):
         )
 
         self.subsampling = ConvSubsampling(
+            subsampling = 'striding',
+            subsampling_factor = subsampling_factor,
             feat_in = feat_in,
             feat_out = d_model,
             conv_channels = d_model,
-            activation = nn.GELU(),
+            activation = nn.SiLU(),
         )
 
         self.layers = nn.ModuleList()
@@ -108,11 +114,6 @@ class SCConformerXL(nn.Module):
         return self.forward_for_export(audio_signal=audio_signal, decoder=self.decoder, length=length, cached_kvs=cached_kvs, cached_kv_lengths=cached_kv_lengths)
 
 
-    @staticmethod
-    def checkfornan(x, name='any'):
-        if torch.isnan(x).any():
-            print(f'nan in {name}')
-            exit()
 
     def forward_for_export(self, audio_signal, decoder, length = None, cached_kvs = None, cached_kv_lengths = None):
         max_audio_length: int = audio_signal.size(-1)
@@ -126,25 +127,21 @@ class SCConformerXL(nn.Module):
         ## create masks
         
         mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
-    
-        if cached_kv_lengths is not None:
-            print(length.shape, cached_kv_lengths.shape, audio_signal.shape)
         full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
-        #print(full_kv_lengths, '333333333')
 
-        if length.max() == length.min():
-            att_mask, mask = None, None
+        if cached_kv_lengths is None and length.max() == length.min():
+            att_mask = torch.zeros(audio_signal.size(0), 1, audio_signal.size(1), full_kv_lengths.max(), device=audio_signal.device)
         else:
             full_kv_mask = torch.arange(full_kv_lengths.max(), device=audio_signal.device).expand(audio_signal.size(0), full_kv_lengths.max()) >= full_kv_lengths.unsqueeze(1)
-            if audio_signal.device.type == 'cuda' and self.flash_attn:
-                att_mask = ~full_kv_mask
-            else:
-                qmask, kmask = ~mask, ~full_kv_mask
-                att_mask = ~(rearrange(qmask, 'b n -> b () n ()') * rearrange(kmask, 'b n -> b () () n'))
-                att_mask = att_mask.to(audio_signal.dtype) * -torch.finfo(audio_signal.dtype).max
+            qmask, kmask = ~mask, ~full_kv_mask
+            att_mask = ~(rearrange(qmask, 'b n -> b () n ()') * rearrange(kmask, 'b n -> b () () n'))
+            att_mask = att_mask.to(audio_signal.dtype) * -torch.finfo(audio_signal.dtype).max
+            # print(att_mask.to(audio_signal.dtype))
+            # exit()
 
-        pad_mask = mask 
+        pad_mask = mask if length.max() != length.min() else None
         
+
         iterim_posteriors = []
 
         kvs_to_cache = []
@@ -157,9 +154,7 @@ class SCConformerXL(nn.Module):
                     audio_signal, # x
                     att_mask, # att_mask
                     pad_mask, # pad_mask
-                    length,
-                    current_layer_kvs,
-                    self.flash_attn,
+                    current_layer_kvs
                 )
     
             else:
@@ -167,12 +162,10 @@ class SCConformerXL(nn.Module):
                     x = audio_signal, 
                     attn_mask = att_mask, 
                     pad_mask = pad_mask,
-                    length = length,
-                    cached_kv = current_layer_kvs,
-                    flash_attn = self.flash_attn,
+                    cached_kv = current_layer_kvs
                 )
+                
 
-            
             kvs_to_cache.append(kv_to_cache) # possibly detach and move to cpu ?    
             
             if lth != len(self.layers) - 1:
@@ -278,11 +271,10 @@ class ConformerLayer(nn.Module):
 
             
 
-    def forward(self, x, attn_mask, pad_mask, length, cached_kv = None, flash_attn = True):
+    def forward(self, x, attn_mask, pad_mask, cached_kv = None):
         '''
         pad_mask: mask for padding used in conv layers
         attn_mask: attn_mask this should include the cached keys and values
-        length: list of lengths of the input sequence
         cached_kv: kvs from previous block-reccurrent time step
         '''
 
@@ -290,15 +282,13 @@ class ConformerLayer(nn.Module):
 
         attn_out, kv_to_cache = self.attend(
             x = x,
-            length = length,
             attn_mask = attn_mask,
             pad_mask = pad_mask,
             cached_kv = cached_kv,
-            flash_attn = flash_attn
         )
         x = self.do_attn_out(attn_out) + x
         
-        x = self.do_conv(self.conv(x, pad_mask = pad_mask))
+        x = self.do_conv(self.conv(x, pad_mask = pad_mask)) + x
     
         x = self.do_ff(self.ff2(x)) + x
 
@@ -335,95 +325,60 @@ class Attention(nn.Module):
 
         self.dropout_p = dropout
 
-        # softmax_scale is set to None but will default to 1/sqrt(d_k) in FlashAttention
-        self.flash_attn_fn = FlashAttention(softmax_scale = None, attention_dropout = dropout)
-        self.flash_attn_c_fn = FlashCrossAttention(softmax_scale = None, attention_dropout = dropout)
-        ##
+        self.softmax_scale = head_dim ** -0.5
 
         self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=bias)
         self.qkv = lambda x: rearrange(self.qkv_proj(x), "b n (h d qkv) -> qkv b n h d", qkv=3, h=n_heads, d=head_dim)
 
         self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=bias)
 
+
     
     def attatch_cache(self, kv, cached_kv):
-        kv = torch.stack(kv, dim=2)
+        kv = torch.stack(kv, dim=0)
         if cached_kv is None:
             return kv
-        cached_kv = cached_kv.contiguous()
         new_kv = torch.cat([cached_kv, kv], dim=1)
-        print(new_kv.shape)
         return new_kv
 
-    '''
-    ADD EQ UNIT TESTS FOR FLASH AND NORMAL !!!!
-    '''
 
-    def forward(self, x, length, attn_mask=None, pad_mask=None, cached_kv=None, flash_attn = True):
+    def forward(self, x, attn_mask=None, pad_mask=None, cached_kv=None):
         B, N, C, H, D = *x.shape, self.n_heads, self.head_dim
         #print(x.shape, mask.shape)
 
-        if pad_mask is not None:
+        if pad_mask != None:
             x = x.masked_fill(pad_mask.unsqueeze(-1), 0)
+            attn_mask = attn_mask.half()
 
-
+        
         q, k, v = self.qkv(x)
 
         kv = self.attatch_cache([k, v], cached_kv)
-     
-        ### Flash attention stuff 
-        if x.device.type == 'cuda' and flash_attn:
-            q, kv = q.contiguous(), kv.contiguous()
+        k, v = kv
+       
+        #torch.backends.cuda.enable_flash_sdp(enabled = False) # enable flash attention if cuda for faster training
+
+        if x.device.type == 'cuda':
+            q, k, v = q.contiguous(), k.contiguous(), v.contiguous()
             if q.dtype == torch.float32:
-                q, kv = q.half(), kv.half()
-
-            if kv.shape[1] == q.shape[1]: # if kv_seq_len == q_seq_len use self attention else use cross attention
-                qkv = torch.cat([q[:,:,None], kv], dim=2)
-                out = self.flash_attn_fn(qkv, attn_mask)[0]
-            else:
-                out = self.flash_attn_c_fn(q, kv)
-                if attn_mask is None:
-                    out = self.flash_attn_c_fn(q, kv)
-                else:
-                    q_attn_mask = (attn_mask)[:, -length.max().item():]
-                    kv_attn_mask = attn_mask
-
-                    b, qs, qh, qd = q.shape
-                    b, kvs, kvn, kh, kd = kv.shape
-                    q_up, q_indices, cu_seq_lens, max_seqlen = unpad_input(q, q_attn_mask)
-             
-                    kv_up, kv_indices, k_cu_seq_lens, max_k_seq_len = unpad_input(kv, kv_attn_mask)
-                    
-                    out = self.flash_attn_c_fn(
-                        q_up, 
-                        kv_up, 
-                        cu_seqlens = cu_seq_lens.to(torch.int32),
-                        max_seqlen = max_seqlen,
-                        cu_seqlens_k = k_cu_seq_lens.to(torch.int32),
-                        max_seqlen_k = max_k_seq_len,
-                    )
-                    out = pad_input(out, indices = q_indices, batch = b, seqlen = qs)
-
+                q, k, v = q.half(), k.half(), v.half()
+            attn_mask = attn_mask.to(q.dtype)
+            out = flash_attn_func(q, k, v, attn_mask, self.softmax_scale)
             out = out.to(x.dtype)
             out = rearrange(out, "b n h d -> b n (h d)")
         else:
-            k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
-            q = q.transpose(1, 2).contiguous()
-            out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
-            out = rearrange(out, "b h n d -> b n (h d)")
+            out = torch.nn.functional.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
 
         if pad_mask != None:
             out = out.masked_fill(pad_mask.unsqueeze(-1), 0)
 
-
         out = self.out_proj(out)
 
-        
         return out, kv
 
 
 class ASRLinearSCDecoder(nn.Module):
-    def __init__(self, d_model, vocab_size, norm=False):
+    def __init__(self, d_model, vocab_size, norm=True):
         super().__init__()
         # Add 1 for blank char
         self.num_classes = vocab_size + 1

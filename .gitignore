@@ -1,0 +1,7 @@
+
+*.pt
+*.out
+*.log
+.fuse*
+
+wandb/

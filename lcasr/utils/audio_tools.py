@@ -8,6 +8,11 @@ import sentencepiece as spm
 from einops import rearrange
 import subprocess
 import numpy as np
+import librosa
+
+WIN_LENGTH = 400
+HOP_LENGTH = 160
+SR = 16000
 
 def load(path:str) -> Tuple[torch.Tensor, int]:
     waveform, sample_rate = torchaudio.load(path)
@@ -27,30 +32,42 @@ def grab_left_channel(waveform:torch.Tensor) -> torch.Tensor:
     else:
         raise ValueError("Waveform must be 1D or 2D")
 
-def to_spectogram(waveform:torch.Tensor):
+def take_mean_channel(waveform:torch.Tensor) -> torch.Tensor:
+    if len(waveform.shape) == 2:
+        return waveform.mean(0, keepdim=True)
+    elif len(waveform.shape) == 1:
+        return waveform[None]
+    else:
+        raise ValueError("Waveform must be 1D or 2D")
+
+def to_spectogram(waveform:torch.Tensor, global_normalisation=True):
     '''some of config i,e win and n_fft is from: https://github.com/robflynnyh/NeMo/blob/main/nemo/collections/asr/parts/preprocessing/features.py
     '''
-    return torchaudio.transforms.MelSpectrogram(
-        win_length = 320,
-        hop_length = 160,
-        n_fft = 2 ** math.ceil(math.log2(320)), # 512
+    spec = torchaudio.transforms.MelSpectrogram(
+        win_length = WIN_LENGTH,
+        hop_length = HOP_LENGTH,
+        n_fft = 2 ** math.ceil(math.log2(400)), # 512
         n_mels = 80,
-        normalized = 'window'
+        normalized = False
     )(waveform)
+    # normalize
+    if global_normalisation:
+        spec = (spec - spec.mean(-1, keepdim=True)) / spec.std(-1, keepdim=True)
+    return spec
 
 def total_seconds(spectogram_length:int) -> float:
     '''converts number of frames to seconds'''
-    return (spectogram_length * 160) / 16000
+    return (spectogram_length * HOP_LENGTH) / SR
 
 def total_frames(seconds:float) -> int:
     '''inverse of total_seconds'''
-    return int((seconds * 16000) / 160) 
+    return int((seconds * 16000) / HOP_LENGTH) 
 
 def processing_chain(path_in:str):
     waveform, sample_rate = load(path_in)
     waveform = grab_left_channel(waveform)
-    waveform = resample(waveform, sample_rate, 16000)
-    spectrogram = to_spectogram(waveform)
+    waveform = resample(waveform, sample_rate, SR)
+    spectrogram = to_spectogram(waveform, global_normalisation=True)
     return spectrogram
 
 
@@ -72,24 +89,28 @@ def chunk_text_json(
         chunk_size: int,
         chunk_overlap: int,
         spectogram_length: int,
+        get_seconds: bool = False
     ):
     assert chunk_size > chunk_overlap, "chunk_size must be greater than chunk_overlap"
     
     splits = []
+    start_end_times = []
     for i in range(0, spectogram_length, chunk_size - chunk_overlap):
         c_start_pos, c_end_pos = i, i + chunk_size
         c_start_pos_sec, c_end_pos_sec = total_seconds(c_start_pos), total_seconds(c_end_pos)
         c_text = [el['word'] for el in text if float(el['startTime'][:-1]) >= c_start_pos_sec and float(el['endTime'][:-1]) <= c_end_pos_sec]
         splits.append(" ".join(c_text))
-        
-    return splits
+        start_end_times.append((c_start_pos_sec, c_end_pos_sec))
+    
+    return splits if not get_seconds else (splits, start_end_times)
         
 def delete_all_spectograms(pairs:str = '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'):
     pairs = load_json(pairs)
     sure = input(f'Are you sure you want to delete {len(pairs)} spectograms? (y/n)')
     if sure == 'y':
         for k in tqdm(list(pairs.keys())):
-            os.remove(pairs[k]['audio'])
+            if os.path.exists(pairs[k]['audio']):
+                os.remove(pairs[k]['audio'])
     else:
         print('Aborted')
 
@@ -97,6 +118,9 @@ def delete_all_spectograms(pairs:str = '/mnt/parscratch/users/acp21rjf/spotify/a
 def load_json(jfile:str) -> Dict:
     with open(jfile, 'r') as f:
         return json.load(f)
+
+def load_pairs(pairs:str = '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json') -> Dict:
+    return load_json(pairs)
 
 def findall_files_spotify(path:str, ext:str, verbose = True) -> List[str]:
     '''
@@ -168,7 +192,7 @@ def retrieve_all_text(
     
     to_save = save_path != '' and save_path is not None
 
-    for key in tqdm(list(pairs.keys())):
+    for key in tqdm(list(pairs.keys())): # faster ways to do this 
         cur_json = load_json(pairs[key]['txt'])
         text = " ".join([el['word'] for el in cur_json['results'][-1]['alternatives'][0]['words']])
         all_text.append(text)
@@ -180,7 +204,7 @@ def retrieve_all_text(
 def train_tokenizer(
         raw_txt:str = '/mnt/parscratch/users/acp21rjf/spotify/all_text.txt',
         save_path:str = '/mnt/parscratch/users/acp21rjf/spotify/',
-        vocab_size:int = 4096,
+        vocab_size:int = 4095,
     ):
     spm.SentencePieceTrainer.train(
         input=raw_txt,
@@ -188,6 +212,7 @@ def train_tokenizer(
         vocab_size=vocab_size,
         model_type='bpe',
         character_coverage=1.0,
+        max_sentence_length=1000000, #
         pad_id=0,
         unk_id=1,
         bos_id=2,
@@ -195,6 +220,7 @@ def train_tokenizer(
         pad_piece='[PAD]',
         unk_piece='[UNK]',
         bos_piece='[BOS]',
+        normalization_rule_name='nmt_nfkc_cf'
     )
     os.system(f'mv tokenizer.model {save_path}')
     os.system(f'mv tokenizer.vocab {save_path}')
@@ -206,6 +232,20 @@ def load_tokenizer(
 
 
 def load_sample(entry:Dict[str, str]) -> Tuple[torch.Tensor, torch.Tensor]:
+    # audio_name = entry['audio'].replace('.spec.pt', '.ogg')
+    # waveform, sample_rate = load(audio_name)
+    # waveform = grab_left_channel(waveform)
+    # waveform = resample(waveform, sample_rate, SR)
+    # waveform = waveform.numpy()
+    # spec = librosa.feature.melspectrogram(
+    #     y=waveform, 
+    #     sr=SR, 
+    #     n_fft=512, 
+    #     hop_length=HOP_LENGTH, 
+    #     n_mels=80, 
+    # )
+    # audio = torch.as_tensor(spec, dtype=torch.float32)
+    # audio = processing_chain(audio_name)
     audio = torch.load(entry['audio'])
     txt = load_json(entry['txt'])
     return audio, txt
@@ -216,13 +256,28 @@ class SimpleDataset(torch.utils.data.Dataset):
             self, 
             pairs:Dict[str, Dict[str, str]],
             batch_size:int = 8,
-            subgroup_shuffle_size:int = 16,
+            subgroup_shuffle_size:int = 2000,
+            skip_to:int = 0,
+            check_exists:bool = False, # if preprocessing hasn't finished, set to True
         ):
         self.batch_size = batch_size
         self.subgroup_shuffle_size = subgroup_shuffle_size
         self.pairs = pairs
         self.items = sorted(list(pairs.items()), key=lambda x: x[1]['duration'])
+        if check_exists:
+            self.remove_nonexistent()
         self.create_batches()
+        self.items = self.items[skip_to:]
+
+    def remove_nonexistent(self):
+        items = []
+        for el in tqdm(self.items, desc='removing nonexistent files'):
+            if os.path.exists(el[1]['audio']):
+                items.append(el)
+            if len(items) > 10000:
+                break#
+        self.items = items
+        #self.items = [el for el in tqdm(self.items, desc='removing nonexistent files') if os.path.exists(el[1]['audio'])]
 
     def create_batches(self):
         np.random.seed(1234)
@@ -239,10 +294,11 @@ class SimpleDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         audio, txt = load_sample(self.pairs[self.items[idx][0]])
+        id = self.items[idx][0]
         txt = txt['results'][-1]['alternatives'][0]['words']
 
         audio = rearrange(audio, '() f t -> t f')
-        return audio, txt
+        return audio, txt, id
 
 
 def collate_fn(
@@ -253,14 +309,13 @@ def collate_fn(
     pad_id = tokenizer.pad_id()
     bos_id = tokenizer.bos_id()
 
-    def collate(batch):
-        audio, txt = zip(*batch)
+    def collate(batch): # move as much as possible from collate to dataset bcos datloader workers aren't taken advantage of here
+        audio, txt, ids = zip(*batch)
        
         audio_lengths = torch.LongTensor([el.shape[0] for el in audio])
   
         audio = torch.nn.utils.rnn.pad_sequence(audio, batch_first=True, padding_value=pad_id)
         audio = rearrange(audio, 'b t f -> b f t')
-
         
         txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
 
@@ -283,6 +338,7 @@ def collate_fn(
                 'txt_lengths':enc_txt_chunks_lengths,
                 'audio_lengths':cur_lengths,
                 'selection_mask':remove_mask,
+                'cur_culm_lengths':cur_culm_lengths,
             })
 
             culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
@@ -290,6 +346,7 @@ def collate_fn(
         return {
             'chunks': chunks,
             'total_audio_lengths': audio_lengths,
+            'ids': ids,
         }
 
     return collate
@@ -299,11 +356,18 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         self, 
         pairs:Dict[str, Dict[str, str]], 
         tokenizer:spm.SentencePieceProcessor, 
+        skip_to:int = 0,
         batch_size:int = 5,
         chunk_size:int = 2048,
         chunk_overlap:int = 192,
     ):
-        self.dataset = SimpleDataset(pairs, batch_size = batch_size, subgroup_shuffle_size = 1024)
+        self.tokenizer = tokenizer
+        self.dataset = SimpleDataset(
+            pairs, 
+            batch_size = batch_size,
+            skip_to = skip_to, 
+            subgroup_shuffle_size = 1000
+        )
         super().__init__(
                 self.dataset, 
                 batch_size = batch_size, 

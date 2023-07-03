@@ -13,12 +13,20 @@ model:
   conv_kernel_size: 31
 
 optimizer:
-  lr: 1e-4
+  lr: 2e-4
+  betas: [0.9, 0.98]
+  eps: 1e-6
 
 scheduler:
   warmup_steps: 10000
 
 audio_chunking:
-  size: 4096
-  overlap: 196
+  size: 12288
+  overlap: 0
+
+wandb:
+  use: true
+  project_name: "spotify_long_context"
+  id: "" # leave empty if not resuming a previous run
+
   
