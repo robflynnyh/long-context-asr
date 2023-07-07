@@ -1,7 +1,7 @@
 import torch
 from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
-
+import os
 
 def load_model(config:Dict, vocab_size):
     model = SCConformerXL(**config.model, vocab_size=vocab_size)
@@ -13,8 +13,8 @@ def save_model(
         scheduler:torch.optim.lr_scheduler._LRScheduler,
         podcast_step:int,
         config:Dict,
-        save_path:str,
     ):
+    save_path = os.path.join(config['checkpointing']['dir'], f'step_{podcast_step}.pt')
     save_dict = {
         'model':model.state_dict(),
         'optimizer':optimizer.state_dict(),
@@ -24,7 +24,19 @@ def save_model(
     }
     torch.save(save_dict, save_path)
 
-def load_checkpoint(model, optimizer=None, path='model.pt'):
+def find_latest_checkpoint(path:str = './checkpoints'):
+    checkpoints = [el for el in os.listdir(path) if el.endswith('.pt')]
+    if len(checkpoints) == 0:
+        return None
+    checkpoints = sorted(checkpoints, key=lambda x: int(x.split('_')[1].split('.')[0]))
+    return checkpoints[-1]
+
+
+def load_checkpoint(model, optimizer=None, path='./checkpoints'):
+    latest_checkpoint = find_latest_checkpoint(path)
+    if latest_checkpoint is None:
+        return 0
+    path = os.path.join(path, latest_checkpoint)
     checkpoint = torch.load(path)
     try:
         model.load_state_dict(checkpoint['model'])

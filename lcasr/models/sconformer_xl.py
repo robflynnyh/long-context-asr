@@ -14,17 +14,22 @@ ConformerFeedForward = fused_dense.FusedMLP
 #ConformerFeedForward = lambda x: nn.Linear(x,x)
 ConvSubsampling = subsampling.ConvSubsampling
 DEFAULT_NORM = apex.normalization.FusedRMSNorm
+LayerNorm = apex.normalization.FusedLayerNorm
 
 from flash_attn.flash_attention import FlashAttention
 from flash_attn.modules.mha import FlashCrossAttention
 from flash_attn.bert_padding import unpad_input, pad_input
 
+from functools import partial
 
 class SCConformerXL(nn.Module):
     def __init__(
         self,
         vocab_size = 128,
         feat_in = 80,
+        subsampling = 'striding',
+        subsampling_factor = 4,
+        subsampling_conv_channels = -1,
         n_layers = 12,
         d_model = 256,
         n_heads = 8,
@@ -35,6 +40,10 @@ class SCConformerXL(nn.Module):
         dropout_attn = 0.0,
         checkpoint_every_n_layers = 1,
         conv_kernel_size = 31,
+        qk_rms_norm = False,
+        shift_kvs = False,
+        gated_sc = False,
+        decoder_norm = False,
         **kwargs
     ):
         super().__init__()
@@ -57,20 +66,35 @@ class SCConformerXL(nn.Module):
         self.dropout_ff = dropout_ff
         self.dropout_conv = dropout_conv
         self.dropout_attn = dropout_attn
+        self.qk_rms_norm = qk_rms_norm
+
+        self.subsampling = subsampling
+        self.subsampling_factor = subsampling_factor
+        self.subsampling_conv_channels = subsampling_conv_channels if subsampling_conv_channels != -1 else d_model
+
+        self.shift_kvs = shift_kvs
+        self.gated_sc = gated_sc
+        self.decoder_norm = decoder_norm
 
         self.decoder = ASRLinearSCDecoder(
             d_model = d_model,
-            vocab_size = vocab_size
+            vocab_size = vocab_size,
+            norm = decoder_norm,
+            gated_sc = gated_sc,
         )
 
         self.subsampling = ConvSubsampling(
+            subsampling = self.subsampling,
+            subsampling_factor = self.subsampling_factor,
             feat_in = feat_in,
             feat_out = d_model,
-            conv_channels = d_model,
-            activation = nn.GELU(),
+            conv_channels = self.subsampling_conv_channels,
+            activation = nn.SiLU(),
         )
 
+        
         self.layers = nn.ModuleList()
+
         for i in range(n_layers):
             l = ConformerLayer(
                 d_model = d_model,
@@ -83,6 +107,7 @@ class SCConformerXL(nn.Module):
                 total_layers = n_layers,
                 head_dim = head_dim,
                 n_heads = n_heads,
+                qk_rms_norm = qk_rms_norm,
                 **kwargs
             )
             self.layers.append(l)
@@ -127,8 +152,7 @@ class SCConformerXL(nn.Module):
         
         mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
     
-        if cached_kv_lengths is not None:
-            print(length.shape, cached_kv_lengths.shape, audio_signal.shape)
+   
         full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
         #print(full_kv_lengths, '333333333')
 
@@ -149,7 +173,8 @@ class SCConformerXL(nn.Module):
 
         kvs_to_cache = []
         for lth, layer in enumerate(self.layers):
-            current_layer_kvs = cached_kvs[:,:,lth] if cached_kvs is not None else None
+            lth_to_grap = lth + 1 if lth + 1 < len(self.layers) and self.shift_kvs else lth
+            current_layer_kvs = cached_kvs[:,:,lth_to_grap] if cached_kvs is not None else None
 
             if self.checkpoint_every_n_layers > 0 and lth % self.checkpoint_every_n_layers == 0:
                 audio_signal, kv_to_cache = checkpoint(
@@ -206,7 +231,7 @@ class SCConformerXL(nn.Module):
         return total
 
 class PreNorm(nn.Module): # applies normalization before fn
-    def __init__(self, d_model, fn, norm = DEFAULT_NORM, disable_autocast = False):
+    def __init__(self, d_model, fn, norm = DEFAULT_NORM):
         super().__init__()
         self.norm = norm(d_model)
         self.fn = fn
@@ -237,6 +262,7 @@ class ConformerLayer(nn.Module):
         total_layers,
         head_dim,
         n_heads,
+        qk_rms_norm = False,
         **kwargs
     ):
         super().__init__()
@@ -270,6 +296,7 @@ class ConformerLayer(nn.Module):
                 dropout = dropout_attn,
                 bias = False,
                 layer_idx = layer_idx,
+                qk_rms_norm = qk_rms_norm
             )
         )
 
@@ -323,6 +350,7 @@ class Attention(nn.Module):
         n_heads,
         bias=False,
         dropout=0.0,
+        qk_rms_norm=False,
         **kwargs
     ):
         super().__init__()
@@ -345,6 +373,13 @@ class Attention(nn.Module):
 
         self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=bias)
 
+        self.qk_rms_norm = qk_rms_norm
+
+        if self.qk_rms_norm:
+            self.q_rms_norm = partial
+            self.k_rms_norm = LayerNorm(head_dim)
+            self.apply_qknorm = lambda q, k: (self.q_rms_norm(q), self.k_rms_norm(k))
+
     
     def attatch_cache(self, kv, cached_kv):
         kv = torch.stack(kv, dim=2)
@@ -352,7 +387,7 @@ class Attention(nn.Module):
             return kv
         cached_kv = cached_kv.contiguous()
         new_kv = torch.cat([cached_kv, kv], dim=1)
-        print(new_kv.shape)
+
         return new_kv
 
     '''
@@ -368,6 +403,8 @@ class Attention(nn.Module):
 
 
         q, k, v = self.qkv(x)
+        if self.qk_rms_norm:
+            q, k = self.apply_qknorm(q, k)
 
         kv = self.attatch_cache([k, v], cached_kv)
      
@@ -423,13 +460,16 @@ class Attention(nn.Module):
 
 
 class ASRLinearSCDecoder(nn.Module):
-    def __init__(self, d_model, vocab_size, norm=False):
+    def __init__(self, d_model, vocab_size, norm=False, gated_sc=False):
         super().__init__()
         # Add 1 for blank char
         self.num_classes = vocab_size + 1
         self.ff = nn.Linear(d_model, self.num_classes)
         self.reprojection = nn.Linear(self.num_classes, d_model)
         self.norm = DEFAULT_NORM(d_model) if norm else nn.Identity()
+        self.gated_sc = gated_sc
+        if self.gated_sc:
+            self.gate = nn.Linear(d_model, 1)
 
     def forward(self, x, logits=False):
         x = self.norm(x)
@@ -441,6 +481,10 @@ class ASRLinearSCDecoder(nn.Module):
         return self.reprojection(x)
 
     def integrate_projections(self, x, proj1):
-        return x + proj1
+        if self.gated_sc:
+            gate = torch.sigmoid(self.gate(x))
+            return x + gate * proj1
+        else:
+            return x + proj1
 
 

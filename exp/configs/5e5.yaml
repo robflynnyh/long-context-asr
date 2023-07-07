@@ -1,0 +1,58 @@
+
+model:
+  feat_in: 80
+  n_layers: 6
+  d_model: 768
+  n_heads: 6
+  head_dim: 128
+  dropout_ff: 0.0
+  dropout_attn: 0.0
+  dropout_conv: 0.0
+  checkpoint_every_n_layers: 0
+  subsampling_factor: 8
+  subsampling: 'dw_striding'
+  subsampling_conv_channels: 256
+  conv_kernel_size: 9
+  qk_rms_norm: false
+  shift_kvs: false
+  gated_sc: true
+  decoder_norm: true
+
+optimizer:
+  name: 'madgrad'
+  args:
+    lr: 5e-5
+
+scheduler:
+  warmup_steps: 2500
+
+audio_chunking: # 360000 (max = 1 hour)
+  size: 2048
+  overlap: 0 # not using currently...
+
+wandb:
+  use: true
+  project_name: "spotify_long_context"
+  id: "" # leave empty if not resuming a previous run
+
+checkpointing:
+  dir: '/mnt/parscratch/users/acp21rjf/5e5'
+  save_every_n_steps: 20
+
+# full data: #'/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
+# 25% of corpus: '/users/acp21rjf/long-context-asr/reduced_pairs.json'
+data:
+  path: '/users/acp21rjf/long-context-asr/reduced_pairs.json'
+  
+training:
+  batch_size: 85
+  backprop_every: 2
+  max_seq_len: 256 # max cache length
+
+# size: 2048 = batch size 176
+# size: 4096 = batch size 88
+# size: 8192 = batch size 44
+# size: 16384 = batch size 22
+# size: 65536 = batch size 5 
+# size: 131072 = batch size 2
+# size: 360000 (1 hour) =  batch size 1
