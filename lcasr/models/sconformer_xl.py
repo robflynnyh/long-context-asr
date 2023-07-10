@@ -6,6 +6,8 @@ from einops import rearrange, repeat
 from torch import einsum
 
 from lcasr.components import fused_dense, subsampling, convolution
+from lcasr.utils.helpers import exists
+
 from torch.cuda.amp import autocast
 from contextlib import nullcontext
 
@@ -21,6 +23,58 @@ from flash_attn.modules.mha import FlashCrossAttention
 from flash_attn.bert_padding import unpad_input, pad_input
 
 from functools import partial
+
+class RotaryPositionalEmbedding(torch.nn.Module):
+    def __init__(self, dim, base=10000, precision=torch.bfloat16):
+        """Rotary positional embedding
+        Reference : https://blog.eleuther.ai/rotary-embeddings/
+        Paper: https://arxiv.org/pdf/2104.09864.pdf
+        Adapted from: https://fairseq.readthedocs.io/en/latest/_modules/fairseq/modules/rotary_positional_embedding.html
+        Args:
+            dim: Dimension of embedding
+            base: Base value for exponential
+            precision: precision to use for numerical values
+        """
+        super().__init__()
+        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
+        self.register_buffer("inv_freq", inv_freq)
+        self.seq_len_cached = None
+        self.cos_cached = None
+        self.sin_cached = None
+        self.precision = precision
+    
+    def forward(self, seq_len, device=torch.device("cpu")):
+        """
+        Args:
+            x: Input x with T X B X C
+            seq_len: Sequence length of input x
+        """
+        if seq_len != self.seq_len_cached:
+            self.seq_len_cached = seq_len
+            t = torch.arange(seq_len, device=device).type_as(self.inv_freq)
+            freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+            emb = torch.cat((freqs, freqs), dim=-1).to(device)
+            self.cos_cached = emb.cos()[None, :, None, :]
+            self.sin_cached = emb.sin()[None, :, None, :]
+        return self.cos_cached, self.sin_cached
+
+
+# rotary pos emb helpers:
+def rotate_half(x):
+    x1, x2 = x[..., : x.shape[-1] // 2], x[..., x.shape[-1] // 2 :]
+    return torch.cat(
+        (-x2, x1), dim=x1.ndim - 1
+    )  # dim=-1 triggers a bug in earlier torch versions
+
+
+def apply_rotary_pos_emb(q, k, cos, sin, q_offset: int = 0):
+    q_cos, q_sin = (
+        cos[:, q_offset : q.shape[1] + q_offset],
+        sin[:, q_offset : q.shape[1] + q_offset],
+    )
+    return (q * q_cos) + (rotate_half(q) * q_sin), (k * cos) + (rotate_half(k) * sin)
+
+
 
 class SCConformerXL(nn.Module):
     def __init__(
@@ -44,6 +98,8 @@ class SCConformerXL(nn.Module):
         shift_kvs = False,
         gated_sc = False,
         decoder_norm = False,
+        use_rotary = False,
+        encoder_mode = 'conformer',
         **kwargs
     ):
         super().__init__()
@@ -55,6 +111,11 @@ class SCConformerXL(nn.Module):
         self.head_dim = head_dim
         self.expansion_factor = expansion_factor
         self.conv_kernel_size = conv_kernel_size
+        self.encoder_mode = encoder_mode
+
+
+        supported_encoders = ['conformer', 'ebranchformer', 'ebranchformer-macaron']
+        assert encoder_mode in supported_encoders, f'encoder_mode must be one of {supported_encoders} (got {encoder_mode})'
 
         self.flash_attn = kwargs.get('flash_attn', True)
 
@@ -76,6 +137,11 @@ class SCConformerXL(nn.Module):
         self.gated_sc = gated_sc
         self.decoder_norm = decoder_norm
 
+        self.use_rotary = use_rotary
+
+        if self.use_rotary:
+            self.rotary_pos_emb = RotaryPositionalEmbedding(head_dim)
+
         self.decoder = ASRLinearSCDecoder(
             d_model = d_model,
             vocab_size = vocab_size,
@@ -95,8 +161,20 @@ class SCConformerXL(nn.Module):
         
         self.layers = nn.ModuleList()
 
+        additonal_kwargs = {}
+        if encoder_mode == 'conformer':
+            encoder = ConformerLayer
+        elif encoder_mode == 'ebranchformer':
+            encoder = EBranchConformerLayer
+            additonal_kwargs['has_macaron'] = False
+        elif encoder_mode == 'ebranchformer-macaron':
+            encoder = EBranchConformerLayer
+            additonal_kwargs['has_macaron'] = True
+        else:
+            raise ValueError(f'Unknown encoder mode {encoder_mode}')
+
         for i in range(n_layers):
-            l = ConformerLayer(
+            l = encoder(
                 d_model = d_model,
                 conv_kernel_size = conv_kernel_size,
                 expansion_factor = expansion_factor,
@@ -108,6 +186,7 @@ class SCConformerXL(nn.Module):
                 head_dim = head_dim,
                 n_heads = n_heads,
                 qk_rms_norm = qk_rms_norm,
+                **additonal_kwargs,
                 **kwargs
             )
             self.layers.append(l)
@@ -142,6 +221,9 @@ class SCConformerXL(nn.Module):
     def forward_for_export(self, audio_signal, decoder, length = None, cached_kvs = None, cached_kv_lengths = None):
         max_audio_length: int = audio_signal.size(-1)
 
+        if cached_kvs is not None:
+            assert cached_kv_lengths.max() == cached_kvs.shape[1], 'cached kvs must all be the same length'
+
         if length is None:
             length = torch.tensor([max_audio_length] * audio_signal.size(0), device=audio_signal.device)
             
@@ -152,9 +234,16 @@ class SCConformerXL(nn.Module):
         
         mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
     
+        rotary_emb_fn = lambda q, k: (q, k)
    
         full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
         #print(full_kv_lengths, '333333333')
+        if self.use_rotary:
+            max_seq_len = full_kv_lengths.max()
+            cos, sin = self.rotary_pos_emb(max_seq_len, audio_signal.device)
+            q_offset = 0 if cached_kvs is None else cached_kvs.shape[-2]
+            rotary_emb_fn = lambda q, k: apply_rotary_pos_emb(q=q, k=k, cos=cos, sin=sin, q_offset=q_offset)
+        
 
         if length.max() == length.min():
             att_mask, mask = None, None
@@ -185,6 +274,7 @@ class SCConformerXL(nn.Module):
                     length,
                     current_layer_kvs,
                     self.flash_attn,
+                    rotary_emb_fn
                 )
     
             else:
@@ -195,17 +285,18 @@ class SCConformerXL(nn.Module):
                     length = length,
                     cached_kv = current_layer_kvs,
                     flash_attn = self.flash_attn,
+                    rotary_emb_fn = rotary_emb_fn
                 )
 
             
             kvs_to_cache.append(kv_to_cache) # possibly detach and move to cpu ?    
             
             if lth != len(self.layers) - 1:
-                iterim_logits = decoder(x=audio_signal, logits=True)
+                iterim_logits, x_norm = decoder(x=audio_signal, logits=True, return_norm=True)
                 iterim_post = torch.nn.functional.softmax(iterim_logits, dim=-1)
                 iterim_logposteriors = torch.log(iterim_post)
                 iterim_posteriors.append(iterim_logposteriors)
-                audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))        
+                audio_signal = decoder.integrate_projections(audio_signal, x_norm, decoder.project_back(iterim_post))        
 
         # stack the posteriors along the first dimension (height, batch, seq_len, dim)
         #print(len(iterim_posteriors),111111111111111111)
@@ -213,8 +304,7 @@ class SCConformerXL(nn.Module):
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
-        final_posts = decoder(x=audio_signal, logits=False)
-
+        final_posts = decoder(x=decoder.norm(audio_signal), logits=False)
 
         return {
             'final_posteriors': final_posts,
@@ -296,7 +386,8 @@ class ConformerLayer(nn.Module):
                 dropout = dropout_attn,
                 bias = False,
                 layer_idx = layer_idx,
-                qk_rms_norm = qk_rms_norm
+                qk_rms_norm = qk_rms_norm,
+                **kwargs
             )
         )
 
@@ -305,7 +396,7 @@ class ConformerLayer(nn.Module):
 
             
 
-    def forward(self, x, attn_mask, pad_mask, length, cached_kv = None, flash_attn = True):
+    def forward(self, x, attn_mask, pad_mask, length, cached_kv = None, flash_attn = True, rotary_emb_fn = None):
         '''
         pad_mask: mask for padding used in conv layers
         attn_mask: attn_mask this should include the cached keys and values
@@ -321,7 +412,8 @@ class ConformerLayer(nn.Module):
             attn_mask = attn_mask,
             pad_mask = pad_mask,
             cached_kv = cached_kv,
-            flash_attn = flash_attn
+            flash_attn = flash_attn,
+            rotary_emb_fn = rotary_emb_fn
         )
         x = self.do_attn_out(attn_out) + x
         
@@ -333,6 +425,114 @@ class ConformerLayer(nn.Module):
 
         return x, kv_to_cache
 
+
+class EBranchConformerLayer(nn.Module):
+    def __init__(
+        self,
+        d_model,
+        conv_kernel_size,
+        dropout_ff,
+        dropout_conv,
+        dropout_attn,
+        layer_idx,
+        total_layers,
+        head_dim,
+        n_heads,
+        qk_rms_norm = False,
+        has_macaron = True,
+        **kwargs
+    ):
+        super().__init__()
+
+        self.d_model = d_model
+        self.conv_kernel_size = conv_kernel_size
+        self.layer_idx = layer_idx
+        self.total_layers = total_layers
+        self.has_macaron = has_macaron
+        
+        if self.has_macaron:
+            self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model)))
+            self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model)))
+
+        self.do_ff = nn.Dropout(dropout_ff)
+
+        self.attend = PreNorm(
+            d_model = d_model, 
+            fn = Attention(
+                n_feats = d_model,
+                head_dim = head_dim,
+                n_heads = n_heads,
+                dropout = dropout_attn,
+                bias = False,
+                layer_idx = layer_idx,
+                qk_rms_norm = qk_rms_norm
+            )
+        )
+
+        self.cgmlp = PreNorm(d_model = d_model,
+            fn = ConvolutionalGatingMLP(
+                size = d_model,
+                linear_units = d_model * 6,
+                kernel_size = conv_kernel_size,
+                dropout_rate = dropout_conv,
+            )
+        )
+        self.do_conv = nn.Dropout(dropout_conv)
+
+        self.depthwise_conv_fusion = torch.nn.Conv1d(
+            d_model * 2,
+            d_model * 2,
+            kernel_size=3,
+            stride=1,
+            padding=(3 - 1) // 2,
+            groups=d_model * 2,
+            bias=True,
+        )
+        self.merge_proj = torch.nn.Linear(d_model * 2, d_model)
+
+        self.do_attn_out = nn.Dropout(min(dropout_ff, 0.1)) # don't wan't this too large
+        self.norm_out = DEFAULT_NORM(d_model)
+
+            
+
+    def forward(self, x, attn_mask, pad_mask, length, cached_kv = None, flash_attn = True, rotary_emb_fn = None):
+        '''
+        pad_mask: mask for padding used in conv layers
+        attn_mask: attn_mask this should include the cached keys and values
+        length: list of lengths of the input sequence
+        cached_kv: kvs from previous block-reccurrent time step
+        '''
+        if self.has_macaron:
+            x = self.do_ff(self.ff1(x)) + x
+
+        # Two branches
+        x1, x2 = x, x
+
+        attn_out, kv_to_cache = self.attend(
+            x = x1,
+            length = length,
+            attn_mask = attn_mask,
+            pad_mask = pad_mask,
+            cached_kv = cached_kv,
+            flash_attn = flash_attn,
+            rotary_emb_fn = rotary_emb_fn
+        )
+        x1 = self.do_attn_out(attn_out) 
+        
+        x2 = self.do_conv(self.cgmlp(x = x2, pad_mask = pad_mask))
+        # merge branches
+        x_concat = torch.cat([x1, x2], dim=-1)
+        if pad_mask is not None:
+            x_concat = x_concat.masked_fill(pad_mask.unsqueeze(-1), 0)
+        x_tmp = self.depthwise_conv_fusion(x_concat.transpose(1, 2)).transpose(1, 2)
+        x = self.do_ff(self.merge_proj(x_tmp)) + x
+
+        if self.has_macaron:
+            x = self.do_ff(self.ff2(x)) + x
+
+        x = self.norm_out(x)
+
+        return x, kv_to_cache
 
 def l2norm(t, groups = 1, dim = -1):
     if groups == 1:
@@ -357,6 +557,11 @@ class Attention(nn.Module):
         self.layer_idx = kwargs.get('layer_idx', None)
         #self.history_vector = torch.nn.Parameter(torch.zeros(2, 1, 1, 1, head_dim), requires_grad=True)
 
+        self.has_history_vector = kwargs.get('history_vector', False)
+        if self.has_history_vector:
+            self.history_vector = torch.nn.Parameter(torch.zeros(1, 1, n_heads, head_dim), requires_grad=True)
+            nn.init.uniform_(self.history_vector, -1e-4, 1e-4) # small init
+
         self.n_feats, self.head_dim, self.n_heads = n_feats, head_dim, n_heads
    
         self.activation = nn.Softmax(dim=-1)
@@ -375,26 +580,32 @@ class Attention(nn.Module):
 
         self.qk_rms_norm = qk_rms_norm
 
+        
+
         if self.qk_rms_norm:
-            self.q_rms_norm = partial
-            self.k_rms_norm = LayerNorm(head_dim)
+            self.q_rms_norm = DEFAULT_NORM(head_dim)
+            self.k_rms_norm = DEFAULT_NORM(head_dim)
             self.apply_qknorm = lambda q, k: (self.q_rms_norm(q), self.k_rms_norm(k))
 
     
     def attatch_cache(self, kv, cached_kv):
         kv = torch.stack(kv, dim=2)
+        k_n = kv.shape[1]
         if cached_kv is None:
-            return kv
+            return kv, kv
         cached_kv = cached_kv.contiguous()
-        new_kv = torch.cat([cached_kv, kv], dim=1)
+        new_kv = torch.cat([cached_kv, kv], dim=1) # B, N, KV, H, D
 
-        return new_kv
+        if not self.has_history_vector:
+            return new_kv, new_kv
 
-    '''
-    ADD EQ UNIT TESTS FOR FLASH AND NORMAL !!!!
-    '''
+        kv_to_cache = new_kv.clone()
+        kv_to_cache[:, -k_n:, 0] += self.history_vector
+        return new_kv, kv_to_cache
 
-    def forward(self, x, length, attn_mask=None, pad_mask=None, cached_kv=None, flash_attn = True):
+    # SHOULD ADD EQ UNIT TESTS FOR FLASH AND NORMAL !!!
+
+    def forward(self, x, length, attn_mask=None, pad_mask=None, cached_kv=None, flash_attn = True, rotary_emb_fn = None):
         B, N, C, H, D = *x.shape, self.n_heads, self.head_dim
         #print(x.shape, mask.shape)
 
@@ -406,7 +617,9 @@ class Attention(nn.Module):
         if self.qk_rms_norm:
             q, k = self.apply_qknorm(q, k)
 
-        kv = self.attatch_cache([k, v], cached_kv)
+        kv, kv_to_cache = self.attatch_cache([k, v], cached_kv)
+
+        q, kv[:, :, 0] = rotary_emb_fn(q, kv[:, :, 0])
      
         ### Flash attention stuff 
         if x.device.type == 'cuda' and flash_attn:
@@ -456,7 +669,7 @@ class Attention(nn.Module):
         out = self.out_proj(out)
 
         
-        return out, kv
+        return out, kv_to_cache
 
 
 class ASRLinearSCDecoder(nn.Module):
@@ -471,20 +684,127 @@ class ASRLinearSCDecoder(nn.Module):
         if self.gated_sc:
             self.gate = nn.Linear(d_model, 1)
 
-    def forward(self, x, logits=False):
-        x = self.norm(x)
-        x = self.ff(x)
+    def forward(self, x, logits=False, return_norm=False):
+        x_norm = self.norm(x)
+        x = self.ff(x_norm)
         x = F.log_softmax(x, dim=-1) if not logits else x
-        return x
+        return x if not return_norm else (x, x_norm)
 
     def project_back(self, x):
         return self.reprojection(x)
 
-    def integrate_projections(self, x, proj1):
+    def integrate_projections(self, x, x_norm, proj1):
         if self.gated_sc:
-            gate = torch.sigmoid(self.gate(x))
+            gate = torch.sigmoid(self.gate(x_norm))
             return x + gate * proj1
         else:
             return x + proj1
 
 
+class ConvolutionalSpatialGatingUnit(torch.nn.Module):
+    """
+    Convolutional Spatial Gating Unit (CSGU).
+    Adapted from: https://github.com/espnet/espnet/blob/ed6ee209c93fe72b95a687272a5faf69639b7b49/espnet2/asr/layers/cgmlp.py#L84
+    """
+    def __init__(
+        self,
+        size: int,
+        kernel_size: int,
+        dropout_rate: float = 0,
+        use_linear_after_conv: bool = False,
+        activation = torch.nn.Identity
+    ):
+        super().__init__()
+
+        n_channels = size // 2  # split input channels
+        self.norm = DEFAULT_NORM(n_channels)
+        self.conv = torch.nn.Conv1d(
+            n_channels,
+            n_channels,
+            kernel_size,
+            1,
+            (kernel_size - 1) // 2,
+            groups=n_channels,
+        )
+        if use_linear_after_conv:
+            self.linear = torch.nn.Linear(n_channels, n_channels)
+        else:
+            self.linear = None
+
+        self.act = activation()
+
+        self.dropout = torch.nn.Dropout(dropout_rate)
+
+        self.espnet_initialization_fn()
+
+    def espnet_initialization_fn(self):
+        torch.nn.init.normal_(self.conv.weight, std=1e-6)
+        torch.nn.init.ones_(self.conv.bias)
+        if self.linear is not None:
+            torch.nn.init.normal_(self.linear.weight, std=1e-6)
+            torch.nn.init.ones_(self.linear.bias)
+
+    def forward(self, x):
+        """Forward method
+
+        Args:
+            x (torch.Tensor): (N, T, D)
+            gate_add (torch.Tensor): (N, T, D/2)
+
+        Returns:
+            out (torch.Tensor): (N, T, D/2)
+        """
+
+        x_r, x_g = x.chunk(2, dim=-1)
+
+        x_g = self.norm(x_g)  # (N, T, D/2)
+        x_g = self.conv(x_g.transpose(1, 2)).transpose(1, 2)  # (N, T, D/2)
+
+        if self.linear is not None:
+            x_g = self.linear(x_g)
+
+        x_g = self.act(x_g)
+        out = x_r * x_g  # (N, T, D/2)
+        out = self.dropout(out)
+        return out
+
+
+class ConvolutionalGatingMLP(torch.nn.Module):
+    """
+    Convolutional Gating MLP (cgMLP).
+    Adapted from https://github.com/espnet/espnet/blob/ed6ee209c93fe72b95a687272a5faf69639b7b49/espnet2/asr/layers/cgmlp.py#L84
+    """
+
+    def __init__(
+        self,
+        size: int,
+        linear_units: int,
+        kernel_size: int,
+        dropout_rate: float,
+        use_linear_after_conv: bool = False,
+        activation: torch.nn.Module = torch.nn.Identity,
+    ):
+        super().__init__()
+
+        self.channel_proj1 = torch.nn.Sequential(
+            torch.nn.Linear(size, linear_units), torch.nn.GELU()
+        )
+        self.csgu = ConvolutionalSpatialGatingUnit(
+            size=linear_units,
+            kernel_size=kernel_size,
+            dropout_rate=dropout_rate,
+            use_linear_after_conv=use_linear_after_conv,
+            activation=activation,
+        )
+        self.channel_proj2 = torch.nn.Linear(linear_units // 2, size)
+
+    def forward(self, x, pad_mask):
+
+        if pad_mask is not None: 
+            x = x.masked_fill(pad_mask.unsqueeze(-1), 0.0)
+
+        x = self.channel_proj1(x)  # size -> linear_units
+        x = self.csgu(x)  # linear_units -> linear_units/2
+        out = self.channel_proj2(x)  # linear_units/2 -> size
+        
+        return out
