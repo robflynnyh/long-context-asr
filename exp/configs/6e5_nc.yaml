@@ -17,14 +17,18 @@ model:
   shift_kvs: false
   gated_sc: true
   decoder_norm: true
+  use_rotary: true
+  encoder_mode: 'conformer'
+  history_vector: false
 
 optimizer:
   name: 'madgrad'
   args:
-    lr: 5e-5
+    lr: 6e-5
 
 scheduler:
-  warmup_steps: 2500
+  warmup_steps: 3000
+
 
 audio_chunking: # 360000 (max = 1 hour)
   size: 2048
@@ -36,13 +40,13 @@ wandb:
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
-  dir: '/mnt/parscratch/users/acp21rjf/5e5_nc'
+  dir: '/mnt/parscratch/users/acp21rjf/6e5_nc'
   save_every_n_steps: 20
 
 # full data: #'/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
 # 25% of corpus: '/users/acp21rjf/long-context-asr/reduced_pairs.json'
 data:
-  path: '/users/acp21rjf/long-context-asr/reduced_pairs.json'
+  path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
   
 training:
   batch_size: 85

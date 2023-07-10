@@ -10,8 +10,9 @@ from lcasr.utils.audio_tools import SimpleDataloader
 import traceback
 
 from lcasr.utils.general import load_model, save_model, load_checkpoint
-from lcasr.losses.wctc import wctc_loss
+from lcasr.losses.wctc import wctc_loss # avoided as too slow
 from einops import rearrange
+import numpy as np
 import os
 
 import madgrad
@@ -26,16 +27,37 @@ from torch.optim import Adam
 import warnings
 from torch.optim.lr_scheduler import _enable_get_lr_call
 
+class CosineLRScheduler(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, warmup_steps, peak_value, final_value):
+        self.is_warmup = True
+        self.warmup_steps = warmup_steps
+        self.peak_value = peak_value
+        self.final_value = final_value
+        super().__init__(optimizer)
+        
+    def is_warming_up(self):
+        if self.is_warmup:
+            return self.last_epoch < self.warmup_steps
+        else:
+            return False
+
+    def set_cosine_schedule(self, remaining_steps):
+        # reset the step to 0
+        self.last_epoch = 0
+        self.is_warmup = False
+        self.steps = remaining_steps
+
+    def get_lr(self):
+        if self.is_warmup:
+            return [self.peak_value * min(1.0, self.last_epoch / self.warmup_steps) for _ in self.base_lrs]
+        else:
+            return [self.final_value + 0.5 * (self.peak_value - self.final_value) * (1 + np.cos((self.last_epoch) / (self.steps) * np.pi)) for _ in self.base_lrs]
 
 
 def load_optimizer(config:Dict, model:torch.nn.Module):
     # check device
 
-    def warmup(current_step: int):
-        if current_step < config['scheduler']['warmup_steps']:
-            return current_step / config['scheduler']['warmup_steps']
-        else:
-            return 1.0
+
 
     model_device = next(model.parameters()).device.type
 
@@ -52,7 +74,12 @@ def load_optimizer(config:Dict, model:torch.nn.Module):
     elif optim_type == 'madgrad':
         optimizer = madgrad.MADGRAD(model.parameters(), **optim_args)
 
-    sheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, warmup)
+    sheduler = CosineLRScheduler(
+        optimizer = optimizer,
+        warmup_steps = config['scheduler']['warmup_steps'],
+        peak_value = config['optimizer']['args']['lr'],
+        final_value = 0.0, # decay to 0
+    )
 
     return optimizer, sheduler
 
@@ -86,8 +113,8 @@ def backwards_pass(
 
     optimizer.zero_grad()
 
-    scheduler.step()
-
+    if scheduler.is_warmup:
+        scheduler.step()
 
 
 def train(
@@ -115,7 +142,9 @@ def train(
 
     cur_tokens_in_loss = 0
     cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
-    
+
+
+
     pbar = tqdm(dataloader)
     for i, batch in enumerate(pbar):
         # save every 100 steps
@@ -124,7 +153,17 @@ def train(
 
         chunks = batch['chunks']
 
-
+        was_warmup = scheduler.is_warmup
+        if was_warmup:
+            scheduler.is_warmup = scheduler.is_warming_up()
+            if not scheduler.is_warmup and was_warmup:
+                current_recording = i * args.config['training']['batch_size'] 
+                total_recordings = len(dataloader) * args.config['training']['batch_size'] 
+                remaining_recordings = total_recordings - current_recording
+                remaining_steps = remaining_recordings // args.config['training']['batch_size']
+                print(remaining_steps)
+                exit()
+                scheduler.set_cosine_schedule(remaining_steps)
 
         prev_selection_mask = None # selection mask from previous chunk
         last_kv_set = None
@@ -209,6 +248,7 @@ def train(
                     cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
 
                 prev_selection_mask = selection_mask.clone()
+
         except RuntimeError as e: # illegal mem access sometimes happening with flash attention..
             if 'an illegal memory access was encountered' in str(e): 
                 print('skipping batch')
@@ -216,6 +256,9 @@ def train(
             else:
                 print(traceback.format_exc()) 
                 raise e
+
+        if not scheduler.is_warmup:
+            scheduler.step()
 
     # save final model
     save_model(model, optimizer, None, i*args.config['training']['batch_size'] + skip_to, args.config)

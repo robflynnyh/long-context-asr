@@ -597,7 +597,7 @@ class Attention(nn.Module):
         new_kv = torch.cat([cached_kv, kv], dim=1) # B, N, KV, H, D
 
         if not self.has_history_vector:
-            return new_kv, new_kv
+            return new_kv, new_kv.clone()
 
         kv_to_cache = new_kv.clone()
         kv_to_cache[:, -k_n:, 0] += self.history_vector
