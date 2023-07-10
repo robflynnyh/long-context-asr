@@ -32,7 +32,7 @@ def find_latest_checkpoint(path:str = './checkpoints'):
     return checkpoints[-1]
 
 
-def load_checkpoint(model, optimizer=None, path='./checkpoints'):
+def load_checkpoint(model, optimizer=None, scheduler=None, path='./checkpoints'):
     latest_checkpoint = find_latest_checkpoint(path)
     if latest_checkpoint is None:
         return 0
@@ -48,6 +48,9 @@ def load_checkpoint(model, optimizer=None, path='./checkpoints'):
     print(f'loaded model from {path}')
     if optimizer != None and 'optimizer' in checkpoint:
         optimizer.load_state_dict(checkpoint['optimizer'])
+
+    if scheduler != None and 'scheduler' in checkpoint and checkpoint['scheduler'] != None:
+        scheduler.load_state_dict(checkpoint['scheduler'])
   
     step = checkpoint['podcast_step']
     return step

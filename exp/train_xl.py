@@ -149,7 +149,7 @@ def train(
     for i, batch in enumerate(pbar):
         # save every 100 steps
         if i % args.config['checkpointing']['save_every_n_steps'] == 0 and i != 0:
-            save_model(model, optimizer, None, i*args.config['training']['batch_size'] + skip_to, args.config)
+            save_model(model, optimizer, scheduler, i*args.config['training']['batch_size'] + skip_to, args.config)
 
         chunks = batch['chunks']
 
@@ -161,16 +161,11 @@ def train(
                 total_recordings = len(dataloader) * args.config['training']['batch_size'] 
                 remaining_recordings = total_recordings - current_recording
                 remaining_steps = remaining_recordings // args.config['training']['batch_size']
-                print(remaining_steps)
-                exit()
                 scheduler.set_cosine_schedule(remaining_steps)
 
         prev_selection_mask = None # selection mask from previous chunk
         last_kv_set = None
-        # shuffle chunks
-        # if args.max_seq_len == 0:
-        #     chunks = [chunks[i] for i in torch.randperm(len(chunks))]
-        
+ 
         try:
             for ix, chunk_json in enumerate(chunks):
                 print(f'chunk {ix}/{len(chunks)}')
@@ -291,7 +286,7 @@ def main(args):
   
     model = model.to(device)
     optimizer, scheduler = load_optimizer(args.config, model)
-    step = load_checkpoint(model, optimizer, args.config['checkpointing']['dir'])
+    step = load_checkpoint(model, optimizer, scheduler, args.config['checkpointing']['dir'])
     print(f'Starting from podcast: {step}')
     # skip data up to step
     dataloader = SimpleDataloader(

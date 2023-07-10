@@ -590,9 +590,10 @@ class Attention(nn.Module):
     
     def attatch_cache(self, kv, cached_kv):
         kv = torch.stack(kv, dim=2)
-        k_n = kv.shape[1]
+   
         if cached_kv is None:
             return kv, kv
+            
         cached_kv = cached_kv.contiguous()
         new_kv = torch.cat([cached_kv, kv], dim=1) # B, N, KV, H, D
 
@@ -600,7 +601,8 @@ class Attention(nn.Module):
             return new_kv, new_kv.clone()
 
         kv_to_cache = new_kv.clone()
-        kv_to_cache[:, -k_n:, 0] += self.history_vector
+        new_kv[:, :cached_kv.shape[1], 0] += self.history_vector
+
         return new_kv, kv_to_cache
 
     # SHOULD ADD EQ UNIT TESTS FOR FLASH AND NORMAL !!!
