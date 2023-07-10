@@ -17,6 +17,9 @@ model:
   shift_kvs: false
   gated_sc: true
   decoder_norm: true
+  use_rotary: true
+  encoder_mode: 'conformer'
+  history_vector: true
 
 optimizer:
   name: 'madgrad'
@@ -36,7 +39,7 @@ wandb:
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
-  dir: '/mnt/parscratch/users/acp21rjf/5e5'
+  dir: '/mnt/parscratch/users/acp21rjf/5e5_rotary_ebranch'
   save_every_n_steps: 20
 
 # full data: #'/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
