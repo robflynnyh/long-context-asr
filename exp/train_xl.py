@@ -6,11 +6,11 @@ from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
 from omegaconf.omegaconf import OmegaConf
 
-from lcasr.utils.audio_tools import SimpleDataloader
+from lcasr.utils.dataloading import SimpleDataloader
 import traceback
 
 from lcasr.utils.general import load_model, save_model, load_checkpoint
-from lcasr.losses.wctc import wctc_loss # avoided as too slow
+
 from einops import rearrange
 import numpy as np
 import os
@@ -56,9 +56,6 @@ class CosineLRScheduler(torch.optim.lr_scheduler._LRScheduler):
 
 def load_optimizer(config:Dict, model:torch.nn.Module):
     # check device
-
-
-
     model_device = next(model.parameters()).device.type
 
     optim_type = config['optimizer']['name']
@@ -85,7 +82,7 @@ def load_optimizer(config:Dict, model:torch.nn.Module):
 
 def blank_p(logits, tokenizer):
     lset = logits.detach().cpu()
-    # print 10 percent of the time
+    # print 20 percent of the time
     if torch.rand(1) < 0.2:
         print(tokenizer.decode([el for el in lset[0].argmax(dim=-1).tolist() if el != lset.shape[-1]-1]))
     lset = rearrange(lset, 'b n v -> (b n) v')
