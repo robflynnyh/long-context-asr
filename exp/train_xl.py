@@ -241,15 +241,15 @@ def train(
 
                 prev_selection_mask = selection_mask.clone()
 
-        except RuntimeError as e: # illegal mem access sometimes happening with flash attention..
+        except RuntimeError as e: # illegal mem access sometimes happening with flash attention.. 0: 
             if 'an illegal memory access was encountered' in str(e): 
-                print('skipping batch')
+                print(e,'\n --- skipping batch ---')
                 continue
             else:
                 print(traceback.format_exc()) 
                 raise e
 
-        if not scheduler.is_warmup:
+        if not scheduler.is_warmup: # step every batch
             scheduler.step()
 
     # save final model

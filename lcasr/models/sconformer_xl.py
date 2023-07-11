@@ -13,7 +13,7 @@ from contextlib import nullcontext
 
 ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
-#ConformerFeedForward = lambda x: nn.Linear(x,x)
+
 ConvSubsampling = subsampling.ConvSubsampling
 DEFAULT_NORM = apex.normalization.FusedRMSNorm
 LayerNorm = apex.normalization.FusedLayerNorm
