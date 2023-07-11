@@ -72,6 +72,7 @@ def chunk_text_json( # legacy
     
     return splits if not get_seconds else (splits, start_end_times)
 
+# it works, much faster now
 def __chunk_eq_test__(text, chunk_size, chunk_overlap, spectogram_length, timeit=False):
     '''equivalence test between legacy and new chunk_text_json functions'''
     a_start = time.time() if timeit else None
@@ -165,7 +166,7 @@ def collate_fn(
     pad_id = tokenizer.pad_id()
     bos_id = tokenizer.bos_id()
 
-    def collate(batch): # move as much as possible from collate to dataset bcos datloader workers aren't taken advantage of here
+    def collate(batch): # move as much as possible from collate to dataset bcos datloader workers aren't taken advantage of here (I don't think??)
         audio, txt, ids = zip(*batch)
        
         audio_lengths = torch.LongTensor([el.shape[0] for el in audio])

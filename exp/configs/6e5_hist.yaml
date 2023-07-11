@@ -37,7 +37,7 @@ audio_chunking: # 360000 (max = 1 hour)
 wandb:
   use: true
   project_name: "spotify_long_context"
-  id: "" # leave empty if not resuming a previous run
+  id: "bwv8axhc" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: '/mnt/parscratch/users/acp21rjf/6e5_hist'
