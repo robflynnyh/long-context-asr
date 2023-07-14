@@ -13,7 +13,7 @@ model:
   subsampling: 'dw_striding'
   subsampling_conv_channels: 256
   conv_kernel_size: 9
-  qk_rms_norm: false
+  qk_rms_norm: true
   shift_kvs: false
   self_conditioning: true
   gated_sc: false
@@ -25,14 +25,14 @@ model:
 optimizer:
   name: 'madgrad'
   args:
-    lr: 6e-5
+    lr: 8e-5
 
 scheduler:
   warmup_steps: 3000
 
 
 audio_chunking: # 360000 (max = 1 hour)
-  size: 1024
+  size: 8192
   overlap: 0 # not using currently...
 
 wandb:
@@ -41,7 +41,7 @@ wandb:
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
-  dir: '/mnt/parscratch/users/acp21rjf/6e5_1024'
+  dir: '/mnt/parscratch/users/acp21rjf/8e5_8192_qknorm'
   save_every_n_steps: 20
 
 # full data: #'/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
@@ -50,7 +50,7 @@ data:
   path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
   
 training:
-  batch_size: 352
+  batch_size: 44
   backprop_every: 1
   max_seq_len: 0 # max cache length
 

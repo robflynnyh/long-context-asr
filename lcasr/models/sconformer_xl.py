@@ -25,7 +25,14 @@ from flash_attn.bert_padding import unpad_input, pad_input
 from functools import partial
 
 class RotaryPositionalEmbedding(torch.nn.Module):
-    def __init__(self, dim, base=10000, precision=torch.bfloat16):
+    def __init__(
+            self, 
+            dim, 
+            base=10000, 
+            learned_freq=False,
+            rotary_interpolation_factor=1.0,
+            precision=torch.bfloat16, 
+        ):
         """Rotary positional embedding
         Reference : https://blog.eleuther.ai/rotary-embeddings/
         Paper: https://arxiv.org/pdf/2104.09864.pdf
@@ -37,11 +44,24 @@ class RotaryPositionalEmbedding(torch.nn.Module):
         """
         super().__init__()
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
-        self.register_buffer("inv_freq", inv_freq)
+        self.learned_freq = learned_freq
+
+        if self.learned_freq:
+            self.inv_freq = torch.nn.Parameter(inv_freq, requires_grad=True)
+        else:
+            self.register_buffer("inv_freq", inv_freq)
+
         self.seq_len_cached = None
         self.cos_cached = None
         self.sin_cached = None
         self.precision = precision
+        self.rotary_interpolation_factor = rotary_interpolation_factor
+
+    def reset_if_needed(self):
+        if self.learned_freq: # bcos we cant keep them after backward pass
+            self.cos_cached = None
+            self.sin_cached = None
+            self.seq_len_cached = None
     
     def forward(self, seq_len, device=torch.device("cpu")):
         """
@@ -51,7 +71,7 @@ class RotaryPositionalEmbedding(torch.nn.Module):
         """
         if seq_len != self.seq_len_cached:
             self.seq_len_cached = seq_len
-            t = torch.arange(seq_len, device=device).type_as(self.inv_freq)
+            t = torch.arange(seq_len, device=device).type_as(self.inv_freq) / self.rotary_interpolation_factor
             freqs = torch.einsum("i,j->ij", t, self.inv_freq)
             emb = torch.cat((freqs, freqs), dim=-1).to(device)
             self.cos_cached = emb.cos()[None, :, None, :]
@@ -59,7 +79,7 @@ class RotaryPositionalEmbedding(torch.nn.Module):
         return self.cos_cached, self.sin_cached
 
 
-# rotary pos emb helpers:
+# rotary pos emb helpers: (this should all just be moved into rotary class tbh)
 def rotate_half(x):
     x1, x2 = x[..., : x.shape[-1] // 2], x[..., x.shape[-1] // 2 :]
     return torch.cat(
@@ -74,7 +94,15 @@ def apply_rotary_pos_emb(q, k, cos, sin, q_offset: int = 0):
     )
     return (q * q_cos) + (rotate_half(q) * q_sin), (k * cos) + (rotate_half(k) * sin)
 
-
+class apply_rotary(): 
+    def __init__(self, cos, sin, q_offset: int = 0, learned: bool = False):
+        self.learned = learned
+        self.cos = cos
+        self.sin = sin
+        self.q_offset = q_offset
+    
+    def apply(self, q, k):
+        return apply_rotary_pos_emb(q, k, self.cos, self.sin, self.q_offset)
 
 class SCConformerXL(nn.Module):
     def __init__(
@@ -100,6 +128,9 @@ class SCConformerXL(nn.Module):
         decoder_norm = False,
         use_rotary = False,
         encoder_mode = 'conformer',
+        rotary_interpolation_factor = 1.0, # https://arxiv.org/abs//2306.15595 Extending Context Window of Large Language Models via Positional Interpolation
+        learned_rotary = False,
+        self_conditioning = True,
         **kwargs
     ):
         super().__init__()
@@ -112,6 +143,10 @@ class SCConformerXL(nn.Module):
         self.expansion_factor = expansion_factor
         self.conv_kernel_size = conv_kernel_size
         self.encoder_mode = encoder_mode
+        self.rotary_interpolation_factor = rotary_interpolation_factor
+        self.learned_rotary = learned_rotary
+        self.self_conditioning = self_conditioning
+
 
 
         supported_encoders = ['conformer', 'ebranchformer', 'ebranchformer-macaron']
@@ -139,8 +174,14 @@ class SCConformerXL(nn.Module):
 
         self.use_rotary = use_rotary
 
+        self.rotary_pos_emb = None
         if self.use_rotary:
-            self.rotary_pos_emb = RotaryPositionalEmbedding(head_dim)
+            self.rotary_pos_emb = RotaryPositionalEmbedding(
+                dim = head_dim,
+                base = 10000,
+                learned_freq = learned_rotary,
+                rotary_interpolation_factor = rotary_interpolation_factor
+            )
 
         self.decoder = ASRLinearSCDecoder(
             d_model = d_model,
@@ -242,7 +283,7 @@ class SCConformerXL(nn.Module):
             max_seq_len = full_kv_lengths.max()
             cos, sin = self.rotary_pos_emb(max_seq_len, audio_signal.device)
             q_offset = 0 if cached_kvs is None else cached_kvs.shape[-2]
-            rotary_emb_fn = lambda q, k: apply_rotary_pos_emb(q=q, k=k, cos=cos, sin=sin, q_offset=q_offset)
+            rotary_emb_fn = apply_rotary(cos = cos, sin = sin, q_offset = q_offset, learned = self.rotary_pos_emb.learned_freq)
         
 
         if length.max() == length.min():
@@ -291,11 +332,12 @@ class SCConformerXL(nn.Module):
             
             kvs_to_cache.append(kv_to_cache) # possibly detach and move to cpu ?    
             
-            if lth != len(self.layers) - 1:
+            if lth != len(self.layers) - 1 and self.self_conditioning:
                 iterim_logits, x_norm = decoder(x=audio_signal, logits=True, return_norm=True)
                 iterim_post = torch.nn.functional.softmax(iterim_logits, dim=-1)
                 iterim_logposteriors = torch.log(iterim_post)
                 iterim_posteriors.append(iterim_logposteriors)
+
                 audio_signal = decoder.integrate_projections(audio_signal, x_norm, decoder.project_back(iterim_post))        
 
         # stack the posteriors along the first dimension (height, batch, seq_len, dim)
@@ -305,6 +347,9 @@ class SCConformerXL(nn.Module):
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
         final_posts = decoder(x=decoder.norm(audio_signal), logits=False)
+
+        if self.training and self.rotary_pos_emb is not None:
+            self.rotary_pos_emb.reset_if_needed()
 
         return {
             'final_posteriors': final_posts,
@@ -569,8 +614,9 @@ class Attention(nn.Module):
         self.dropout_p = dropout
 
         # softmax_scale is set to None but will default to 1/sqrt(d_k) in FlashAttention
-        self.flash_attn_fn = FlashAttention(softmax_scale = None, attention_dropout = dropout)
-        self.flash_attn_c_fn = FlashCrossAttention(softmax_scale = None, attention_dropout = dropout)
+        softmax_scale = None if not qk_rms_norm else 10.0 
+        self.flash_attn_fn = FlashAttention(softmax_scale = softmax_scale, attention_dropout = dropout)
+        self.flash_attn_c_fn = FlashCrossAttention(softmax_scale = softmax_scale, attention_dropout = dropout)
         ##
 
         self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=bias)
@@ -580,12 +626,7 @@ class Attention(nn.Module):
 
         self.qk_rms_norm = qk_rms_norm
 
-        
-
-        if self.qk_rms_norm:
-            self.q_rms_norm = DEFAULT_NORM(head_dim)
-            self.k_rms_norm = DEFAULT_NORM(head_dim)
-            self.apply_qknorm = lambda q, k: (self.q_rms_norm(q), self.k_rms_norm(k))
+    
 
     
     def attatch_cache(self, kv, cached_kv):
@@ -617,11 +658,16 @@ class Attention(nn.Module):
 
         q, k, v = self.qkv(x)
         if self.qk_rms_norm:
-            q, k = self.apply_qknorm(q, k)
+            q, k = map(partial(l2norm, groups = 8), (q, k))
 
         kv, kv_to_cache = self.attatch_cache([k, v], cached_kv)
 
-        q, kv[:, :, 0] = rotary_emb_fn(q, kv[:, :, 0])
+        if rotary_emb_fn.learned == False:
+            q, kv[:, :, 0] = rotary_emb_fn.apply(q, kv[:, :, 0])
+        else:
+            k, v = kv[:, :, 0], kv[:, :, 1]
+            q, k = rotary_emb_fn.apply(q, k)
+            kv = torch.stack([k, v], dim=2)
      
         ### Flash attention stuff 
         if x.device.type == 'cuda' and flash_attn:
@@ -698,6 +744,7 @@ class ASRLinearSCDecoder(nn.Module):
     def integrate_projections(self, x, x_norm, proj1):
         if self.gated_sc:
             gate = torch.sigmoid(self.gate(x_norm))
+            
             return x + gate * proj1
         else:
             return x + proj1

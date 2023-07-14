@@ -6,7 +6,8 @@ from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
 from omegaconf.omegaconf import OmegaConf
 
-from lcasr.utils.audio_tools import SimpleDataloader, processing_chain, total_seconds
+from lcasr.utils.audio_tools import processing_chain, total_seconds
+
 from lcasr.utils.general import load_model
 from pyctcdecode import build_ctcdecoder
 
@@ -110,6 +111,70 @@ def load_audio(audio_file:str):
     return spec
 
 
+'''
+def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer):
+    spec_n = spec.shape[-1]
+    seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
+    seq_len = seq_len if seq_len < spec_n else spec_n
+    overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
+    
+    seq_len_overlap_dif = seq_len - overlap
+    print(f'Using seq_len: {seq_len} and overlap: {overlap}')
+
+    all_logits = torch.zeros((1, spec_n//4 + 10, tokenizer.vocab_size() + 1))
+    logit_count = torch.zeros((1, spec_n//4 + 10, tokenizer.vocab_size() + 1))
+    
+    logit_position = 0
+    finished = False
+    # PROBLEM WHEN
+    #i in tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))):
+    pbar = tqdm(total=spec_n)
+    spec_i = 0
+    while not finished:
+        audio_chunk = spec[:, :, spec_i:spec_i+seq_len]
+        cur_overlap = max(audio_chunk.shape[-1] - seq_len_overlap_dif, 0)
+
+        u_len = audio_chunk.shape[-1]
+        audio_chunk = audio_chunk.to(model.device)
+        out = model(audio_chunk)
+        logits = out['final_posteriors'].detach().cpu()
+        # convert to prob
+        logits = torch.exp(logits)
+        ds_len = logits.shape[-2] # seq_len // model.subsampling_factor
+
+        ratio = u_len / ds_len
+        #overlap_ds = int(overlap / ratio)
+        overlap_ds = cur_overlap // model.subsampling_factor
+        if spec_i != 0:
+            logit_position -= overlap_ds
+
+        logit_count[:, logit_position:logit_position+ds_len, :] += 1
+
+        #print(logits.shape, logit_position, ds_len, all_logits.shape, ratio, overlap_ds, '\n')
+        all_logits[:, logit_position:logit_position+ds_len, :] += logits
+        logit_position += ds_len 
+
+        print(audio_chunk.shape[-1] - cur_overlap, audio_chunk.shape[-1], cur_overlap)
+        spec_i += audio_chunk.shape[-1] - cur_overlap
+        pbar.update(audio_chunk.shape[-1] - cur_overlap)
+        if spec_i >= spec_n:
+            pbar.close()
+            finished = True
+        
+    B,N,C = all_logits.shape
+    all_logits = all_logits[logit_count.sum(dim=-1) != 0]
+    all_logits = all_logits.reshape(B,-1,C)
+    logit_count = logit_count[logit_count.sum(dim=-1) != 0]
+    logit_count = logit_count.reshape(B,-1,C)
+    logits = all_logits / logit_count
+    # convert to log 
+    logits = torch.log(logits)
+    # blank_id = logits.shape[-1]-1
+    # logits = logits.argmax(dim=-1)[0].tolist()
+    # print(tokenizer.decode([el for el in logits if el != blank_id]))
+    
+    return logits.squeeze(0).numpy()
+'''
 
 def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer):
     spec_n = spec.shape[-1]
@@ -123,9 +188,9 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     logit_count = torch.zeros((1, spec_n//4 + 10, tokenizer.vocab_size() + 1))
     
     logit_position = 0
-
-    logit_list = []
-    for i in range(0, spec_n, seq_len-overlap):
+    
+    
+    for i in tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))):
         audio_chunk = spec[:, :, i:i+seq_len]
         u_len = audio_chunk.shape[-1]
         audio_chunk = audio_chunk.to(model.device)
@@ -144,6 +209,7 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
         all_logits[:, logit_position:logit_position+ds_len, :] += logits
         logit_position += ds_len 
         
+        
     B,N,C = all_logits.shape
     all_logits = all_logits[logit_count.sum(dim=-1) != 0]
     all_logits = all_logits.reshape(B,-1,C)
@@ -155,13 +221,13 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     # blank_id = logits.shape[-1]-1
     # logits = logits.argmax(dim=-1)[0].tolist()
     # print(tokenizer.decode([el for el in logits if el != blank_id]))
-
+    
     return logits.squeeze(0).numpy()
 
 
 def parse_utterances(decoded_frames:List[Dict[str, any]], timings:List[Dict[str, int]]):    
     parsed_decoded_frames = []
-    buffer = 1.0
+    buffer = 2.0
     for frame in decoded_frames:
         start, end = frame['start'], frame['end']
         for timing in timings:
@@ -200,7 +266,7 @@ def main(args):
     
     all_texts = []
     all_golds = []
-    for rec in range(len(audio_files)):
+    for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
         print(f'Processing {rec+1}/{len(audio_files)}')
 
         audio_spec = load_audio(audio_files[rec])
@@ -217,6 +283,9 @@ def main(args):
         print(all_text)
         all_texts.append(all_text)
         all_golds.append(gold_text)
+        break
+        
+        
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
 
     print(f'WER: {wer}')

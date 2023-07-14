@@ -32,12 +32,14 @@ def find_latest_checkpoint(path:str = './checkpoints'):
     return checkpoints[-1]
 
 
-def load_checkpoint(model, optimizer=None, scheduler=None, path='./checkpoints'):
+def load_checkpoint(args, model, optimizer=None, scheduler=None, path='./checkpoints'):
     latest_checkpoint = find_latest_checkpoint(path)
     if latest_checkpoint is None:
         return 0
     path = os.path.join(path, latest_checkpoint)
     checkpoint = torch.load(path)
+    if args and args.remove_scheduler:
+        checkpoint['scheduler'] = None
     try:
         model.load_state_dict(checkpoint['model'])
     except:
@@ -52,5 +54,5 @@ def load_checkpoint(model, optimizer=None, scheduler=None, path='./checkpoints')
     if scheduler != None and 'scheduler' in checkpoint and checkpoint['scheduler'] != None:
         scheduler.load_state_dict(checkpoint['scheduler'])
   
-    step = checkpoint['podcast_step']
+    step = checkpoint['podcast_step'] 
     return step

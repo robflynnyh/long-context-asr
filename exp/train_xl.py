@@ -14,7 +14,7 @@ from lcasr.utils.general import load_model, save_model, load_checkpoint
 from einops import rearrange
 import numpy as np
 import os
-
+import gc
 import madgrad
 import wandb
 
@@ -25,7 +25,6 @@ from apex.optimizers import FusedAdam
 from torch.optim import Adam
 
 import warnings
-from torch.optim.lr_scheduler import _enable_get_lr_call
 
 class CosineLRScheduler(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, warmup_steps, peak_value, final_value):
@@ -83,7 +82,7 @@ def load_optimizer(config:Dict, model:torch.nn.Module):
 def blank_p(logits, tokenizer):
     lset = logits.detach().cpu()
     # print 20 percent of the time
-    if torch.rand(1) < 0.2:
+    if torch.rand(1) < 0.05:
         print(tokenizer.decode([el for el in lset[0].argmax(dim=-1).tolist() if el != lset.shape[-1]-1]))
     lset = rearrange(lset, 'b n v -> (b n) v')
     lset_max = lset.argmax(dim=-1)
@@ -93,6 +92,7 @@ def blank_p(logits, tokenizer):
     # lset = torch.exp(lset)
     # blank_p = lset[:, -1].mean().item()
     return blank_p
+
 
 def backwards_pass(
         model:SCConformerXL,
@@ -256,6 +256,7 @@ def train(
     save_model(model, optimizer, None, i*args.config['training']['batch_size'] + skip_to, args.config)
     return model
             
+            
 
 
 def main(args):
@@ -283,7 +284,10 @@ def main(args):
   
     model = model.to(device)
     optimizer, scheduler = load_optimizer(args.config, model)
-    step = load_checkpoint(model, optimizer, scheduler, args.config['checkpointing']['dir'])
+    step = load_checkpoint(args, model, optimizer, scheduler, args.config['checkpointing']['dir'])
+    if args.reset_step:
+        step = 0
+
     print(f'Starting from podcast: {step}')
     # skip data up to step
     dataloader = SimpleDataloader(
@@ -295,6 +299,7 @@ def main(args):
         chunk_overlap = args.config.audio_chunking['overlap'],
     )
     
+    
     final_model = train(args, model, dataloader, optimizer, scheduler, device, skip_to = step)
 
 
@@ -303,6 +308,9 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-config', '--config', type=str, required=True, help='path to config file')
+    parser.add_argument('-rm_sched', '--remove_scheduler', action='store_true', help='remove scheduler from checkpoint')
+    parser.add_argument('-reset_step', '--reset_step', action='store_true', help='reset step to 0')
+    parser.add_argument('-anomaly', '--anomaly', action='store_true', help='turn on anomaly detection')
 
     args = parser.parse_args()
 

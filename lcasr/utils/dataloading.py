@@ -21,7 +21,7 @@ def chunk_spectogram(
         splits.append(spec[:, :, i:i+chunk_size])
     return splits
 
-def ___chunk_text_json___( # legacy
+def chunk_text_json____( # legacy
         text: List[Dict[str, str]],
         chunk_size: int,
         chunk_overlap: int,
@@ -72,22 +72,29 @@ def chunk_text_json( # legacy
     
     return splits if not get_seconds else (splits, start_end_times)
 
-# it works, much faster now
-def __chunk_eq_test__(text, chunk_size, chunk_overlap, spectogram_length, timeit=False):
-    '''equivalence test between legacy and new chunk_text_json functions'''
-    a_start = time.time() if timeit else None
-    a = ___chunk_text_json___(text, chunk_size, chunk_overlap, spectogram_length, get_seconds=False)
-    if timeit:
-        a_end, b_start = time.time(), time.time()
-    b = chunk_text_json(text, chunk_size, chunk_overlap, spectogram_length, get_seconds=False)
-    b_end = time.time() if timeit else None
-    all_a = "#".join(a)
-    all_b = "#".join(b)
-    assert all_a == all_b, f"FAIL\nall_a: {all_a}\nall_b: {all_b}"
-    print("PASS")
-    if timeit:
-        print(f"legacy: {a_end - a_start}\nnew: {b_end - b_start}")
 
+# def __chunk_eq_test__(text, chunk_size, chunk_overlap, spectogram_length, timeit=False):
+#     '''equivalence test between legacy and new chunk_text_json functions'''
+#     a_start = time.time() if timeit else None
+#     a = ___chunk_text_json___(text, chunk_size, chunk_overlap, spectogram_length, get_seconds=False)
+#     if timeit:
+#         a_end, b_start = time.time(), time.time()
+#     b = chunk_text_json(text, chunk_size, chunk_overlap, spectogram_length, get_seconds=False)
+#     b_end = time.time() if timeit else None
+#     all_a = "#".join(a)
+#     all_b = "#".join(b)
+#     assert all_a == all_b, f"FAIL\nall_a: {all_a}\nall_b: {all_b}"
+#     print("PASS")
+#     if timeit:
+#         print(f"legacy: {a_end - a_start}\nnew: {b_end - b_start}")
+
+# def run_chunk_eq_test():
+#     pairs = load_pairs()
+#     text_f = [pairs[k]['txt'] for k in list(pairs.keys())[:10000]]
+#     for i in tqdm(range(len(text_f)), total=len(text_f)):
+#         json_tx = load_json(text_f[i])
+#         txt = json_tx['results'][-1]['alternatives'][0]['words']
+#         __chunk_eq_test__(txt, 2048, 2000, 100000, timeit=True)
 
 def load_sample(entry:Dict[str, str]) -> Tuple[torch.Tensor, torch.Tensor]:
     # audio_name = entry['audio'].replace('.spec.pt', '.ogg')
@@ -219,14 +226,13 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         chunk_overlap:int = 192,
     ):
         self.tokenizer = tokenizer
-        self.dataset = SimpleDataset(
-            pairs, 
-            batch_size = batch_size,
-            skip_to = skip_to, 
-            subgroup_shuffle_size = 1000
-        )
         super().__init__(
-                self.dataset, 
+                dataset = SimpleDataset(
+                    pairs, 
+                    batch_size = batch_size,
+                    skip_to = skip_to, 
+                    subgroup_shuffle_size = 1000
+                ), 
                 batch_size = batch_size, 
                 shuffle = False, 
                 num_workers = 0, 

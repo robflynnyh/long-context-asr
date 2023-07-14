@@ -15,8 +15,7 @@ model:
   conv_kernel_size: 9
   qk_rms_norm: false
   shift_kvs: false
-  self_conditioning: true
-  gated_sc: false
+  gated_sc: true
   decoder_norm: true
   use_rotary: true
   encoder_mode: 'conformer'
@@ -32,7 +31,7 @@ scheduler:
 
 
 audio_chunking: # 360000 (max = 1 hour)
-  size: 1024
+  size: 2048
   overlap: 0 # not using currently...
 
 wandb:
@@ -41,7 +40,7 @@ wandb:
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
-  dir: '/mnt/parscratch/users/acp21rjf/6e5_1024'
+  dir: '/mnt/parscratch/users/acp21rjf/6e5_rerun_test'
   save_every_n_steps: 20
 
 # full data: #'/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
@@ -50,11 +49,10 @@ data:
   path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
   
 training:
-  batch_size: 352
-  backprop_every: 1
-  max_seq_len: 0 # max cache length
+  batch_size: 85
+  backprop_every: 2
+  max_seq_len: 256 # max cache length
 
-# size: 1024 = batch size 352
 # size: 2048 = batch size 176
 # size: 4096 = batch size 88
 # size: 8192 = batch size 44
