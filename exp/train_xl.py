@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
 from omegaconf.omegaconf import OmegaConf
 
-from lcasr.utils.dataloading import SimpleDataloader
+from lcasr.utils.dataloading import SimpleDataloader, chunk_spectogram, chunk_text_json
 import traceback
 
 from lcasr.utils.general import load_model, save_model, load_checkpoint
@@ -140,7 +140,10 @@ def train(
     cur_tokens_in_loss = 0
     cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
 
-
+    tokenizer = dataloader.tokenizer
+    chunk_size = dataloader.chunk_size
+    chunk_overlap = dataloader.chunk_overlap
+    pad_id = tokenizer.pad_id()
 
     pbar = tqdm(dataloader)
     for i, batch in enumerate(pbar):
@@ -148,7 +151,37 @@ def train(
         if i % args.config['checkpointing']['save_every_n_steps'] == 0 and i != 0:
             save_model(model, optimizer, scheduler, i*args.config['training']['batch_size'] + skip_to, args.config)
 
-        chunks = batch['chunks']
+        audio, txt, ids = zip(*batch)
+        audio_lengths = torch.LongTensor([el.shape[0] for el in audio])
+        audio = torch.nn.utils.rnn.pad_sequence(audio, batch_first=True, padding_value=pad_id)
+        audio = rearrange(audio, 'b t f -> b f t')
+        
+        txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
+
+        audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
+        chunks = []
+        culm_lengths_audio = torch.zeros_like(audio_lengths)
+
+        for ix, el in enumerate(audio_chunks_):
+            remove_mask = ~(culm_lengths_audio > audio_lengths)
+            cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
+            cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
+          
+            enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el[ix])) for i, el in enumerate(txt_chunks) if remove_mask[i]]
+            enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
+            enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
+
+            chunks.append({
+                'audio':cur_chunks,
+                'txt':enc_txt_chunks,
+                'txt_lengths':enc_txt_chunks_lengths,
+                'audio_lengths':cur_lengths,
+                'selection_mask':remove_mask,
+                'cur_culm_lengths':cur_culm_lengths,
+            })
+
+            culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
+
 
         was_warmup = scheduler.is_warmup
         if was_warmup:
@@ -231,7 +264,6 @@ def train(
                         wandb.log({
                             'loss': loss_to_log,
                             'blank_p': blank_prob,
-                            'overlap_interp_factor_logits': model.overlap_interp_factor_logits.item(),
                             'learning_rate': learning_rate,
                         })
 
@@ -251,6 +283,8 @@ def train(
 
         if not scheduler.is_warmup: # step every batch
             scheduler.step()
+        
+        del chunks
 
     # save final model
     save_model(model, optimizer, None, i*args.config['training']['batch_size'] + skip_to, args.config)

@@ -16,9 +16,11 @@ ConformerFeedForward = fused_dense.FusedMLP
 
 ConvSubsampling = subsampling.ConvSubsampling
 DEFAULT_NORM = apex.normalization.FusedRMSNorm
+RMSNorm = apex.normalization.FusedRMSNorm
 LayerNorm = apex.normalization.FusedLayerNorm
 
-from flash_attn.flash_attention import FlashAttention
+#from flash_attn.flash_attention import FlashAttention
+from flash_attn.modules.mha import FlashSelfAttention as FlashAttention
 from flash_attn.modules.mha import FlashCrossAttention
 from flash_attn.bert_padding import unpad_input, pad_input
 
@@ -131,6 +133,7 @@ class SCConformerXL(nn.Module):
         rotary_interpolation_factor = 1.0, # https://arxiv.org/abs//2306.15595 Extending Context Window of Large Language Models via Positional Interpolation
         learned_rotary = False,
         self_conditioning = True,
+        default_norm = 'rms_norm',
         **kwargs
     ):
         super().__init__()
@@ -147,6 +150,9 @@ class SCConformerXL(nn.Module):
         self.learned_rotary = learned_rotary
         self.self_conditioning = self_conditioning
 
+        accepted_norms = ['rms_norm', 'layer_norm']
+        assert default_norm in accepted_norms, f'default_norm must be one of {accepted_norms} (got {default_norm})'
+        default_norm = RMSNorm if default_norm == 'rms_norm' else LayerNorm
 
 
         supported_encoders = ['conformer', 'ebranchformer', 'ebranchformer-macaron']
@@ -188,6 +194,7 @@ class SCConformerXL(nn.Module):
             vocab_size = vocab_size,
             norm = decoder_norm,
             gated_sc = gated_sc,
+            norm_fn = default_norm,
         )
 
         self.subsampling = ConvSubsampling(
@@ -227,6 +234,7 @@ class SCConformerXL(nn.Module):
                 head_dim = head_dim,
                 n_heads = n_heads,
                 qk_rms_norm = qk_rms_norm,
+                default_norm = default_norm,
                 **additonal_kwargs,
                 **kwargs
             )
@@ -398,6 +406,7 @@ class ConformerLayer(nn.Module):
         head_dim,
         n_heads,
         qk_rms_norm = False,
+        default_norm = DEFAULT_NORM,
         **kwargs
     ):
         super().__init__()
@@ -414,12 +423,13 @@ class ConformerLayer(nn.Module):
                 kernel_size = conv_kernel_size,
                 norm_type = 'batch_renorm'
             ),
+            norm = default_norm
         )
 
         self.do_conv = nn.Dropout(dropout_conv)
 
-        self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model)))
-        self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model)))
+        self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model), norm = default_norm))
+        self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model), norm = default_norm))
         self.do_ff = nn.Dropout(dropout_ff)
 
         self.attend = PreNorm(
@@ -433,11 +443,12 @@ class ConformerLayer(nn.Module):
                 layer_idx = layer_idx,
                 qk_rms_norm = qk_rms_norm,
                 **kwargs
-            )
+            ),
+            norm = default_norm
         )
 
         self.do_attn_out = nn.Dropout(min(dropout_ff, 0.1)) # don't wan't this too large
-        self.norm_out = DEFAULT_NORM(d_model)
+        self.norm_out = default_norm(d_model)
 
             
 
@@ -485,6 +496,7 @@ class EBranchConformerLayer(nn.Module):
         n_heads,
         qk_rms_norm = False,
         has_macaron = True,
+        default_norm = DEFAULT_NORM,
         **kwargs
     ):
         super().__init__()
@@ -496,8 +508,8 @@ class EBranchConformerLayer(nn.Module):
         self.has_macaron = has_macaron
         
         if self.has_macaron:
-            self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model)))
-            self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model)))
+            self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model), norm = default_norm))
+            self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model), norm = default_norm))
 
         self.do_ff = nn.Dropout(dropout_ff)
 
@@ -511,7 +523,8 @@ class EBranchConformerLayer(nn.Module):
                 bias = False,
                 layer_idx = layer_idx,
                 qk_rms_norm = qk_rms_norm
-            )
+            ),
+            norm = default_norm
         )
 
         self.cgmlp = PreNorm(d_model = d_model,
@@ -520,7 +533,9 @@ class EBranchConformerLayer(nn.Module):
                 linear_units = d_model * 6,
                 kernel_size = conv_kernel_size,
                 dropout_rate = dropout_conv,
-            )
+                default_norm = default_norm
+            ),
+            norm = default_norm
         )
         self.do_conv = nn.Dropout(dropout_conv)
 
@@ -536,7 +551,7 @@ class EBranchConformerLayer(nn.Module):
         self.merge_proj = torch.nn.Linear(d_model * 2, d_model)
 
         self.do_attn_out = nn.Dropout(min(dropout_ff, 0.1)) # don't wan't this too large
-        self.norm_out = DEFAULT_NORM(d_model)
+        self.norm_out = default_norm(d_model)
 
             
 
@@ -677,8 +692,9 @@ class Attention(nn.Module):
 
             if kv.shape[1] == q.shape[1]: # if kv_seq_len == q_seq_len use self attention else use cross attention
                 qkv = torch.cat([q[:,:,None], kv], dim=2)
-                out = self.flash_attn_fn(qkv, attn_mask)[0]
+                out = self.flash_attn_fn(qkv)#, attn_mask) #!!!
             else:
+                print('jejejej')
                 out = self.flash_attn_c_fn(q, kv)
                 if attn_mask is None:
                     out = self.flash_attn_c_fn(q, kv)
@@ -701,7 +717,6 @@ class Attention(nn.Module):
                         max_seqlen_k = max_k_seq_len,
                     )
                     out = pad_input(out, indices = q_indices, batch = b, seqlen = qs)
-
             out = out.to(x.dtype)
             out = rearrange(out, "b n h d -> b n (h d)")
         else:
@@ -721,13 +736,13 @@ class Attention(nn.Module):
 
 
 class ASRLinearSCDecoder(nn.Module):
-    def __init__(self, d_model, vocab_size, norm=False, gated_sc=False):
+    def __init__(self, d_model, vocab_size, norm=False, gated_sc=False, norm_fn=DEFAULT_NORM):
         super().__init__()
         # Add 1 for blank char
         self.num_classes = vocab_size + 1
         self.ff = nn.Linear(d_model, self.num_classes)
         self.reprojection = nn.Linear(self.num_classes, d_model)
-        self.norm = DEFAULT_NORM(d_model) if norm else nn.Identity()
+        self.norm = norm_fn(d_model) if norm else nn.Identity()
         self.gated_sc = gated_sc
         if self.gated_sc:
             self.gate = nn.Linear(d_model, 1)
@@ -761,12 +776,13 @@ class ConvolutionalSpatialGatingUnit(torch.nn.Module):
         kernel_size: int,
         dropout_rate: float = 0,
         use_linear_after_conv: bool = False,
-        activation = torch.nn.Identity
+        activation = torch.nn.Identity,
+        default_norm = DEFAULT_NORM,
     ):
         super().__init__()
 
         n_channels = size // 2  # split input channels
-        self.norm = DEFAULT_NORM(n_channels)
+        self.norm = default_norm(n_channels)
         self.conv = torch.nn.Conv1d(
             n_channels,
             n_channels,
@@ -832,6 +848,7 @@ class ConvolutionalGatingMLP(torch.nn.Module):
         dropout_rate: float,
         use_linear_after_conv: bool = False,
         activation: torch.nn.Module = torch.nn.Identity,
+        default_norm: any = DEFAULT_NORM,
     ):
         super().__init__()
 
@@ -844,6 +861,7 @@ class ConvolutionalGatingMLP(torch.nn.Module):
             dropout_rate=dropout_rate,
             use_linear_after_conv=use_linear_after_conv,
             activation=activation,
+            default_norm=default_norm,
         )
         self.channel_proj2 = torch.nn.Linear(linear_units // 2, size)
 

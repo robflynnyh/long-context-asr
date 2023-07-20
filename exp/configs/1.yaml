@@ -24,14 +24,14 @@ model:
 optimizer:
   name: 'madgrad'
   args:
-    lr: 6e-5
+    lr: 5e-5
 
 scheduler:
   warmup_steps: 3000
 
 
 audio_chunking: # 360000 (max = 1 hour)
-  size: 360000
+  size: 65536
   overlap: 0 # not using currently...
 
 wandb:
@@ -40,8 +40,8 @@ wandb:
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
-  dir: '/mnt/parscratch/users/acp21rjf/test'
-  save_every_n_steps: 20
+  dir: '/mnt/parscratch/users/acp21rjf/18mintest'
+  save_every_n_steps: 2000
 
 # full data: #'/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
 # 25% of corpus: '/users/acp21rjf/long-context-asr/reduced_pairs.json'
@@ -49,8 +49,8 @@ data:
   path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
   
 training:
-  batch_size: 1
-  backprop_every: 1
+  batch_size: 5
+  backprop_every: 2
   max_seq_len: 0 # max cache length
 
 # size: 2048 = batch size 176

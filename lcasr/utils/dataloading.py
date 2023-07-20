@@ -225,7 +225,10 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         chunk_size:int = 2048,
         chunk_overlap:int = 192,
     ):
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
         self.tokenizer = tokenizer
+        
         super().__init__(
                 dataset = SimpleDataset(
                     pairs, 
@@ -237,11 +240,7 @@ class SimpleDataloader(torch.utils.data.DataLoader):
                 shuffle = False, 
                 num_workers = 0, 
                 pin_memory = False, 
-                collate_fn = collate_fn(
-                    tokenizer = tokenizer,
-                    chunk_size = chunk_size,
-                    chunk_overlap = chunk_overlap,
-                )
+                collate_fn = lambda x: x,
             )
 
 
