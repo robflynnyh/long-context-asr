@@ -692,9 +692,8 @@ class Attention(nn.Module):
 
             if kv.shape[1] == q.shape[1]: # if kv_seq_len == q_seq_len use self attention else use cross attention
                 qkv = torch.cat([q[:,:,None], kv], dim=2)
-                out = self.flash_attn_fn(qkv)#, attn_mask) #!!!
+                out = self.flash_attn_fn(qkv)#, attn_mask) #!!! !!!!!!
             else:
-                print('jejejej')
                 out = self.flash_attn_c_fn(q, kv)
                 if attn_mask is None:
                     out = self.flash_attn_c_fn(q, kv)

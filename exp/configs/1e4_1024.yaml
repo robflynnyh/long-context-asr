@@ -40,11 +40,11 @@ audio_chunking: # 360000 (max = 1 hour)
 wandb:
   use: true
   project_name: "spotify_long_context"
-  id: "" # leave empty if not resuming a previous run
+  id: "p57wc9ij" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: '/mnt/parscratch/users/acp21rjf/1e4_1024'
-  save_every_n_steps: 30
+  save_every_n_steps: 20
 
 # full data: #'/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
 # 25% of corpus: '/users/acp21rjf/long-context-asr/reduced_pairs.json'

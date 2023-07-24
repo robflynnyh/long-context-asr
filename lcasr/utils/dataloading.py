@@ -7,6 +7,7 @@ from einops import rearrange
 import sentencepiece as spm
 import os
 import time
+import pandas as pd
 
 def chunk_spectogram(
         spec: torch.Tensor, # mel spectrogram (batch, features, time)
@@ -122,26 +123,18 @@ class SimpleDataset(torch.utils.data.Dataset):
             batch_size:int = 8,
             subgroup_shuffle_size:int = 2000,
             skip_to:int = 0,
-            check_exists:bool = False, # if preprocessing hasn't finished, set to True
         ):
         self.batch_size = batch_size
         self.subgroup_shuffle_size = subgroup_shuffle_size
-        self.pairs = pairs
-        self.items = sorted(list(pairs.items()), key=lambda x: x[1]['duration'])
-        if check_exists:
-            self.remove_nonexistent()
-        self.create_batches()
-        self.items = self.items[skip_to:]
+    
+        self.pairs = pd.DataFrame(list(pairs.values()))
+        # sort pairs by duration
+        self.pairs = self.pairs.sort_values(by='duration')
+        self.pairs = self.pairs.reset_index(drop=True) # reset index drop means old index is not added as a column
 
-    def remove_nonexistent(self):
-        items = []
-        for el in tqdm(self.items, desc='removing nonexistent files'):
-            if os.path.exists(el[1]['audio']):
-                items.append(el)
-            if len(items) > 10000:
-                break#
-        self.items = items
-        #self.items = [el for el in tqdm(self.items, desc='removing nonexistent files') if os.path.exists(el[1]['audio'])]
+        self.create_batches()
+        # trim to skip_to
+        self.pairs = self.pairs.iloc[skip_to:].reset_index(drop=True)
 
     def create_batches(self):
         np.random.seed(1234)
@@ -151,69 +144,76 @@ class SimpleDataset(torch.utils.data.Dataset):
         indices = [indices[i:i+self.batch_size] for i in range(0, len(indices), self.batch_size)]
         np.random.shuffle(indices)
         indices = np.concatenate(indices)
-        self.items = [self.items[i] for i in indices]
+        self.pairs = self.pairs.iloc[indices].reset_index(drop=True)
 
     def __len__(self):
-        return len(self.items)
+        return len(self.pairs)
 
     def __getitem__(self, idx):
-        audio, txt = load_sample(self.pairs[self.items[idx][0]])
-        id = self.items[idx][0]
+        audio, txt = load_sample({'audio': self.pairs['audio'][idx], 'txt': self.pairs['txt'][idx]})
+        id = "_".join(self.pairs['audio'][idx].split('/')[-2:]).replace('.spec.pt', '')
         txt = txt['results'][-1]['alternatives'][0]['words']
-
         audio = rearrange(audio, '() f t -> t f')
         return audio, txt, id
 
 
-def collate_fn(
-        tokenizer:spm.SentencePieceProcessor,
-        chunk_size:int = 2048,
-        chunk_overlap:int = 192,
-    ):
-    pad_id = tokenizer.pad_id()
-    bos_id = tokenizer.bos_id()
+# def collate_fn(
+#         tokenizer:spm.SentencePieceProcessor,
+#         chunk_size:int = 2048,
+#         chunk_overlap:int = 192,
+#     ):
+#     pad_id = tokenizer.pad_id()
+#     bos_id = tokenizer.bos_id()
 
-    def collate(batch): # move as much as possible from collate to dataset bcos datloader workers aren't taken advantage of here (I don't think??)
-        audio, txt, ids = zip(*batch)
+#     def collate(batch): # move as much as possible from collate to dataset bcos datloader workers aren't taken advantage of here (I don't think??)
+#         audio, txt, ids = zip(*batch)
        
-        audio_lengths = torch.LongTensor([el.shape[0] for el in audio])
+#         audio_lengths = torch.LongTensor([el.shape[0] for el in audio])
   
-        audio = torch.nn.utils.rnn.pad_sequence(audio, batch_first=True, padding_value=pad_id)
-        audio = rearrange(audio, 'b t f -> b f t')
+#         audio = torch.nn.utils.rnn.pad_sequence(audio, batch_first=True, padding_value=pad_id)
+#         audio = rearrange(audio, 'b t f -> b f t')
         
-        txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
+#         txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
 
-        audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
-        chunks = []
-        culm_lengths_audio = torch.zeros_like(audio_lengths)
+#         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
+#         chunks = []
+#         culm_lengths_audio = torch.zeros_like(audio_lengths)
 
-        for ix, el in enumerate(audio_chunks_):
-            remove_mask = ~(culm_lengths_audio > audio_lengths)
-            cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
-            cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
+#         for ix, el in enumerate(audio_chunks_):
+#             remove_mask = ~(culm_lengths_audio > audio_lengths)
+#             cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
+#             cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
           
-            enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el[ix])) for i, el in enumerate(txt_chunks) if remove_mask[i]]
-            enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
-            enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
+#             enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el[ix])) for i, el in enumerate(txt_chunks) if remove_mask[i]]
+#             enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
+#             enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
 
-            chunks.append({
-                'audio':cur_chunks,
-                'txt':enc_txt_chunks,
-                'txt_lengths':enc_txt_chunks_lengths,
-                'audio_lengths':cur_lengths,
-                'selection_mask':remove_mask,
-                'cur_culm_lengths':cur_culm_lengths,
-            })
+#             chunks.append({
+#                 'audio':cur_chunks,
+#                 'txt':enc_txt_chunks,
+#                 'txt_lengths':enc_txt_chunks_lengths,
+#                 'audio_lengths':cur_lengths,
+#                 'selection_mask':remove_mask,
+#                 'cur_culm_lengths':cur_culm_lengths,
+#             })
 
-            culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
+#             culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
             
-        return {
-            'chunks': chunks,
-            'total_audio_lengths': audio_lengths,
-            'ids': ids,
-        }
+#         return {
+#             'chunks': chunks,
+#             'total_audio_lengths': audio_lengths,
+#             'ids': ids,
+#         }
+#     return collate
 
-    return collate
+def collate_fn(batch):
+    audio, txt, ids = zip(*batch)
+    audio_lengths = torch.LongTensor([el.shape[0] for el in audio])
+    audio = torch.nn.utils.rnn.pad_sequence(audio, batch_first=True, padding_value=0)
+    audio = rearrange(audio, 'b t f -> b f t')
+    return audio, audio_lengths, txt, ids
+
+
 
 class SimpleDataloader(torch.utils.data.DataLoader):
     def __init__(
@@ -224,6 +224,9 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         batch_size:int = 5,
         chunk_size:int = 2048,
         chunk_overlap:int = 192,
+        num_workers:int = 0,
+        pin_memory:bool = False,
+        prefetch:int = 1,
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -238,9 +241,10 @@ class SimpleDataloader(torch.utils.data.DataLoader):
                 ), 
                 batch_size = batch_size, 
                 shuffle = False, 
-                num_workers = 0, 
+                num_workers = num_workers, 
                 pin_memory = False, 
-                collate_fn = lambda x: x,
+                collate_fn = collate_fn,
+                prefetch_factor = prefetch,
             )
 
 

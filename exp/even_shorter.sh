@@ -9,4 +9,4 @@
 module load Anaconda3/2022.10 binutils/2.31.1-GCCcore-8.2.0 cuDNN/8.4.1.50-CUDA-11.7.0 GCCcore/8.2.0
 source activate a100
 
-python train_xl.py -config ./configs/1e4.yaml -num_workers 2
+python train_xl.py -config ./configs/1e4_1024.yaml -num_workers 0

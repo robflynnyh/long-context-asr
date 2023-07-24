@@ -10,7 +10,6 @@ from lcasr.utils.dataloading import SimpleDataloader, chunk_spectogram, chunk_te
 import traceback
 
 from lcasr.utils.general import load_model, save_model, load_checkpoint
-import resource
 
 from einops import rearrange
 import numpy as np
@@ -24,10 +23,6 @@ from torch import autocast
 
 from apex.optimizers import FusedAdam
 from torch.optim import Adam
-
-from typing import Dict, List, Tuple
-
-from collections import defaultdict
 
 import warnings
 
@@ -119,8 +114,6 @@ def backwards_pass(
         scheduler.step()
 
 
-
-
 def train(
         args:argparse.Namespace,
         model:torch.nn.Module, 
@@ -133,9 +126,6 @@ def train(
     scaler = GradScaler()
 
     wandb_config = args.config['wandb']
-    
-    rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-    resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
 
     model.train()
     model_dtype = next(model.parameters()).dtype
@@ -144,7 +134,6 @@ def train(
     overlap = args.config.audio_chunking['overlap']
     ds_overlap = overlap // model.subsampling_factor
     backprop_every = args.config['training']['backprop_every']
-    batch_size = args.config['training']['batch_size']
 
     max_cache_length = args.config['training']['max_seq_len']
 
@@ -157,42 +146,11 @@ def train(
     pad_id = tokenizer.pad_id()
 
     pbar = tqdm(dataloader)
-    
     for i, batch in enumerate(pbar):
-
+        gc.collect()
         # save every 100 steps
         if i % args.config['checkpointing']['save_every_n_steps'] == 0 and i != 0:
             save_model(model, optimizer, scheduler, i*args.config['training']['batch_size'] + skip_to, args.config)
-
-        audio, audio_lengths, txt, _ = batch
-        
-        txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
-
-        audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
-        del audio
-        chunks = []
-        culm_lengths_audio = torch.zeros_like(audio_lengths)
-
-        for ix, el in enumerate(audio_chunks_):
-            remove_mask = ~(culm_lengths_audio > audio_lengths)
-            cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
-            cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
-          
-            enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el[ix])) for i, el in enumerate(txt_chunks) if remove_mask[i]]
-            enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
-            enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
-
-            chunks.append({
-                'audio':cur_chunks,
-                'txt':enc_txt_chunks,
-                'txt_lengths':enc_txt_chunks_lengths,
-                'audio_lengths':cur_lengths,
-                'selection_mask':remove_mask,
-                'cur_culm_lengths':cur_culm_lengths,
-            })
-
-            culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
-
 
         was_warmup = scheduler.is_warmup
         if was_warmup:
@@ -206,21 +164,51 @@ def train(
 
         prev_selection_mask = None # selection mask from previous chunk
         last_kv_set = None
- 
+
+        audio, txt, ids = zip(*batch)
+        audio_lengths = torch.LongTensor([el.shape[0] for el in audio])
+        audio = torch.nn.utils.rnn.pad_sequence(audio, batch_first=True, padding_value=pad_id)
+        audio = rearrange(audio, 'b t f -> b f t')
+        
+        txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
+
+        audio = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
+        chunks = []
+        culm_lengths_audio = torch.zeros_like(audio_lengths)
+        
+
         try:
-            for ix, chunk_json in enumerate(chunks):
-                print(f'chunk {ix}/{len(chunks)}')
-              
-                audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
-                txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
-                selection_mask = chunk_json['selection_mask']
+            for ix, el in enumerate(audio):
+                print(f'chunk {ix}/{len(audio)}')
+
+
+                remove_mask = ~(culm_lengths_audio > audio_lengths)
+                cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
+                cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
+            
+                enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el[ix])) for i, el in enumerate(txt_chunks) if remove_mask[i]]
+                enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
+                enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
+
+                # chunks.append({
+                #     'audio':cur_chunks,
+                #     'txt':enc_txt_chunks,
+                #     'txt_lengths':enc_txt_chunks_lengths,
+                #     'audio_lengths':cur_lengths,
+                #     'selection_mask':remove_mask,
+                #     'cur_culm_lengths':cur_culm_lengths,
+                # })
+
+                #audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
+                #txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
+                #selection_mask = chunk_json['selection_mask']
 
                 cur_selection_mask = None
-                if prev_selection_mask != None and not torch.allclose(selection_mask, prev_selection_mask):
-                    cur_selection_mask = selection_mask[prev_selection_mask]
+                if prev_selection_mask != None and not torch.allclose(remove_mask, prev_selection_mask):
+                    cur_selection_mask = remove_mask[prev_selection_mask]
                     
 
-                audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
+                cur_chunks, cur_lengths = cur_chunks.to(device, dtype=model_dtype), cur_lengths.to(device)
 
                 with autocast(device.type, dtype=torch.bfloat16):
                     cached_kvs = last_kv_set.clone() if last_kv_set != None else None
@@ -231,8 +219,8 @@ def train(
                         cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
                         
                     out = model(
-                        audio_signal = audio, 
-                        length = a_lengths, 
+                        audio_signal = cur_chunks, 
+                        length = cur_lengths, 
                         cached_kvs = cached_kvs, 
                         cached_kv_lengths = cached_kv_lengths
                     )
@@ -247,7 +235,7 @@ def train(
                     
                     B,N,C = cur_probs.shape 
                     
-                    loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
+                    loss = ctc_loss_fn(cur_probs.transpose(0,1), enc_txt_chunks, out['length'], enc_txt_chunks_lengths).sum()
                 
 
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
@@ -255,9 +243,9 @@ def train(
     
                 
                 # cur_tokens_in_loss += B * N
-                cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch
+                cur_tokens_in_loss += (sum(cur_lengths)) # total number of acoustic frames in batch
 
-                scaler.scale(((loss) / (chunk_size*batch_size)) * 100).backward()
+                scaler.scale(((loss) / (sum(cur_lengths))) * 100).backward()
                 last_kv_set.detach_() if last_kv_set != None else None
 
 
@@ -282,9 +270,8 @@ def train(
                     cur_tokens_in_loss = 0
                     cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
 
-                prev_selection_mask = selection_mask.clone()
-
-
+                prev_selection_mask = remove_mask.clone()
+                culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
 
         except RuntimeError as e: # illegal mem access sometimes happening with flash attention.. 0: 
             if 'an illegal memory access was encountered' in str(e): 
@@ -297,8 +284,7 @@ def train(
         if not scheduler.is_warmup: # step every batch
             scheduler.step()
         
-        del chunks
-        
+        del audio
 
     # save final model
     save_model(model, optimizer, None, i*args.config['training']['batch_size'] + skip_to, args.config)
@@ -318,15 +304,13 @@ def main(args):
     tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
 
-    print(args.config)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     wandb_config = args.config['wandb']
     if wandb_config['use']:
         project_name, w_id = wandb_config['project_name'], wandb_config['id']
-        run_name = None if 'name' not in wandb_config else wandb_config['name']
-        wandb.init(project=project_name, config=args.config, name=run_name) if w_id == '' else wandb.init(project=project_name, id=w_id, resume="must", config=args.config, allow_val_change=True)
+        wandb.init(project=project_name, config=args.config) if w_id == '' else wandb.init(project=project_name, id=w_id, resume="must", config=args.config, allow_val_change=True)
         #wandb.watch(model, log="all") # sometimes this causes a crash ):
         wandb.config.update({'total_params': tparams}, allow_val_change=True)
         print(f'\nLoggging with Wandb id: {wandb.run.id}\n')
@@ -348,8 +332,6 @@ def main(args):
         chunk_size = args.config.audio_chunking['size'],
         chunk_overlap = args.config.audio_chunking['overlap'],
         num_workers = args.num_workers,
-        pin_memory = args.pin_memory,
-        prefetch = args.prefetch_factor,
     )
     
     
@@ -365,11 +347,9 @@ if __name__ == '__main__':
     parser.add_argument('-reset_step', '--reset_step', action='store_true', help='reset step to 0')
     parser.add_argument('-anomaly', '--anomaly', action='store_true', help='turn on anomaly detection')
     parser.add_argument('-num_workers', '--num_workers', type=int, default=0, help='number of workers for dataloader')
-    parser.add_argument('-pin_memory', '--pin_memory', action='store_true', help='pin memory for dataloader')
-    parser.add_argument('-prefetch', '--prefetch_factor', type=int, default=1, help='prefetch factor for dataloader')
 
     args = parser.parse_args()
 
 
     main(args)
-      
+    

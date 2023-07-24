@@ -1,3 +1,7 @@
+template_info:
+  create: 5
+  include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training']
+  template_keys: ['checkpointing.dir', 'wandb.name', 'optimizer.args.lr']
 
 model:
   feat_in: 80
@@ -27,24 +31,24 @@ model:
 optimizer:
   name: 'madgrad'
   args:
-    lr: 1e-4
+    lr: [5e-5, 3e-5, 8e-5, 1e-4, 2e-4] 
 
 scheduler:
   warmup_steps: 3000
 
-
 audio_chunking: # 360000 (max = 1 hour)
-  size: 1024
+  size: 4096
   overlap: 0 # not using currently...
 
 wandb:
   use: true
   project_name: "spotify_long_context"
+  name: ['5e5_4096', '3e5_4096', '8e5_4096', '1e4_4096', '2e4_4096']
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
-  dir: '/mnt/parscratch/users/acp21rjf/1e4_1024'
-  save_every_n_steps: 30
+  dir: ['/mnt/parscratch/users/acp21rjf/5e5_4096', '/mnt/parscratch/users/acp21rjf/3e5_4096', '/mnt/parscratch/users/acp21rjf/8e5_4096', '/mnt/parscratch/users/acp21rjf/1e4_4096', '/mnt/parscratch/users/acp21rjf/2e4_4096']
+  save_every_n_steps: 100
 
 # full data: #'/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
 # 25% of corpus: '/users/acp21rjf/long-context-asr/reduced_pairs.json'
@@ -52,9 +56,9 @@ data:
   path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
   
 training:
-  batch_size: 352
+  batch_size: 88
   backprop_every: 1
-  max_seq_len: 0 # max cache length
+  max_seq_len: 0
 
 # size: 1024 = batch size 352
 # size: 2048 = batch size 176

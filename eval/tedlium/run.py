@@ -1,5 +1,5 @@
 import lcasr
-import torch
+import torch, numpy as np
 import argparse
 from tqdm import tqdm
 from typing import Dict, List, Tuple
@@ -77,7 +77,7 @@ def decode_beams_lm(
         return {'word': text, 'start': total_seconds(frame[0] * ds_factor), 'end': total_seconds(frame[1] * ds_factor)}
 
     for logits, length in zip(logits_list, encoded_lengths):
-    
+ 
         beams = decoder.decode_beams(
             logits = logits[:length],
             beam_width = beam_width,
@@ -273,7 +273,9 @@ def main(args):
         print('\n\n'+paired[audio_files[rec]]+'\n\n')
         
         logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
-      
+        # np.save(f'logits_{rec}.npy', logits)
+        # exit()
+
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
         decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
         
@@ -283,8 +285,10 @@ def main(args):
         print(all_text)
         all_texts.append(all_text)
         all_golds.append(gold_text)
-        break
         
+        
+
+
         
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
 
