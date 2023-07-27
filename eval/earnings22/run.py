@@ -17,45 +17,19 @@ from einops import rearrange
 import os
 import wandb
 import re
-
+import json
 from wer import word_error_rate_detail 
 
 TEST_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/test_original'
+DEV_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/dev_original'
+ALL_TEXT_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/full_transcripts.json'
 
+# TEST DATA:
+# 4453225.mp3  4479524.mp3  4481904.mp3  4482249.mp3  4483912.mp3  mtngh_fy18_call_audio_04032019.mp3
+# DEV DATE:
+# 4449269.mp3  4469669.mp3  4471586.mp3  4474955.mp3  4482613.mp3  4483338.mp3  4483633.mp3
 
-def remove_punctuation(text): # replace with space
-    # punctuation = everything except "'" which is used in contractions
-    text = re.sub(r"[^\w\d'\s]+",' ',text)
-    # remove multiple spaces
-    text = re.sub(' +', ' ', text)
-    return text
-
-def open_stm(path:str) -> List[str]:
-    with open(path, 'r') as f:
-        lines = f.read().split('\n')
-    return lines
-
-def proc_stm_and_timings(stm_path:str):
-    stm = open_stm(stm_path)
-    all_text = ""
-    timings = []
-    for line in stm:
-        sline = line.split(' ')
-        if len(sline) < 6:
-            continue
-        a_id, s_id, spk, start, end, meta = sline[:6]
-        text = ' '.join(sline[6:])
-        if text == 'ignore_time_segment_in_scoring':
-            continue
-        all_text += text + ' '
-        timings.append({'start': float(start), 'end': float(end)})
-    all_text = all_text.strip()
-    # regex to do all of the above
-    # i.e replace space followed by a apostrophe followed by a letter with just the apostrophe and letter
-    all_text = re.sub(r" '([a-z])", r"'\1", all_text)
-    # remove multiple spaces
-    all_text = re.sub(r" +", r" ", all_text)
-    return all_text, timings
+def post_process(text:str): return text
 
 def ctc_decoder(vocab):  
     decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
@@ -95,14 +69,21 @@ def decode_beams_lm(
 
     return decoded_data, beams[0]
 
-def fetch_test_data(path:str = TEST_PATH):
-    audio_path = os.path.join(path, 'sph')
-    audio_files = [os.path.join(audio_path, el) for el in os.listdir(audio_path) if el.endswith('.sph')]
-    audio_files.sort()
-    text_path = os.path.join(path, 'stm')
-    text_files = [os.path.join(text_path, el) for el in os.listdir(text_path) if el.endswith('.stm')]
-    text_files.sort()
-    assert len(audio_files) == len(text_files), 'Number of audio files and text files must match'
+def fetch_data(audio_path:str = TEST_PATH, txt_path:str = ALL_TEXT_PATH):
+    with open(txt_path, 'r') as f:
+        all_text_json = json.load(f)
+
+    audio_files = [{
+        'meeting': el.replace('.mp3', ''),
+        'path': os.path.join(audio_path, el)
+        } for el in os.listdir(audio_path) if el.endswith('.mp3')]
+
+    text_files = [{
+        'meeting': el['meeting'],
+        'text': all_text_json[el['meeting']]
+        } for el in audio_files]
+ 
+
     return audio_files, text_files
 
 
@@ -111,70 +92,6 @@ def load_audio(audio_file:str):
     return spec
 
 
-'''
-def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer):
-    spec_n = spec.shape[-1]
-    seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
-    seq_len = seq_len if seq_len < spec_n else spec_n
-    overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
-    
-    seq_len_overlap_dif = seq_len - overlap
-    print(f'Using seq_len: {seq_len} and overlap: {overlap}')
-
-    all_logits = torch.zeros((1, spec_n//4 + 10, tokenizer.vocab_size() + 1))
-    logit_count = torch.zeros((1, spec_n//4 + 10, tokenizer.vocab_size() + 1))
-    
-    logit_position = 0
-    finished = False
-    # PROBLEM WHEN
-    #i in tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))):
-    pbar = tqdm(total=spec_n)
-    spec_i = 0
-    while not finished:
-        audio_chunk = spec[:, :, spec_i:spec_i+seq_len]
-        cur_overlap = max(audio_chunk.shape[-1] - seq_len_overlap_dif, 0)
-
-        u_len = audio_chunk.shape[-1]
-        audio_chunk = audio_chunk.to(model.device)
-        out = model(audio_chunk)
-        logits = out['final_posteriors'].detach().cpu()
-        # convert to prob
-        logits = torch.exp(logits)
-        ds_len = logits.shape[-2] # seq_len // model.subsampling_factor
-
-        ratio = u_len / ds_len
-        #overlap_ds = int(overlap / ratio)
-        overlap_ds = cur_overlap // model.subsampling_factor
-        if spec_i != 0:
-            logit_position -= overlap_ds
-
-        logit_count[:, logit_position:logit_position+ds_len, :] += 1
-
-        #print(logits.shape, logit_position, ds_len, all_logits.shape, ratio, overlap_ds, '\n')
-        all_logits[:, logit_position:logit_position+ds_len, :] += logits
-        logit_position += ds_len 
-
-        print(audio_chunk.shape[-1] - cur_overlap, audio_chunk.shape[-1], cur_overlap)
-        spec_i += audio_chunk.shape[-1] - cur_overlap
-        pbar.update(audio_chunk.shape[-1] - cur_overlap)
-        if spec_i >= spec_n:
-            pbar.close()
-            finished = True
-        
-    B,N,C = all_logits.shape
-    all_logits = all_logits[logit_count.sum(dim=-1) != 0]
-    all_logits = all_logits.reshape(B,-1,C)
-    logit_count = logit_count[logit_count.sum(dim=-1) != 0]
-    logit_count = logit_count.reshape(B,-1,C)
-    logits = all_logits / logit_count
-    # convert to log 
-    logits = torch.log(logits)
-    # blank_id = logits.shape[-1]-1
-    # logits = logits.argmax(dim=-1)[0].tolist()
-    # print(tokenizer.decode([el for el in logits if el != blank_id]))
-    
-    return logits.squeeze(0).numpy()
-'''
 
 def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer):
     spec_n = spec.shape[-1]
@@ -192,6 +109,8 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     
     for i in tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))):
         audio_chunk = spec[:, :, i:i+seq_len]
+        # normalise chunk
+        #audio_chunk = (audio_chunk - audio_chunk.mean(-1, keepdim=True)) / audio_chunk.std(-1, keepdim=True)
         u_len = audio_chunk.shape[-1]
         audio_chunk = audio_chunk.to(model.device)
         out = model(audio_chunk)
@@ -225,21 +144,23 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     return logits.squeeze(0).numpy()
 
 
-def parse_utterances(decoded_frames:List[Dict[str, any]], timings:List[Dict[str, int]]):    
-    parsed_decoded_frames = []
-    buffer = 2.0
-    for frame in decoded_frames:
-        start, end = frame['start'], frame['end']
-        for timing in timings:
-            t_start, t_end = timing['start'] - buffer, timing['end'] + buffer
-            if start >= t_start and end <= t_end:
-                parsed_decoded_frames.append(frame)
-                break
-    all_text = remove_punctuation(" ".join(el['word'] for el in parsed_decoded_frames))
-    return all_text, parsed_decoded_frames            
+def preprocess_transcript(text:str):
+    text = text.lower()
+    text = text.replace('<silence>', '')
+    text = text.replace(',', '')
+    text = text.replace('-', ' ')
+    text = text.replace('.', '')
+    # remove double spaces
+    text = re.sub(' +', ' ', text)
+    return text
 
+def postprocess_asr(text:str):
+    text = text.replace('.', '')
+    return text
 
 def main(args):
+    assert args.split in ['test', 'dev'], 'Split must be either test or dev'
+    data_path = TEST_PATH if args.split == 'test' else DEV_PATH
     
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
@@ -249,28 +170,32 @@ def main(args):
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
     model = load_model(args.config, tokenizer.vocab_size())
     tparams = model.print_total_params()
-    model.load_state_dict(checkpoint['model'])
+    model.load_state_dict(checkpoint['model'], strict=False)
     print(f'Loaded model from {args.checkpoint}')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.device = device
     model = model.to(device)
     model.eval()
 
-    
-
     decoder = ctc_decoder([tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""]) # "" = blank
 
 
-    audio_files, text_files = fetch_test_data()
-    paired = dict(zip(audio_files, text_files))
+    audio_files, text_files = fetch_data(audio_path=data_path, txt_path=ALL_TEXT_PATH)
+    meetings_keys = [el['meeting'] for el in audio_files]
     
     all_texts = []
     all_golds = []
-    for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
+    for rec in tqdm(range(len(meetings_keys)), total=len(audio_files)):
         print(f'Processing {rec+1}/{len(audio_files)}')
+        cur_meetings = meetings_keys[rec]
+        cur_audio = audio_files[rec]['path']
+        print(cur_audio)
+        cur_text = preprocess_transcript(text_files[rec]['text'])
+        assert cur_meetings == text_files[rec]['meeting'] and audio_files[rec]['meeting'] == text_files[rec]['meeting'], \
+            f'Meeting names do not match: {cur_meetings}, {text_files[rec]["meeting"]}, {audio_files[rec]["meeting"]}'
 
-        audio_spec = load_audio(audio_files[rec])
-        print('\n\n'+paired[audio_files[rec]]+'\n\n')
+        audio_spec = load_audio(cur_audio)
+        print('\n\n'+cur_meetings+'\n\n')
         
         logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
         # np.save(f'logits_{rec}.npy', logits)
@@ -278,16 +203,20 @@ def main(args):
 
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
         decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
+        out = postprocess_asr(decoded[0]['text'])
+        print(out)
+        print(cur_text)
+        all_texts.append(out)
+        all_golds.append(cur_text)
+        break
+        # stm_path = paired[audio_files[rec]]
+        # gold_text, timings = proc_stm_and_timings(stm_path=stm_path)
+        # all_text, frames = parse_utterances(decoded_frames = decoded[0]['frames'], timings = timings)
+        # print(all_text)
+        # all_texts.append(all_text)
+        # all_golds.append(gold_text)
         
-        stm_path = paired[audio_files[rec]]
-        gold_text, timings = proc_stm_and_timings(stm_path=stm_path)
-        all_text, frames = parse_utterances(decoded_frames = decoded[0]['frames'], timings = timings)
-        print(all_text)
-        all_texts.append(all_text)
-        all_golds.append(gold_text)
         
-        
-
 
         
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
@@ -298,7 +227,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--checkpoint', type=str, default='../../exp/model.pt', help='path to checkpoint')
-
+    parser.add_argument('-split', '--split', type=str, default='test', help='test or dev split')
     parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-beams', '--beam_width', type=int, default=10, help='beam width for decoding')

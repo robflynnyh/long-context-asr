@@ -8,6 +8,7 @@ import sentencepiece as spm
 import os
 import time
 import pandas as pd
+import re
 
 def chunk_spectogram(
         spec: torch.Tensor, # mel spectrogram (batch, features, time)
@@ -115,6 +116,12 @@ def load_sample(entry:Dict[str, str]) -> Tuple[torch.Tensor, torch.Tensor]:
     audio = torch.load(entry['audio'])
     txt = load_json(entry['txt'])
     return audio, txt
+
+
+# def text_preprocess(txt:str) -> str:
+#     txt = re.sub('(\d+)%', r'\1 %', txt).replace(' %', ' percent') # 100% -> 100 percent
+#     return txt
+    
 
 class SimpleDataset(torch.utils.data.Dataset):
     def __init__(

@@ -19,16 +19,14 @@ import wandb
 import re
 
 from wer import word_error_rate_detail 
+from .postprocess import post_process
+import re
 
 TEST_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/test/'
+DEV_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/dev/'
 
 
-def remove_punctuation(text): # replace with space
-    # punctuation = everything except "'" which is used in contractions
-    text = re.sub(r"[^\w\d'\s]+",' ',text)
-    # remove multiple spaces
-    text = re.sub(' +', ' ', text)
-    return text
+
 
 def open_stm(path:str) -> List[str]:
     with open(path, 'r') as f:
@@ -95,7 +93,7 @@ def decode_beams_lm(
 
     return decoded_data, beams[0]
 
-def fetch_test_data(path:str = TEST_PATH):
+def fetch_data(path:str = TEST_PATH):
     audio_path = os.path.join(path, 'sph')
     audio_files = [os.path.join(audio_path, el) for el in os.listdir(audio_path) if el.endswith('.sph')]
     audio_files.sort()
@@ -184,8 +182,8 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
 
     print(f'Using seq_len: {seq_len} and overlap: {overlap}')
 
-    all_logits = torch.zeros((1, spec_n//4 + 10, tokenizer.vocab_size() + 1))
-    logit_count = torch.zeros((1, spec_n//4 + 10, tokenizer.vocab_size() + 1))
+    all_logits = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
+    logit_count = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
     
     logit_position = 0
     
@@ -225,6 +223,7 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     return logits.squeeze(0).numpy()
 
 
+
 def parse_utterances(decoded_frames:List[Dict[str, any]], timings:List[Dict[str, int]]):    
     parsed_decoded_frames = []
     buffer = 2.0
@@ -235,11 +234,17 @@ def parse_utterances(decoded_frames:List[Dict[str, any]], timings:List[Dict[str,
             if start >= t_start and end <= t_end:
                 parsed_decoded_frames.append(frame)
                 break
-    all_text = remove_punctuation(" ".join(el['word'] for el in parsed_decoded_frames))
+    print(" ".join(el['word'] for el in parsed_decoded_frames))
+    all_text = post_process(" ".join(el['word'] for el in parsed_decoded_frames))
     return all_text, parsed_decoded_frames            
 
 
+
+
 def main(args):
+    assert args.split in ['test', 'dev'], 'Split must be either test or dev'
+    data_path = TEST_PATH if args.split == 'test' else DEV_PATH
+
     
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
@@ -249,7 +254,7 @@ def main(args):
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
     model = load_model(args.config, tokenizer.vocab_size())
     tparams = model.print_total_params()
-    model.load_state_dict(checkpoint['model'])
+    model.load_state_dict(checkpoint['model'], strict=False)
     print(f'Loaded model from {args.checkpoint}')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.device = device
@@ -261,12 +266,13 @@ def main(args):
     decoder = ctc_decoder([tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""]) # "" = blank
 
 
-    audio_files, text_files = fetch_test_data()
+    audio_files, text_files = fetch_data(path=data_path)
     paired = dict(zip(audio_files, text_files))
     
     all_texts = []
     all_golds = []
     for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
+        #if rec > 3: continue
         print(f'Processing {rec+1}/{len(audio_files)}')
 
         audio_spec = load_audio(audio_files[rec])
@@ -282,9 +288,11 @@ def main(args):
         stm_path = paired[audio_files[rec]]
         gold_text, timings = proc_stm_and_timings(stm_path=stm_path)
         all_text, frames = parse_utterances(decoded_frames = decoded[0]['frames'], timings = timings)
+   
         print(all_text)
         all_texts.append(all_text)
         all_golds.append(gold_text)
+        #break
         
         
 
@@ -298,7 +306,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--checkpoint', type=str, default='../../exp/model.pt', help='path to checkpoint')
-
+    parser.add_argument('-split', '--split', type=str, default='test', help='test or dev split')
     parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-beams', '--beam_width', type=int, default=10, help='beam width for decoding')
