@@ -2,5 +2,6 @@ from . import (
     convolution,
     fused_dense,
     subsampling,
-    batchrenorm
+    batchrenorm,
+    scaling
 )

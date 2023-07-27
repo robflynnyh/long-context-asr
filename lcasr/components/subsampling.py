@@ -19,7 +19,14 @@ import torch.nn as nn
 from apex.normalization import FusedRMSNorm as LayerNorm
 import logging
 from .causal_convs import CausalConv2D
+from torch import Tensor
+from lcasr.components.fused_dense import FusedMLP
 
+import torch.nn.functional as F
+
+
+
+Conv2d = torch.nn.Conv2d
 
 class StackingSubsampling(torch.nn.Module):
     """Stacking subsampling which simply stacks consecutive frames to reduce the sampling rate
@@ -30,14 +37,25 @@ class StackingSubsampling(torch.nn.Module):
         norm (bool): whether to use an MLP layer after the stacking along with normalization. default is False.
     """
 
-    def __init__(self, subsampling_factor, feat_in, feat_out, norm=False):
+    def __init__(self, subsampling_factor, feat_in, feat_out, norm=False, default_norm=LayerNorm, norm_out=False):
         super(StackingSubsampling, self).__init__()
         self.subsampling_factor = subsampling_factor
-        self.proj_out = torch.nn.Linear(subsampling_factor * feat_in, feat_out)
+        #self.proj_out = torch.nn.Linear(subsampling_factor * feat_in, feat_out)
+        self.proj_out = FusedMLP(
+            in_features = subsampling_factor * feat_in,
+            hidden_features = feat_out * 4,
+            out_features = feat_out,
+            bias1 = False,
+            bias2 = False
+        )
         if norm:
-            self.pre_norm = LayerNorm(feat_in)
+            self.pre_norm = default_norm(feat_in)
         else:
             self.pre_norm = None
+        if norm_out:
+            self.norm_out = default_norm(feat_out)
+        else:
+            self.norm_out = None
 
     def get_sampling_frames(self):
         return self.subsampling_factor
@@ -55,8 +73,21 @@ class StackingSubsampling(torch.nn.Module):
         x = torch.reshape(x, (b, t // self.subsampling_factor, h * self.subsampling_factor))
         x = self.proj_out(x)
         lengths = torch.div(lengths + pad_size, self.subsampling_factor, rounding_mode='floor')
+        lengths = torch.clamp(lengths, min=1) # lengths should be at least 1
+        if self.norm_out is not None:
+            x = self.norm_out(x)
         return x, lengths
 
+class PreNorm(nn.Module): # applies normalization before fn
+    def __init__(self, d_model, fn, norm = LayerNorm):
+        super().__init__()
+        self.norm = norm(d_model)
+        self.fn = fn
+
+    def forward(self, x, **kwargs):
+        x = self.norm(x)
+        x = self.fn(x, **kwargs)
+        return x
 
 class ConvSubsampling(torch.nn.Module):
     """Convolutional subsampling which supports VGGNet and striding approach introduced in:
@@ -83,12 +114,17 @@ class ConvSubsampling(torch.nn.Module):
         subsampling_conv_chunking_factor=1,
         activation=nn.ReLU(),
         is_causal=False,
+        norm_out=False,
+        default_norm=LayerNorm,
     ):
         super(ConvSubsampling, self).__init__()
         self._subsampling = subsampling
         self._conv_channels = conv_channels
         self._feat_in = feat_in
         self._feat_out = feat_out
+        self.has_norm_out = norm_out
+        if norm_out:
+            self.norm_out = default_norm(feat_out)
 
         if subsampling_factor % 2 != 0:
             raise ValueError("Sampling factor should be a multiply of 2!")
@@ -117,13 +153,13 @@ class ConvSubsampling(torch.nn.Module):
 
             for i in range(self._sampling_num):
                 layers.append(
-                    torch.nn.Conv2d(
+                    Conv2d(
                         in_channels=in_channels, out_channels=conv_channels, kernel_size=3, stride=1, padding=1
                     )
                 )
                 layers.append(activation)
                 layers.append(
-                    torch.nn.Conv2d(
+                    Conv2d(
                         in_channels=conv_channels, out_channels=conv_channels, kernel_size=3, stride=1, padding=1
                     )
                 )
@@ -165,7 +201,7 @@ class ConvSubsampling(torch.nn.Module):
                 )
             else:
                 layers.append(
-                    torch.nn.Conv2d(
+                    Conv2d(
                         in_channels=in_channels,
                         out_channels=conv_channels,
                         kernel_size=self._kernel_size,
@@ -190,7 +226,7 @@ class ConvSubsampling(torch.nn.Module):
                     )
                 else:
                     layers.append(
-                        torch.nn.Conv2d(
+                        Conv2d(
                             in_channels=in_channels,
                             out_channels=in_channels,
                             kernel_size=self._kernel_size,
@@ -201,7 +237,7 @@ class ConvSubsampling(torch.nn.Module):
                     )
 
                 layers.append(
-                    torch.nn.Conv2d(
+                    Conv2d(
                         in_channels=in_channels,
                         out_channels=conv_channels,
                         kernel_size=1,
@@ -240,7 +276,7 @@ class ConvSubsampling(torch.nn.Module):
                     )
                 else:
                     layers.append(
-                        torch.nn.Conv2d(
+                        Conv2d(
                             in_channels=in_channels,
                             out_channels=conv_channels,
                             kernel_size=self._kernel_size,
@@ -262,8 +298,9 @@ class ConvSubsampling(torch.nn.Module):
             ceil_mode=self._ceil_mode,
             repeat_num=self._sampling_num,
         )
-        self.out = torch.nn.Linear(conv_channels * int(out_length), feat_out)
+        self.out = torch.nn.Linear(conv_channels * int(out_length), feat_out, bias = norm_out) # no bias if norm_out bcos scale and shift
         self.conv = torch.nn.Sequential(*layers)
+
 
     def get_sampling_frames(self):
         return [1, self.subsampling_factor]
@@ -311,6 +348,10 @@ class ConvSubsampling(torch.nn.Module):
 
         b, c, t, f = x.size()
         x = self.out(x.transpose(1, 2).reshape(b, t, -1))
+        
+        if self.has_norm_out:
+            x = self.norm_out(x)
+
         return x, lengths
 
     def reset_parameters(self):

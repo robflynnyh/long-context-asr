@@ -226,7 +226,7 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         chunk_overlap:int = 192,
         num_workers:int = 0,
         pin_memory:bool = False,
-        prefetch:int = 1,
+        prefetch:int = None,
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -242,9 +242,9 @@ class SimpleDataloader(torch.utils.data.DataLoader):
                 batch_size = batch_size, 
                 shuffle = False, 
                 num_workers = num_workers, 
-                pin_memory = False, 
+                pin_memory = pin_memory, 
                 collate_fn = collate_fn,
-                prefetch_factor = prefetch,
+                prefetch_factor = prefetch if num_workers > 0 else None,
             )
 
 

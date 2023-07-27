@@ -15,13 +15,15 @@ ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
 
 ConvSubsampling = subsampling.ConvSubsampling
+StackingSubsampling = subsampling.StackingSubsampling
 DEFAULT_NORM = apex.normalization.FusedRMSNorm
 RMSNorm = apex.normalization.FusedRMSNorm
 LayerNorm = apex.normalization.FusedLayerNorm
 
 #from flash_attn.flash_attention import FlashAttention
-from flash_attn.modules.mha import FlashSelfAttention as FlashAttention
+from flash_attn.flash_attention import FlashAttention
 from flash_attn.modules.mha import FlashCrossAttention
+
 from flash_attn.bert_padding import unpad_input, pad_input
 
 from functools import partial
@@ -114,6 +116,9 @@ class SCConformerXL(nn.Module):
         subsampling = 'striding',
         subsampling_factor = 4,
         subsampling_conv_channels = -1,
+        subsampling_act = 'silu',
+        subsampling_norm_out = False,
+        self_condition_subsampling = False,
         n_layers = 12,
         d_model = 256,
         n_heads = 8,
@@ -134,6 +139,9 @@ class SCConformerXL(nn.Module):
         learned_rotary = False,
         self_conditioning = True,
         default_norm = 'rms_norm',
+        sandwich_norm = False,
+        bias_in_ff = True,
+        transformer=False, # disable convolutions
         **kwargs
     ):
         super().__init__()
@@ -149,28 +157,44 @@ class SCConformerXL(nn.Module):
         self.rotary_interpolation_factor = rotary_interpolation_factor
         self.learned_rotary = learned_rotary
         self.self_conditioning = self_conditioning
+        self.sandwich_norm = sandwich_norm
+        self.bias_in_ff = bias_in_ff
+        self.transformer = transformer
+        self.self_condition_subsampling = self_condition_subsampling
 
         accepted_norms = ['rms_norm', 'layer_norm']
+        accepted_subsampling_acts = ['silu', 'relu', 'gelu', 'none']
+        assert subsampling_act in accepted_subsampling_acts, f'subsampling_act must be one of {accepted_subsampling_acts} (got {subsampling_act})'
         assert default_norm in accepted_norms, f'default_norm must be one of {accepted_norms} (got {default_norm})'
         default_norm = RMSNorm if default_norm == 'rms_norm' else LayerNorm
 
+        if subsampling_act == 'silu':
+            subsampling_act = nn.SiLU()
+        elif subsampling_act == 'relu':
+            subsampling_act = nn.ReLU()
+        elif subsampling_act == 'gelu':
+            subsampling_act = nn.GELU()
+        elif subsampling_act == 'none':
+            subsampling_act = nn.Identity()
 
         supported_encoders = ['conformer', 'ebranchformer', 'ebranchformer-macaron']
         assert encoder_mode in supported_encoders, f'encoder_mode must be one of {supported_encoders} (got {encoder_mode})'
+        if transformer:
+            assert encoder_mode == 'conformer', 'transformer mode only supports conformer encoder'
 
         self.flash_attn = kwargs.get('flash_attn', True)
 
         self.checkpoint_every_n_layers = checkpoint_every_n_layers
 
-        self.overlap_interp_factor_logits = nn.Parameter(torch.tensor(0.5))
-        self.overlap_interp_factor_kvs = nn.Parameter(torch.tensor(0.5))
+        #self.overlap_interp_factor_logits = nn.Parameter(torch.tensor(0.5))
+        #self.overlap_interp_factor_kvs = nn.Parameter(torch.tensor(0.5))
 
         self.dropout_ff = dropout_ff
         self.dropout_conv = dropout_conv
         self.dropout_attn = dropout_attn
         self.qk_rms_norm = qk_rms_norm
 
-        self.subsampling = subsampling
+        self.subsampling_mode = subsampling
         self.subsampling_factor = subsampling_factor
         self.subsampling_conv_channels = subsampling_conv_channels if subsampling_conv_channels != -1 else d_model
 
@@ -198,12 +222,20 @@ class SCConformerXL(nn.Module):
         )
 
         self.subsampling = ConvSubsampling(
-            subsampling = self.subsampling,
+            subsampling = self.subsampling_mode,
             subsampling_factor = self.subsampling_factor,
             feat_in = feat_in,
             feat_out = d_model,
             conv_channels = self.subsampling_conv_channels,
-            activation = nn.SiLU(),
+            activation = subsampling_act,
+            norm_out = subsampling_norm_out,
+        ) if subsampling != 'stacking' else StackingSubsampling(
+            subsampling_factor = self.subsampling_factor,
+            feat_in = feat_in,
+            feat_out = d_model,
+            norm = True if not subsampling_norm_out else False,
+            default_norm = default_norm,
+            norm_out = subsampling_norm_out,
         )
 
         
@@ -235,6 +267,9 @@ class SCConformerXL(nn.Module):
                 n_heads = n_heads,
                 qk_rms_norm = qk_rms_norm,
                 default_norm = default_norm,
+                sandwich_norm = sandwich_norm,
+                bias_in_ff = bias_in_ff,
+                transformer = transformer,
                 **additonal_kwargs,
                 **kwargs
             )
@@ -276,14 +311,15 @@ class SCConformerXL(nn.Module):
         if length is None:
             length = torch.tensor([max_audio_length] * audio_signal.size(0), device=audio_signal.device)
             
-        audio_signal = torch.transpose(audio_signal, 1, 2)
+    
+        audio_signal = torch.transpose(audio_signal, 1, 2)# if self.subsampling_mode != 'stacking' else audio_signal
         audio_signal, length = self.subsampling(audio_signal, lengths = length)
         max_audio_length = audio_signal.size(1)
         ## create masks
         
         mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
     
-        rotary_emb_fn = lambda q, k: (q, k)
+        rotary_emb_fn = None
    
         full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
         #print(full_kv_lengths, '333333333')
@@ -308,8 +344,15 @@ class SCConformerXL(nn.Module):
         pad_mask = mask 
         
         iterim_posteriors = []
-
         kvs_to_cache = []
+
+        if self.self_condition_subsampling:
+            iterim_logits, x_norm = decoder(x=audio_signal, logits=True, return_norm=True)
+            iterim_post = torch.nn.functional.softmax(iterim_logits, dim=-1)
+            iterim_logposteriors = torch.log(iterim_post)
+            iterim_posteriors.append(iterim_logposteriors)
+            audio_signal = decoder.integrate_projections(audio_signal, x_norm, decoder.project_back(iterim_post)) 
+
         for lth, layer in enumerate(self.layers):
             lth_to_grap = lth + 1 if lth + 1 < len(self.layers) and self.shift_kvs else lth
             current_layer_kvs = cached_kvs[:,:,lth_to_grap] if cached_kvs is not None else None
@@ -345,7 +388,6 @@ class SCConformerXL(nn.Module):
                 iterim_post = torch.nn.functional.softmax(iterim_logits, dim=-1)
                 iterim_logposteriors = torch.log(iterim_post)
                 iterim_posteriors.append(iterim_logposteriors)
-
                 audio_signal = decoder.integrate_projections(audio_signal, x_norm, decoder.project_back(iterim_post))        
 
         # stack the posteriors along the first dimension (height, batch, seq_len, dim)
@@ -374,14 +416,19 @@ class SCConformerXL(nn.Module):
         return total
 
 class PreNorm(nn.Module): # applies normalization before fn
-    def __init__(self, d_model, fn, norm = DEFAULT_NORM):
+    def __init__(self, d_model, fn, norm = DEFAULT_NORM, sandwich_norm = False):
         super().__init__()
         self.norm = norm(d_model)
         self.fn = fn
+        self.sandwich_norm = sandwich_norm
+        if self.sandwich_norm:
+            self.norm_out = norm(d_model)
 
     def forward(self, x, **kwargs):
         x = self.norm(x)
         x = self.fn(x, **kwargs)
+        if self.sandwich_norm:
+            x = self.norm_out(x)
         return x
 
 class Scale(nn.Module): # scales output of fn by scale
@@ -407,6 +454,9 @@ class ConformerLayer(nn.Module):
         n_heads,
         qk_rms_norm = False,
         default_norm = DEFAULT_NORM,
+        sandwich_norm = False,
+        bias_in_ff = True,
+        transformer = False,
         **kwargs
     ):
         super().__init__()
@@ -415,21 +465,25 @@ class ConformerLayer(nn.Module):
         self.conv_kernel_size = conv_kernel_size
         self.layer_idx = layer_idx
         self.total_layers = total_layers
+        self.sandwich_norm = sandwich_norm
+        self.bias_in_ff = bias_in_ff
+        self.trasformer = transformer
 
-        self.conv = PreNorm(
-            d_model = d_model, 
-            fn = ConformerConvolution(
-                d_model = d_model,
-                kernel_size = conv_kernel_size,
-                norm_type = 'batch_renorm'
-            ),
-            norm = default_norm
-        )
+        if not self.trasformer:
+            self.conv = PreNorm(
+                d_model = d_model, 
+                fn = ConformerConvolution(
+                    d_model = d_model,
+                    kernel_size = conv_kernel_size,
+                    norm_type = 'batch_renorm'
+                ),
+                norm = default_norm
+            )
+            self.do_conv = nn.Dropout(dropout_conv)
 
-        self.do_conv = nn.Dropout(dropout_conv)
+        self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
 
-        self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model), norm = default_norm))
-        self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model), norm = default_norm))
+        self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
         self.do_ff = nn.Dropout(dropout_ff)
 
         self.attend = PreNorm(
@@ -444,8 +498,9 @@ class ConformerLayer(nn.Module):
                 qk_rms_norm = qk_rms_norm,
                 **kwargs
             ),
-            norm = default_norm
+            norm = default_norm,
         )
+        self.attn_norm_out = default_norm(d_model) if sandwich_norm else lambda x: x
 
         self.do_attn_out = nn.Dropout(min(dropout_ff, 0.1)) # don't wan't this too large
         self.norm_out = default_norm(d_model)
@@ -471,9 +526,10 @@ class ConformerLayer(nn.Module):
             flash_attn = flash_attn,
             rotary_emb_fn = rotary_emb_fn
         )
-        x = self.do_attn_out(attn_out) + x
+        x = self.attn_norm_out(self.do_attn_out(attn_out)) + x
         
-        x = self.do_conv(self.conv(x, pad_mask = pad_mask))
+        if not self.trasformer:
+            x = self.do_conv(self.conv(x, pad_mask = pad_mask)) + x
     
         x = self.do_ff(self.ff2(x)) + x
 
@@ -497,6 +553,8 @@ class EBranchConformerLayer(nn.Module):
         qk_rms_norm = False,
         has_macaron = True,
         default_norm = DEFAULT_NORM,
+        sandwich_norm = False,
+        bias_in_ff = True,
         **kwargs
     ):
         super().__init__()
@@ -506,10 +564,13 @@ class EBranchConformerLayer(nn.Module):
         self.layer_idx = layer_idx
         self.total_layers = total_layers
         self.has_macaron = has_macaron
+        self.bias_in_ff = bias_in_ff
+
+        assert sandwich_norm == False, 'sandwich norm not supported for EBranchConformerLayer'
         
         if self.has_macaron:
-            self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model), norm = default_norm))
-            self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model), norm = default_norm))
+            self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm))
+            self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm))
 
         self.do_ff = nn.Dropout(dropout_ff)
 
@@ -635,6 +696,15 @@ class Attention(nn.Module):
         ##
 
         self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=bias)
+        # # zero init (https://arxiv.org/pdf/2110.12661.pdf)
+        # ql, kl, vl = nn.Linear(n_feats, n_heads * head_dim, bias=bias), nn.Linear(n_feats, n_heads * head_dim, bias=bias), nn.Linear(n_feats, n_heads * head_dim, bias=bias)
+        # # init kl and vl to zero and ql to identity
+        # kl.weight.data.zero_()
+        # vl.weight.data.zero_()
+        # ql.weight.data.zero_()
+        # ql.weight.data.add_(torch.eye(n_feats, n_feats))
+        # self.qkv_proj.weight.data.copy_(torch.cat([ql.weight.data, kl.weight.data, vl.weight.data], dim=0))
+
         self.qkv = lambda x: rearrange(self.qkv_proj(x), "b n (h d qkv) -> qkv b n h d", qkv=3, h=n_heads, d=head_dim)
 
         self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=bias)
@@ -677,12 +747,13 @@ class Attention(nn.Module):
 
         kv, kv_to_cache = self.attatch_cache([k, v], cached_kv)
 
-        if rotary_emb_fn.learned == False:
-            q, kv[:, :, 0] = rotary_emb_fn.apply(q, kv[:, :, 0])
-        else:
-            k, v = kv[:, :, 0], kv[:, :, 1]
-            q, k = rotary_emb_fn.apply(q, k)
-            kv = torch.stack([k, v], dim=2)
+        if rotary_emb_fn is not None:
+            if rotary_emb_fn.learned == False:
+                q, kv[:, :, 0] = rotary_emb_fn.apply(q, kv[:, :, 0])
+            else:
+                k, v = kv[:, :, 0], kv[:, :, 1]
+                q, k = rotary_emb_fn.apply(q, k)
+                kv = torch.stack([k, v], dim=2)
      
         ### Flash attention stuff 
         if x.device.type == 'cuda' and flash_attn:
@@ -692,7 +763,7 @@ class Attention(nn.Module):
 
             if kv.shape[1] == q.shape[1]: # if kv_seq_len == q_seq_len use self attention else use cross attention
                 qkv = torch.cat([q[:,:,None], kv], dim=2)
-                out = self.flash_attn_fn(qkv)#, attn_mask) #!!! !!!!!!
+                out = self.flash_attn_fn(qkv, attn_mask)[0] #!!! !!!!!!
             else:
                 out = self.flash_attn_c_fn(q, kv)
                 if attn_mask is None:
@@ -716,7 +787,7 @@ class Attention(nn.Module):
                         max_seqlen_k = max_k_seq_len,
                     )
                     out = pad_input(out, indices = q_indices, batch = b, seqlen = qs)
-            out = out.to(x.dtype)
+            out = out.to(x.dtype) 
             out = rearrange(out, "b n h d -> b n (h d)")
         else:
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
@@ -727,9 +798,7 @@ class Attention(nn.Module):
         if pad_mask != None:
             out = out.masked_fill(pad_mask.unsqueeze(-1), 0)
 
-
         out = self.out_proj(out)
-
         
         return out, kv_to_cache
 

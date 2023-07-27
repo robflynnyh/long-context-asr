@@ -8,6 +8,7 @@ from omegaconf.omegaconf import OmegaConf
 
 from lcasr.utils.dataloading import SimpleDataloader, chunk_spectogram, chunk_text_json
 import traceback
+from lcasr.utils.hooks import add_debug_backwards_hooks
 
 from lcasr.utils.general import load_model, save_model, load_checkpoint
 import resource
@@ -18,6 +19,8 @@ import os
 import gc
 import madgrad
 import wandb
+
+from functools import partial
 
 from torch.cuda.amp import GradScaler
 from torch import autocast
@@ -63,7 +66,7 @@ def load_optimizer(config:Dict, model:torch.nn.Module):
     model_device = next(model.parameters()).device.type
 
     optim_type = config['optimizer']['name']
-    allowed_types = ['adam', 'madgrad']
+    allowed_types = ['adam', 'madgrad', 'mirrormadgrad']
     
     assert optim_type in allowed_types, f'Unknown optimizer {optim_type}, must be one of {allowed_types}'
     assert model_device in ['cpu', 'cuda'], f'Unknown device {model_device}, must be one of [cpu, cuda]'
@@ -74,6 +77,8 @@ def load_optimizer(config:Dict, model:torch.nn.Module):
         optimizer = Adam(model.parameters(), **optim_args) if model_device == 'cpu' else FusedAdam(model.parameters(), **optim_args)
     elif optim_type == 'madgrad':
         optimizer = madgrad.MADGRAD(model.parameters(), **optim_args)
+    elif optim_type == 'mirrormadgrad':
+        optimizer = madgrad.MirrorMADGRAD(model.parameters(), **optim_args)
 
     sheduler = CosineLRScheduler(
         optimizer = optimizer,
@@ -101,14 +106,14 @@ def blank_p(logits, tokenizer):
 
 def backwards_pass(
         model:SCConformerXL,
-        loss:torch.Tensor,
+        clip_value:float,
         optimizer:torch.optim.Optimizer,
         scheduler:torch.optim.lr_scheduler._LRScheduler,
         scaler:GradScaler,
     ):
     
     scaler.unscale_(optimizer)
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value) if clip_value > 0 else None
 
     scaler.step(optimizer)
     scaler.update()
@@ -117,7 +122,6 @@ def backwards_pass(
 
     if scheduler.is_warmup:
         scheduler.step()
-
 
 
 
@@ -131,6 +135,16 @@ def train(
         skip_to:int = 0,
     ):
     scaler = GradScaler()
+
+    #set all linear layers to not require gradients
+    # for name, param in model.named_parameters():
+    #     if 'subsampling' not in name and 'conv' in name and 'layers.5' in name:
+    #         param.requires_grad = False
+    #         print(f'Freezing {name}')
+           
+            
+    clip_value = args.config['training'].get('clip_value', 0.5) 
+    intermediate_loss_weighting = args.config['training'].get('intermediate_loss_weighting', 0.0)
 
     wandb_config = args.config['wandb']
     
@@ -157,12 +171,18 @@ def train(
     pad_id = tokenizer.pad_id()
 
     pbar = tqdm(dataloader)
-    
+    last_podcast = skip_to
+    podcasts_since_last_save = 0
     for i, batch in enumerate(pbar):
+        #if i<9: continue;
 
         # save every 100 steps
-        if i % args.config['checkpointing']['save_every_n_steps'] == 0 and i != 0:
-            save_model(model, optimizer, scheduler, i*args.config['training']['batch_size'] + skip_to, args.config)
+        cur_podcast = i*batch_size + skip_to
+        podcasts_since_last_save += (cur_podcast - last_podcast)
+        if podcasts_since_last_save > args.config['checkpointing']['save_every_n_steps']:
+            save_model(model, optimizer, scheduler, cur_podcast, args.config)
+            podcasts_since_last_save = 0
+        last_podcast = cur_podcast
 
         audio, audio_lengths, txt, _ = batch
         
@@ -229,7 +249,8 @@ def train(
                     if cur_selection_mask != None and cached_kvs != None:
                         cached_kvs = cached_kvs[cur_selection_mask]
                         cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
-                        
+                    
+                    #print(audio.shape, a_lengths.min(), a_lengths.max())
                     out = model(
                         audio_signal = audio, 
                         length = a_lengths, 
@@ -244,10 +265,20 @@ def train(
                 
                     # check for nan
                     cur_probs = out['final_posteriors']
-                    
                     B,N,C = cur_probs.shape 
-                    
                     loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
+                    
+                    if intermediate_loss_weighting != 0:
+                        interim_logits = out['iterim_posteriors']
+                        l, b, n, v = interim_logits.shape
+                        interim_logits = rearrange(interim_logits, 'l b n v -> n (l b) v')
+                        interloss = ctc_loss_fn(
+                            interim_logits,
+                            txt.repeat(l, 1),
+                            out['length'].repeat(l),
+                            t_lengths.repeat(l)
+                        ).sum() / l
+                        loss = (1 - intermediate_loss_weighting) * loss + intermediate_loss_weighting * interloss
                 
 
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
@@ -267,7 +298,14 @@ def train(
                     full_loss *= 100
                     loss_to_log = full_loss.item()
                     print(f'loss: {full_loss}')
-                    backwards_pass(model, full_loss, optimizer, scheduler, scaler)
+                    
+                    backwards_pass(
+                        model = model,
+                        clip_value = clip_value,
+                        optimizer = optimizer,
+                        scheduler = scheduler,
+                        scaler = scaler
+                    )
 
                     learning_rate = scheduler.get_last_lr()[0]
 
@@ -352,6 +390,10 @@ def main(args):
         prefetch = args.prefetch_factor,
     )
     
+    if args.debug_hooks:
+        assert wandb_config['use'], 'must have wandb enabled when - arg.debug_hooks ==  True - to log debug hooks outputs'
+        logger = partial(wandb.log, commit=False)
+        add_debug_backwards_hooks(model = model, logger = logger)
     
     final_model = train(args, model, dataloader, optimizer, scheduler, device, skip_to = step)
 
@@ -367,6 +409,8 @@ if __name__ == '__main__':
     parser.add_argument('-num_workers', '--num_workers', type=int, default=0, help='number of workers for dataloader')
     parser.add_argument('-pin_memory', '--pin_memory', action='store_true', help='pin memory for dataloader')
     parser.add_argument('-prefetch', '--prefetch_factor', type=int, default=1, help='prefetch factor for dataloader')
+
+    parser.add_argument('-debug_hooks', '--debug_hooks', action='store_true', help='add hooks to log gradient/activation info')
 
     args = parser.parse_args()
 
