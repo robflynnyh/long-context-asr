@@ -25,7 +25,7 @@ import re
 TEST_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/test/'
 DEV_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/dev/'
 
-
+import pickle as pkl
 
 
 def open_stm(path:str) -> List[str]:
@@ -113,6 +113,7 @@ def load_audio(audio_file:str):
 
 
 #'''
+@torch.no_grad()
 def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer):
     spec_n = spec.shape[-1]
     seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
@@ -230,7 +231,7 @@ def fetch_logits_(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, ove
 
 def parse_utterances(decoded_frames:List[Dict[str, any]], timings:List[Dict[str, int]]):    
     parsed_decoded_frames = []
-    buffer = 10.0
+    buffer = 2.0
     for frame in decoded_frames:
         start, end = frame['start'], frame['end']
         for timing in timings:
@@ -238,7 +239,7 @@ def parse_utterances(decoded_frames:List[Dict[str, any]], timings:List[Dict[str,
             if start >= t_start and end <= t_end:
                 parsed_decoded_frames.append(frame)
                 break
-    #print(" ".join(el['word'] for el in parsed_decoded_frames))
+    print(" ".join(el['word'] for el in parsed_decoded_frames))
     all_text = post_process(" ".join(el['word'] for el in parsed_decoded_frames))
     return all_text, parsed_decoded_frames            
 
@@ -265,22 +266,14 @@ def main(args):
     model = model.to(device)
     model.eval()
 
-    arpa_path = args.arpa_path if args.beam_width != 1 else ''
-    decoder = ctc_decoder(
-        vocab = [tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""],
-        alpha = args.alpha,
-        beta = args.beta,
-        arpa_path = args.arpa_path,
-    ) # "" = blank
 
 
     audio_files, text_files = fetch_data(path=data_path)
     paired = dict(zip(audio_files, text_files))
     
-    all_texts = []
-    all_golds = []
+    to_save = []
     for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
-        #if rec > 2: continue
+        #if rec < 5: continue
         print(f'Processing {rec+1}/{len(audio_files)}')
 
         audio_spec = load_audio(audio_files[rec])
@@ -291,25 +284,21 @@ def main(args):
         # exit()
 
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
-        decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
-        #print(decoded[0]['text'])
+      
         stm_path = paired[audio_files[rec]]
         gold_text, timings = proc_stm_and_timings(stm_path=stm_path)
-        all_text, frames = parse_utterances(decoded_frames = decoded[0]['frames'], timings = timings)
-
-        #all_text = post_process(decoded[0]['text']) #!!!!!!!!!1
-        print(all_text)
-        all_texts.append(all_text)
-        all_golds.append(gold_text)
+        to_save.append({
+            'name': paired[audio_files[rec]],
+            'gold': gold_text,
+            'timings': timings,
+            'logits': logits,
+            'ds_factor': ds_factor  
+        })
         #break
         
         
-
-
-        
-    wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
-
-    print(f'WER: {wer}')
+    with open(args.save_path, 'wb') as f:
+        pkl.dump(to_save, f)
 
 
 if __name__ == '__main__':
@@ -318,11 +307,9 @@ if __name__ == '__main__':
     parser.add_argument('-split', '--split', type=str, default='test', help='test or dev split')
     parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
-    parser.add_argument('-beams', '--beam_width', type=int, default=1, help='beam width for decoding')
-
-    parser.add_argument('-arpa', '--arpa_path', type=str, default='', help='path to arpa file')
-    parser.add_argument('-alpha', '--alpha', type=float, default=0.5, help='alpha for lm')
-    parser.add_argument('-beta', '--beta', type=float, default=0.8, help='beta for lm')
+    
+    parser.add_argument('-s', '--save_path', type=str, default='./logits/test_logits.pkl', help='path to save logits')
+    
 
     args = parser.parse_args()
     main(args)

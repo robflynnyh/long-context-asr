@@ -147,15 +147,21 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
 def preprocess_transcript(text:str):
     text = text.lower()
     text = text.replace('<silence>', '')
+    text = text.replace('<inaudible>', '')
+    text = text.replace('<laugh>', '')
+    text = text.replace('…', '')
     text = text.replace(',', '')
     text = text.replace('-', ' ')
     text = text.replace('.', '')
+    text = text.replace('?', '')
     # remove double spaces
     text = re.sub(' +', ' ', text)
     return text
 
 def postprocess_asr(text:str):
     text = text.replace('.', '')
+    text = text.replace(',', '')
+    text = text.replace('?', '')
     return text
 
 def main(args):
@@ -204,11 +210,12 @@ def main(args):
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
         decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
         out = postprocess_asr(decoded[0]['text'])
-        print(out)
         print(cur_text)
+        print(out)
+        
         all_texts.append(out)
         all_golds.append(cur_text)
-        break
+        #break
         # stm_path = paired[audio_files[rec]]
         # gold_text, timings = proc_stm_and_timings(stm_path=stm_path)
         # all_text, frames = parse_utterances(decoded_frames = decoded[0]['frames'], timings = timings)
@@ -230,7 +237,7 @@ if __name__ == '__main__':
     parser.add_argument('-split', '--split', type=str, default='test', help='test or dev split')
     parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
-    parser.add_argument('-beams', '--beam_width', type=int, default=10, help='beam width for decoding')
+    parser.add_argument('-beams', '--beam_width', type=int, default=1, help='beam width for decoding')
 
     args = parser.parse_args()
     main(args)

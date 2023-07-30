@@ -3,5 +3,6 @@
 *.out
 *.log
 .fuse*
+*.pkl
 
 wandb/
