@@ -14,7 +14,7 @@ model:
   subsampling_conv_channels: 256
   subsampling_norm_out: true
   subsampling_act: 'silu'
-  self_condition_subsampling: true
+  self_condition_subsampling: false
   conv_kernel_size: 9
   qk_rms_norm: false
   shift_kvs: false
@@ -32,14 +32,14 @@ model:
 optimizer:
   name: 'madgrad'
   args:
-    lr: 5e-4
+    lr: 1e-3
 
 scheduler:
   warmup_steps: 3000
 
 
 audio_chunking: # 360000 (max = 1 hour)
-  size: 8192 # 1e4
+  size: 1024 # 1e4
   overlap: 0 # not using currently...
 
 wandb:
@@ -57,11 +57,11 @@ data:
   path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
   
 training:
-  batch_size: 44
-  backprop_every: 1
+  batch_size: 176
+  backprop_every: 2
   max_seq_len: 0 # max cache length
-  clip_value: 0.25
-  intermediate_loss_weighting: 0.5
+  clip_value: 0.8
+  intermediate_loss_weighting: 0.0
 
 # size: 1024 = batch size 352
 # size: 2048 = batch size 176

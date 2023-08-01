@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
 from omegaconf.omegaconf import OmegaConf
 
-from lcasr.utils.audio_tools import processing_chain, total_seconds
+from lcasr.utils.audio_tools import processing_chain, total_seconds, total_frames
 
 from lcasr.utils.general import load_model
 from pyctcdecode import build_ctcdecoder
@@ -37,6 +37,7 @@ def proc_stm_and_timings(stm_path:str):
     stm = open_stm(stm_path)
     all_text = ""
     timings = []
+    remove_timings = []
     for line in stm:
         sline = line.split(' ')
         if len(sline) < 6:
@@ -44,6 +45,7 @@ def proc_stm_and_timings(stm_path:str):
         a_id, s_id, spk, start, end, meta = sline[:6]
         text = ' '.join(sline[6:])
         if text == 'ignore_time_segment_in_scoring':
+            remove_timings.append({'start': float(start), 'end': float(end)})
             continue
         all_text += text + ' '
         timings.append({'start': float(start), 'end': float(end)})
@@ -53,7 +55,7 @@ def proc_stm_and_timings(stm_path:str):
     all_text = re.sub(r" '([a-z])", r"'\1", all_text)
     # remove multiple spaces
     all_text = re.sub(r" +", r" ", all_text)
-    return all_text, timings
+    return all_text, timings, remove_timings
 
 def ctc_decoder(vocab, alpha, beta, arpa_path=''):
     arpa_path = None if arpa_path == '' else arpa_path
@@ -114,7 +116,7 @@ def load_audio(audio_file:str):
 
 #'''
 @torch.no_grad()
-def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer):
+def fetch_logits_(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer):
     spec_n = spec.shape[-1]
     seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
     seq_len = seq_len if seq_len < spec_n else spec_n
@@ -178,7 +180,7 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     return logits.squeeze(0).numpy()
 #'''
 
-def fetch_logits_(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer):
+def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer):
     spec_n = spec.shape[-1]
     seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
     seq_len = seq_len if seq_len < spec_n else spec_n
@@ -229,21 +231,16 @@ def fetch_logits_(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, ove
 
 #'''
 
-def parse_utterances(decoded_frames:List[Dict[str, any]], timings:List[Dict[str, int]]):    
-    parsed_decoded_frames = []
-    buffer = 2.0
-    for frame in decoded_frames:
-        start, end = frame['start'], frame['end']
-        for timing in timings:
-            t_start, t_end = timing['start'] - buffer, timing['end'] + buffer
-            if start >= t_start and end <= t_end:
-                parsed_decoded_frames.append(frame)
-                break
-    print(" ".join(el['word'] for el in parsed_decoded_frames))
-    all_text = post_process(" ".join(el['word'] for el in parsed_decoded_frames))
-    return all_text, parsed_decoded_frames            
+def zero_out_spectogram(spec:torch.Tensor, remove_timings:List[Dict[str, int]]):
+    buffer = -0.5
 
+    for timing in remove_timings:
+        start, end = timing['start'] - buffer, timing['end'] + buffer
 
+        start_frame, end_frame = map(total_frames, [start, end])
+        spec[:,:,start_frame:end_frame] = 0
+
+    return spec
 
 
 def main(args):
@@ -276,7 +273,12 @@ def main(args):
         #if rec < 5: continue
         print(f'Processing {rec+1}/{len(audio_files)}')
 
+        stm_path = paired[audio_files[rec]]
+        gold_text, timings, remove_timings = proc_stm_and_timings(stm_path=stm_path)
+
         audio_spec = load_audio(audio_files[rec])
+        audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
+        
         print('\n\n'+paired[audio_files[rec]]+'\n\n')
         
         logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
@@ -285,8 +287,7 @@ def main(args):
 
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
       
-        stm_path = paired[audio_files[rec]]
-        gold_text, timings = proc_stm_and_timings(stm_path=stm_path)
+
         to_save.append({
             'name': paired[audio_files[rec]],
             'gold': gold_text,

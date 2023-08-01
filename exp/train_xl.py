@@ -186,12 +186,19 @@ def train(
 
         audio, audio_lengths, txt, _ = batch
         
+        audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
+        # if len(audio_chunks_) != 257:
+        #     print(i)
+        #     continue
         txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
 
-        audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
+
+        
+
         del audio
         chunks = []
         culm_lengths_audio = torch.zeros_like(audio_lengths)
+
 
         for ix, el in enumerate(audio_chunks_):
             remove_mask = ~(culm_lengths_audio > audio_lengths)
@@ -288,7 +295,7 @@ def train(
                 # cur_tokens_in_loss += B * N
                 cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch
 
-                scaler.scale(((loss) / (chunk_size*batch_size)) * 100).backward()
+                scaler.scale(((loss) / (chunk_size*batch_size)) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
                 last_kv_set.detach_() if last_kv_set != None else None
 
 

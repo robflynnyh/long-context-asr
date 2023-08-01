@@ -20,6 +20,9 @@ import re
 import json
 from wer import word_error_rate_detail 
 
+from whisper.normalizers import EnglishTextNormalizer
+normalize = EnglishTextNormalizer()
+
 TEST_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/test_original'
 DEV_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/dev_original'
 ALL_TEXT_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/full_transcripts.json'
@@ -209,9 +212,10 @@ def main(args):
 
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
         decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
-        out = postprocess_asr(decoded[0]['text'])
-        print(cur_text)
-        print(out)
+        out = normalize(decoded[0]['text']).lower()
+        cur_text = normalize(cur_text).lower()
+        #out = postprocess_asr(decoded[0]['text'])
+        print(cur_text, '\n', out, '\n\n')
         
         all_texts.append(out)
         all_golds.append(cur_text)
