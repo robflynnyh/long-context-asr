@@ -296,11 +296,6 @@ class SCConformerXL(nn.Module):
         return self.forward_for_export(audio_signal=audio_signal, decoder=self.decoder, length=length, cached_kvs=cached_kvs, cached_kv_lengths=cached_kv_lengths)
 
 
-    @staticmethod
-    def checkfornan(x, name='any'):
-        if torch.isnan(x).any():
-            print(f'nan in {name}')
-            exit()
 
     def forward_for_export(self, audio_signal, decoder, length = None, cached_kvs = None, cached_kv_lengths = None):
         max_audio_length: int = audio_signal.size(-1)
@@ -326,7 +321,7 @@ class SCConformerXL(nn.Module):
         if self.use_rotary:
             max_seq_len = full_kv_lengths.max()
             cos, sin = self.rotary_pos_emb(max_seq_len, audio_signal.device)
-            q_offset = 0 if cached_kvs is None else cached_kvs.shape[-2]
+            q_offset = 0 if cached_kvs is None else cached_kvs.shape[1]
             rotary_emb_fn = apply_rotary(cos = cos, sin = sin, q_offset = q_offset, learned = self.rotary_pos_emb.learned_freq)
         
 
