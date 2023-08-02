@@ -135,13 +135,6 @@ def train(
         skip_to:int = 0,
     ):
     scaler = GradScaler()
-
-    #set all linear layers to not require gradients
-    # for name, param in model.named_parameters():
-    #     if 'subsampling' not in name and 'conv' in name and 'layers.5' in name:
-    #         param.requires_grad = False
-    #         print(f'Freezing {name}')
-           
             
     clip_value = args.config['training'].get('clip_value', 0.5) 
     intermediate_loss_weighting = args.config['training'].get('intermediate_loss_weighting', 0.0)
@@ -180,6 +173,7 @@ def train(
         cur_podcast = i*batch_size + skip_to
         podcasts_since_last_save += (cur_podcast - last_podcast)
         if podcasts_since_last_save > args.config['checkpointing']['save_every_n_steps']:
+            torch.cuda.empty_cache() 
             save_model(model, optimizer, scheduler, cur_podcast, args.config)
             podcasts_since_last_save = 0
         last_podcast = cur_podcast
@@ -187,13 +181,11 @@ def train(
         audio, audio_lengths, txt, _ = batch
         
         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
-        # if len(audio_chunks_) != 257:
-        #     print(i)
-        #     continue
+        
         txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
 
 
-        
+        backwards_every_loss = 0.0
 
         del audio
         chunks = []
@@ -290,7 +282,8 @@ def train(
 
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
                 cur_loss += loss
-    
+
+                #backwards_every_loss += loss
                 
                 # cur_tokens_in_loss += B * N
                 cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch

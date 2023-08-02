@@ -1,7 +1,7 @@
 template_info:
-  create: 4 # number of experiments to create
+  create: 2 # number of experiments to create
   include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training'] # keys to include in experiments config
-  template_keys: ['checkpointing.dir', 'wandb.name', 'training.batch_size', 'training.backprop_every', 'training.max_seq_len'] # keys to use to create experiments
+  template_keys: ['checkpointing.dir', 'wandb.name', 'optimizer.args.lr'] # keys to use to create experiments
 
 model:
   feat_in: 80
@@ -26,7 +26,7 @@ model:
   decoder_norm: true
   use_rotary: true
   encoder_mode: 'conformer'
-  history_vector: true ######################### !!!!!!!!!!!!!!!!
+  history_vector: false ######################### !!!!!!!!!!!!!!!!
   default_norm: 'rms_norm'
   sandwich_norm: false
   bias_in_ff: false
@@ -35,32 +35,28 @@ model:
 optimizer:
   name: 'madgrad'
   args:
-    lr: 3e-3
+    lr: [3e-3, 4e-3]
 
 scheduler:
   warmup_steps: 3000
 
 audio_chunking: # 360000 (max = 1 hour)
-  size: 2048
+  size: 512
   overlap: 0 # not using currently...
 
 wandb:
   use: true
   project_name: "spotify_long_context"
   name: [ 
-    '2048_3e3_s128_hv',
-    '2048_3e3_s512_hv',
-    '2048_3e3_s1024_hv',
-    '2048_3e3_s2048_hv',
+    '512_3e3',
+    '512_4e3',
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/2048_3e3_s128_hv',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/2048_3e3_s512_hv',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/2048_3e3_s1024_hv',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/2048_3e3_s2048_hv',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/512_3e3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/512_4e3',
   ]
   save_every_n_steps: 2000
 
@@ -70,12 +66,13 @@ data:
   path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
   
 training:
-  batch_size: [176, 176, 88, 88]
-  backprop_every: [1, 1, 2, 2]
-  max_seq_len: [128, 512, 1024, 2048]
+  batch_size: 176
+  backprop_every: 4
+  max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
 
+# size: 512 = batch size 704
 # size: 1024 = batch size 352
 # size: 2048 = batch size 176
 # size: 4096 = batch size 88
