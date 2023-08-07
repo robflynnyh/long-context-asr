@@ -127,7 +127,7 @@ def train(
     i = -1
     finished = False
     dataloader_iter = iter(dataloader)
-    total_recordings = len(dataloader.dataset) * dataloader.batch_size
+    total_recordings = len(dataloader) * dataloader.batch_size
     pbar = tqdm(total = len(dataloader), desc = f'Training')
 
     while not finished:#################
