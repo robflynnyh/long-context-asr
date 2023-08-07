@@ -1,12 +1,10 @@
 template_info:
-  create: 2 # number of experiments to create
-  include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training'] # keys to include in experiments config
+  create: 7 # number of experiments to create
+  include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training', 'sequence_scheduler'] # keys to include in experiments config
   template_keys: [
     'checkpointing.dir', 
     'wandb.name', 
-    'training.max_seq_len',
-    'training.backwards_every',
-    'model.num_position_embeddings'
+    'sequence_scheduler.increase_every',
   ] # keys to use to create experiments
 
 model:
@@ -43,25 +41,45 @@ optimizer:
     lr: 3e-3
 
 scheduler:
-  warmup_steps: 4000
+  warmup_steps: 1500
 
 audio_chunking: # 360000 (max = 1 hour)
-  size: 2048
+  size: 512
   overlap: 0 # not using currently...
+
+sequence_scheduler:
+  increase_every: [3000, 5000, 10000, 15000, 20000, 25000, 30000]
+  stop_after: 90000
+  start_after: 0
+  max_sequence_length: 360000
+  increase_by_multiplier: 2
+  batch_size_multiplier: 0.5
+
+
 
 wandb:
   use: true
   project_name: "spotify_long_context"
   name: [ 
-    '2048_3e3_lp',
-    '2048_3e3_lp_s128_b2'
+    'seq_scheduler_3k',
+    'seq_scheduler_5k',
+    'seq_scheduler_10k',
+    'seq_scheduler_15k',
+    'seq_scheduler_20k',
+    'seq_scheduler_25k',
+    'seq_scheduler_30k',
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/2048_3e3_lp',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/2048_3e3_lp_s128_b2'
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_3k',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_5k',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_10k',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_15k',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_20k',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_25k',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_30k',
   ]
   save_every_n_steps: 2000
 
@@ -71,10 +89,10 @@ data:
   path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
   
 training:
-  batch_size: 88
-  backprop_every: 2
-  backwards_every: [1, 2]
-  max_seq_len: [0, 128]
+  batch_size: 704
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
 

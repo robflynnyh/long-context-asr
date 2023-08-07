@@ -19,60 +19,31 @@ model:
   self_conditioning: true
   gated_sc: false
   decoder_norm: true
-  use_rotary: false
+  use_rotary: true
   encoder_mode: conformer
   default_norm: rms_norm
   sandwich_norm: false
   bias_in_ff: false
   checkpoint_every_n_layers: 0
-
 optimizer:
   name: madgrad
   args:
-    lr: 3e-3
-
+    lr: 0.003
 scheduler:
-  warmup_steps: 3000
-
+  warmup_steps: 1500
 audio_chunking:
   size: 512
   overlap: 0
-
-sequence_scheduler:
-  increase_every: 100
-  stop_after: 90000
-  start_after: 0
-  max_sequence_length: 360000
-  increase_by_multiplier: 2
-  batch_size_multiplier: 0.5
-
-# 512:0
-# 1024:4000
-# 2048: 14000
-# 4096: 24000
-# 8192: 34000
-# 16384: 44000
-# 32768: 54000
-# 65536: 64000
-# 131072: 74000
-# 262144: 84000
-# 360000: 90000
-
-
-
 wandb:
   use: true
   project_name: spotify_long_context
-  name: 'test'
+  name: seq_scheduler_3k
   id: ''
-
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/test
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_3k
   save_every_n_steps: 2000
-
 data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
-
 training:
   batch_size: 704
   backprop_every: 1
@@ -80,14 +51,10 @@ training:
   max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
-
-
-# size: 512 = batch size 704
-# size: 1024 = batch size 352
-# size: 2048 = batch size 176
-# size: 4096 = batch size 88
-# size: 8192 = batch size 44
-# size: 16384 = batch size 22
-# size: 65536 = batch size 5 
-# size: 131072 = batch size 2
-# size: 360000 (1 hour) =  batch size 1
+sequence_scheduler:
+  increase_every: 3000
+  stop_after: 90000
+  start_after: 0
+  max_sequence_length: 360000
+  increase_by_multiplier: 2
+  batch_size_multiplier: 0.5

@@ -4,9 +4,41 @@ from lcasr.models.sconformer_xl import SCConformerXL
 from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler
 import os
 
+from apex.optimizers import FusedAdam
+from torch.optim import Adam
+import madgrad
+
 def load_model(config:Dict, vocab_size):
     model = SCConformerXL(**config.model, vocab_size=vocab_size)
     return model
+
+def load_optimizer(config:Dict, model:torch.nn.Module):
+    # check device
+    model_device = next(model.parameters()).device.type
+
+    optim_type = config['optimizer']['name']
+    allowed_types = ['adam', 'madgrad', 'mirrormadgrad']
+    
+    assert optim_type in allowed_types, f'Unknown optimizer {optim_type}, must be one of {allowed_types}'
+    assert model_device in ['cpu', 'cuda'], f'Unknown device {model_device}, must be one of [cpu, cuda]'
+
+    optim_args = config['optimizer']['args']
+
+    if optim_type == 'adam':
+        optimizer = Adam(model.parameters(), **optim_args) if model_device == 'cpu' else FusedAdam(model.parameters(), **optim_args)
+    elif optim_type == 'madgrad':
+        optimizer = madgrad.MADGRAD(model.parameters(), **optim_args) # best
+    elif optim_type == 'mirrormadgrad':
+        optimizer = madgrad.MirrorMADGRAD(model.parameters(), **optim_args)
+
+    sheduler = CosineLRScheduler(
+        optimizer = optimizer,
+        warmup_steps = config['scheduler']['warmup_steps'],
+        peak_value = config['optimizer']['args']['lr'],
+        final_value = 0.0, # decay to 0
+    )
+
+    return optimizer, sheduler
 
 def save_model(
         model:torch.nn.Module,
@@ -51,6 +83,7 @@ def load_checkpoint(
     checkpoint = torch.load(path, map_location=device)
     if args and args.remove_scheduler:
         checkpoint['scheduler'] = None
+        checkpoint['sequence_scheduler'] = None
     try:
         model.load_state_dict(checkpoint['model'])
     except:

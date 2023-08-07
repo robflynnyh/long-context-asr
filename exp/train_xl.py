@@ -6,19 +6,20 @@ from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
 from omegaconf.omegaconf import OmegaConf
 
-from lcasr.utils.dataloading import SimpleDataloader, chunk_spectogram, chunk_text_json
+from lcasr.utils.dataloading import VariableBatchSimpleDataloader, chunk_spectogram, chunk_text_json
 import traceback
 from lcasr.utils.hooks import add_debug_backwards_hooks
+from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager
+from lcasr.utils.helpers import exists
 
-from lcasr.utils.general import load_model, save_model, load_checkpoint
+from lcasr.utils.general import load_model, save_model, load_checkpoint, load_optimizer
 import resource
-from lcasr.utils.scheduling import CosineLRScheduler
 
 from einops import rearrange
 import numpy as np
 import os
 import gc
-import madgrad
+
 import wandb
 from contextlib import nullcontext
 from functools import partial
@@ -26,43 +27,16 @@ from functools import partial
 from torch.cuda.amp import GradScaler
 from torch import autocast
 
-from apex.optimizers import FusedAdam
-from torch.optim import Adam
+
 
 from typing import Dict, List, Tuple
 
 from collections import defaultdict
 
 import warnings
+import random
+random.seed(1234)
 
-
-def load_optimizer(config:Dict, model:torch.nn.Module):
-    # check device
-    model_device = next(model.parameters()).device.type
-
-    optim_type = config['optimizer']['name']
-    allowed_types = ['adam', 'madgrad', 'mirrormadgrad']
-    
-    assert optim_type in allowed_types, f'Unknown optimizer {optim_type}, must be one of {allowed_types}'
-    assert model_device in ['cpu', 'cuda'], f'Unknown device {model_device}, must be one of [cpu, cuda]'
-
-    optim_args = config['optimizer']['args']
-
-    if optim_type == 'adam':
-        optimizer = Adam(model.parameters(), **optim_args) if model_device == 'cpu' else FusedAdam(model.parameters(), **optim_args)
-    elif optim_type == 'madgrad':
-        optimizer = madgrad.MADGRAD(model.parameters(), **optim_args)
-    elif optim_type == 'mirrormadgrad':
-        optimizer = madgrad.MirrorMADGRAD(model.parameters(), **optim_args)
-
-    sheduler = CosineLRScheduler(
-        optimizer = optimizer,
-        warmup_steps = config['scheduler']['warmup_steps'],
-        peak_value = config['optimizer']['args']['lr'],
-        final_value = 0.0, # decay to 0
-    )
-
-    return optimizer, sheduler
 
 def blank_p(logits, tokenizer):
     lset = logits.detach().cpu()
@@ -89,10 +63,8 @@ def backwards_pass(
     
     scaler.unscale_(optimizer)
     torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value) if clip_value > 0 else None
-
     scaler.step(optimizer)
     scaler.update()
-
     optimizer.zero_grad()
 
     if scheduler.is_warmup:
@@ -105,7 +77,8 @@ def train(
         model:torch.nn.Module, 
         dataloader:torch.utils.data.DataLoader, 
         optimizer:torch.optim.Optimizer,
-        scheduler:torch.optim.lr_scheduler._LRScheduler, 
+        scheduler:CosineLRScheduler,
+        sequence_scheduler:SequenceWarmupManager,
         device:torch.device,
         skip_to:int = 0,
     ):
@@ -124,7 +97,9 @@ def train(
     ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
 
     overlap = args.config.audio_chunking['overlap']
-    ds_overlap = overlap // model.subsampling_factor
+    if overlap > 0:
+        raise NotImplementedError('Overlap during trainig not implemented (also might not be a good idea :P)')
+
     backprop_every = args.config['training']['backprop_every']
     backwards_every = args.config['training'].get('backwards_every', 1)
     assert backprop_every >= backwards_every, f'backprop_every ({backprop_every}) must be >= backwards_every ({backwards_every})'
@@ -136,35 +111,58 @@ def train(
     cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
 
     tokenizer = dataloader.tokenizer
-    chunk_size = dataloader.chunk_size
-    chunk_overlap = dataloader.chunk_overlap
+    chunk_size = args.config.audio_chunking['size']
+    chunk_overlap = overlap
+
+    if exists(sequence_scheduler):
+        chunk_size = sequence_scheduler.cur_sequence_length
+        batch_size = sequence_scheduler.cur_batch_size
+
     pad_id = tokenizer.pad_id()
 
-    pbar = tqdm(dataloader)
     last_podcast = skip_to
+    cur_podcast = skip_to
     podcasts_since_last_save = 0
-    for i, batch in enumerate(pbar):
-        #if i<9: continue;
 
-        # save every 100 steps
-        cur_podcast = i*batch_size + skip_to
+    i = -1
+    finished = False
+    dataloader_iter = iter(dataloader)
+    total_recordings = len(dataloader.dataset) * dataloader.batch_size
+    pbar = tqdm(total = len(dataloader), desc = f'Training')
+
+    while not finished:#################
+        try:
+            batch = next(dataloader_iter)
+            i += 1
+            pbar.update(1) if i > 0 else None
+        except StopIteration:
+            finished = True
+            continue
+        ################################
+
+        audio, audio_lengths, txt, _ = batch
+        cur_batch_size = audio.shape[0]
+
+        ###############################
+        cur_podcast += audio.shape[0]
         podcasts_since_last_save += (cur_podcast - last_podcast)
         if podcasts_since_last_save > args.config['checkpointing']['save_every_n_steps']:
             torch.cuda.empty_cache() 
-            save_model(model, optimizer, scheduler, cur_podcast, args.config)
+            save_model(
+                model = model, 
+                optimizer = optimizer, 
+                scheduler = scheduler, 
+                podcast_step = cur_podcast, 
+                config = args.config,
+                sequence_scheduler = sequence_scheduler,
+            )
             podcasts_since_last_save = 0
         last_podcast = cur_podcast
-
-        audio, audio_lengths, txt, _ = batch
+        ###############################
+        
         
         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
-        
-        # if len(audio_chunks_) != 497:
-        #     print(len(audio_chunks_), ' skipping')
-        #     continue
-
         txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
-
 
         backwards_every_loss = 0.0
         steps_since_backwards = 0
@@ -173,8 +171,9 @@ def train(
         chunks = []
         culm_lengths_audio = torch.zeros_like(audio_lengths)
 
-
+        ################################
         for ix, el in enumerate(audio_chunks_):
+
             remove_mask = ~(culm_lengths_audio > audio_lengths)
             cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
             cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
@@ -182,7 +181,8 @@ def train(
             enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el[ix])) for i, el in enumerate(txt_chunks) if remove_mask[i]]
             enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
             enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
-
+            if enc_txt_chunks_lengths.max() == 0:
+                continue # skip if none contain text (bad batch)
             chunks.append({
                 'audio':cur_chunks,
                 'txt':enc_txt_chunks,
@@ -194,24 +194,26 @@ def train(
 
             culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
 
+        # shuffle chunks if not using cache
+        if max_cache_length == 0:
+            random.shuffle(chunks)
 
         was_warmup = scheduler.is_warmup
         if was_warmup:
             scheduler.is_warmup = scheduler.is_warming_up()
             if not scheduler.is_warmup and was_warmup:
-                current_recording = i * args.config['training']['batch_size'] 
-                total_recordings = len(dataloader) * args.config['training']['batch_size'] 
+                current_recording = cur_podcast
                 remaining_recordings = total_recordings - current_recording
-                remaining_steps = remaining_recordings // args.config['training']['batch_size']
-                scheduler.set_cosine_schedule(remaining_steps)
+                scheduler.set_cosine_schedule(remaining_recordings)
 
         prev_selection_mask = None # selection mask from previous chunk
         last_kv_set = None
+        ################################
  
         try:
             for ix, chunk_json in enumerate(chunks):
                 print(f'chunk {ix}/{len(chunks)}')
-              
+               
                 audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
                 txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
                 selection_mask = chunk_json['selection_mask']
@@ -231,9 +233,7 @@ def train(
                         cached_kvs = cached_kvs[cur_selection_mask]
                         cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
                     
-                    #print(audio.shape, a_lengths.min(), a_lengths.max())
-                    # if cached_kvs != None:
-                    #     print('cached_kvs', cached_kvs.shape, cached_kv_lengths.shape)
+
                     out = model(
                         audio_signal = audio, 
                         length = a_lengths, 
@@ -244,15 +244,11 @@ def train(
                     if max_cache_length != 0:
                         out_kvs = out['kvs_to_cache'].clone()
                         last_kv_set = out_kvs[:, -max_cache_length:].clone()
-                        #print('last_kv_set', last_kv_set.shape)
                     
-                
-                    # check for nan
                     cur_probs = out['final_posteriors']
                     B,N,C = cur_probs.shape 
                     loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
                     
-
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
                 cur_loss += loss
 
@@ -290,17 +286,16 @@ def train(
                             'loss': loss_to_log,
                             'blank_p': blank_prob,
                             'learning_rate': learning_rate,
+                            'sequence_length': chunk_size,
+                            'batch_size': batch_size,
                         })
-
                     
                     cur_tokens_in_loss = 0
                     cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
 
                 prev_selection_mask = selection_mask.clone()
 
-
-
-        except RuntimeError as e: # illegal mem access sometimes happening with flash attention.. 0: 
+        except RuntimeError as e: 
             if 'an illegal memory access was encountered' in str(e): 
                 print(e,'\n --- skipping batch ---')
                 continue
@@ -309,13 +304,31 @@ def train(
                 raise e
 
         if not scheduler.is_warmup: # step every batch
-            scheduler.step()
-        
+            scheduler.step(epoch = cur_podcast)
+
+        if exists(sequence_scheduler):
+            to_update, new_seq_len, new_bs = sequence_scheduler.step(steps = cur_batch_size)
+            if to_update:
+                chunk_size = new_seq_len
+                batch_size = new_bs
+                dataloader.update_batch_size(
+                    batch_size = batch_size,
+                    skip_to = cur_podcast,
+                )
+                dataloader_iter = iter(dataloader)
+                pbar.total = len(dataloader) # update total of tqdm
+                
+              
         del chunks
         
-
-    # save final model
-    save_model(model, optimizer, None, i*args.config['training']['batch_size'] + skip_to, args.config)
+    save_model( # save final model
+        model = model, 
+        optimizer = optimizer, 
+        scheduler = scheduler, 
+        podcast_step = cur_podcast,
+        config = args.config,
+        sequence_scheduler = sequence_scheduler,
+    )
     return model
             
             
@@ -332,7 +345,6 @@ def main(args):
     tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
 
-    print(args.config)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
@@ -347,20 +359,31 @@ def main(args):
 
     model = model.to(device)
     optimizer, scheduler = load_optimizer(args.config, model)
+
+    sequence_scheduler = None
+    if 'sequence_scheduler' in args.config:
+        sequence_scheduler = SequenceWarmupManager(
+            initial_batch_size = args.config['training']['batch_size'],
+            initial_sequence_length = args.config['audio_chunking']['size'],
+            **args.config['sequence_scheduler']
+        )
+
     step = load_checkpoint(
         args = args, 
         model = model, 
         optimizer = optimizer, 
         scheduler = scheduler, 
+        sequence_scheduler = sequence_scheduler,
         path = args.config['checkpointing']['dir'],
         device = device
     )
+
     if args.reset_step:
         step = 0
 
     print(f'Starting from podcast: {step}')
     # skip data up to step
-    dataloader = SimpleDataloader(
+    dataloader = VariableBatchSimpleDataloader(
         pairs = paired_data, 
         tokenizer = tokenizer, 
         batch_size = args.config['training']['batch_size'],
@@ -377,7 +400,20 @@ def main(args):
         logger = partial(wandb.log, commit=False)
         add_debug_backwards_hooks(model = model, logger = logger)
     
-    final_model = train(args, model, dataloader, optimizer, scheduler, device, skip_to = step)
+    if sequence_scheduler and dataloader.batch_size != sequence_scheduler.cur_batch_size:
+        print('WARNING: dataloader batch size does not match sequence scheduler batch size, updating dataloader batch size')
+        dataloader.update_batch_size(batch_size = sequence_scheduler.cur_batch_size, skip_to = step)
+
+    final_model = train(
+        args = args, 
+        model = model, 
+        dataloader = dataloader, 
+        optimizer = optimizer, 
+        scheduler = scheduler,
+        sequence_scheduler = sequence_scheduler, 
+        device = device, 
+        skip_to = step
+    )
 
 
 

@@ -96,27 +96,44 @@ def load_audio(audio_file:str):
 
 
 
-def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer):
+@torch.no_grad()
+def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer, use_tqdm=True):
     spec_n = spec.shape[-1]
+    downsampling_factor = args.config['model']['subsampling_factor']
     seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
     seq_len = seq_len if seq_len < spec_n else spec_n
     overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
+    cache_len = args.cache_len if args.cache_len != -1 else args.config['training']['max_seq_len']
+    #assert overlap == 0 or cache_len == 0, 'Cannot use overlap and cache_len at the same time'
 
-    print(f'Using seq_len: {seq_len} and overlap: {overlap}')
+    assert overlap / downsampling_factor == overlap // downsampling_factor, 'Overlap must be a multiple of the downsampling factor'
 
-    all_logits = torch.zeros((1, spec_n//4 + 10, tokenizer.vocab_size() + 1))
-    logit_count = torch.zeros((1, spec_n//4 + 10, tokenizer.vocab_size() + 1))
+    print(f'Using seq_len: {seq_len} and overlap: {overlap} and cache_len: {cache_len}')
+
+    all_logits = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
+    logit_count = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
     
     logit_position = 0
     
-    
-    for i in tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))):
+    prev_cache = None
+    pbar = tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))) if use_tqdm else range(0, spec_n, seq_len-overlap)
+    for i in pbar:
         audio_chunk = spec[:, :, i:i+seq_len]
-        # normalise chunk
-        #audio_chunk = (audio_chunk - audio_chunk.mean(-1, keepdim=True)) / audio_chunk.std(-1, keepdim=True)
         u_len = audio_chunk.shape[-1]
+
+        if u_len < (seq_len - overlap):
+            continue
+
         audio_chunk = audio_chunk.to(model.device)
-        out = model(audio_chunk)
+        out = model(
+            audio_signal = audio_chunk,
+            cached_kvs = prev_cache,
+            cached_kv_lengths = None if prev_cache is None else torch.LongTensor([prev_cache.shape[1]] * prev_cache.shape[0]).to(prev_cache.device)
+        )
+
+        if cache_len != 0:
+            prev_cache = out['kvs_to_cache'][:, -cache_len:].clone()
+
         logits = out['final_posteriors'].detach().cpu()
         # convert to prob
         logits = torch.exp(logits)
@@ -127,9 +144,13 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
         if i != 0:
             logit_position -= overlap_ds
 
+        #logit_position = i 
+
         logit_count[:, logit_position:logit_position+ds_len, :] += 1
         all_logits[:, logit_position:logit_position+ds_len, :] += logits
         logit_position += ds_len 
+
+        #print(logit_position, overlap_ds, '()', u_len, i, i+seq_len, audio_chunk.shape, ratio, ds_len)
         
         
     B,N,C = all_logits.shape
@@ -234,6 +255,10 @@ def main(args):
 
     print(f'WER: {wer}')
 
+    if args.log != '':
+        with open(args.log, 'a') as f:
+            f.write(f'{args.checkpoint}\t overlap: {args.overlap}\t seq_len: {args.seq_len}\t WER: {wer}\n')
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -242,6 +267,8 @@ if __name__ == '__main__':
     parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-beams', '--beam_width', type=int, default=1, help='beam width for decoding')
+    parser.add_argument('-cache_len', '--cache_len', type=int, default=-1, help='cache length for decoding')
+    parser.add_argument('-log', '--log', type=str, default='')
 
     args = parser.parse_args()
     main(args)

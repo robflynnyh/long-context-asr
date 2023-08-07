@@ -55,22 +55,34 @@ class SequenceWarmupManager():
         self.cur_batch_size = initial_batch_size
         self.steps_since_last_increase = steps_since_last_increase
 
-    def __call__(self, steps = 1):
+    def step(self, steps = 1):
         if self.increase_every == -1: # disabled
             return False, self.cur_sequence_length, self.cur_batch_size
-
+        next_seq_len = max(int(self.cur_sequence_length * self.increase_by_multiplier), 1)
+        
         self.cur_position += steps
         if self.cur_position < self.start_after:
             return False, self.cur_sequence_length, self.cur_batch_size
-        elif self.cur_position >= self.stop_after:
+
+        elif self.cur_position >= self.stop_after and self.steps_since_last_increase < self.increase_every/2:
             return False, self.cur_sequence_length, self.cur_batch_size
+
         elif self.cur_sequence_length * self.increase_by_multiplier > self.max_sequence_length:
-            return False, self.cur_sequence_length, self.cur_batch_size
+            if self.cur_sequence_length != self.max_sequence_length:
+                next_seq_len = self.max_sequence_length
+            else:
+                return False, self.cur_sequence_length, self.cur_batch_size
+
+        elif self.cur_position >= self.stop_after and self.steps_since_last_increase >= self.increase_every/2: # double
+            self.steps_since_last_increase = 0
+            self.cur_sequence_length = next_seq_len
+            self.cur_batch_size = max(int(self.cur_batch_size * self.batch_size_multiplier), 1)
+            return True, self.cur_sequence_length, self.cur_batch_size
 
         self.steps_since_last_increase += steps
         if self.steps_since_last_increase >= self.increase_every:
             self.steps_since_last_increase = 0
-            self.cur_sequence_length = max(int(self.cur_sequence_length * self.increase_by_multiplier), 1)
+            self.cur_sequence_length = next_seq_len
             self.cur_batch_size = max(int(self.cur_batch_size * self.batch_size_multiplier), 1)
             return True, self.cur_sequence_length, self.cur_batch_size
         else:
