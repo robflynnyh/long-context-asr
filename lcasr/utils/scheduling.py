@@ -45,7 +45,7 @@ class SequenceWarmupManager():
         self.increase_every = increase_every
         self.stop_after = stop_after
         self.start_after = start_after
-        self.initial_sequence_length = initial_sequence_length
+        
         self.max_sequence_length = max_sequence_length
         self.increase_by_multiplier = increase_by_multiplier
         self.cur_position = cur_position
@@ -67,8 +67,16 @@ class SequenceWarmupManager():
         self.steps_since_last_increase += steps
         if self.steps_since_last_increase >= self.increase_every:
             self.steps_since_last_increase = 0
-            self.cur_sequence_length = int(self.cur_sequence_length * self.increase_by_multiplier)
-            self.cur_batch_size = int(self.cur_batch_size * self.batch_size_multiplier)
+            self.cur_sequence_length = max(int(self.cur_sequence_length * self.increase_by_multiplier), 1)
+            self.cur_batch_size = max(int(self.cur_batch_size * self.batch_size_multiplier), 1)
             return True, self.cur_sequence_length, self.cur_batch_size
         else:
             return False, self.cur_sequence_length, self.cur_batch_size
+
+    def get_state_dict(self):
+        # return all state variables
+        return self.__dict__
+
+    def load_state_dict(self, state_dict):
+        # load all state variables
+        self.__dict__.update(state_dict)

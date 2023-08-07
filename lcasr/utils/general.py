@@ -1,6 +1,7 @@
 import torch
 from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
+from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler
 import os
 
 def load_model(config:Dict, vocab_size):
@@ -32,7 +33,15 @@ def find_latest_checkpoint(path:str = './checkpoints'):
     return checkpoints[-1]
 
 
-def load_checkpoint(args, model, optimizer=None, scheduler=None, path='./checkpoints', device='cpu'):
+def load_checkpoint(
+        args, 
+        model, 
+        optimizer=None, 
+        scheduler:CosineLRScheduler=None,
+        sequence_scheduler:SequenceWarmupManager=None,
+        path='./checkpoints', 
+        device='cpu'
+    ):
     latest_checkpoint = find_latest_checkpoint(path)
     if latest_checkpoint is None:
         return 0
@@ -53,6 +62,9 @@ def load_checkpoint(args, model, optimizer=None, scheduler=None, path='./checkpo
 
     if scheduler != None and 'scheduler' in checkpoint and checkpoint['scheduler'] != None:
         scheduler.load_state_dict(checkpoint['scheduler'])
+
+    if sequence_scheduler != None and 'sequence_scheduler' in checkpoint and checkpoint['sequence_scheduler'] != None:
+        sequence_scheduler.load_state_dict(checkpoint['sequence_scheduler'])
   
     step = checkpoint['podcast_step'] 
     return step

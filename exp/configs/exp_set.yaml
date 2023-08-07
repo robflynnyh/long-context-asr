@@ -36,7 +36,6 @@ model:
   sandwich_norm: false
   bias_in_ff: false
   checkpoint_every_n_layers: 0
-  num_position_embeddings: [256, 384]
 
 optimizer:
   name: 'madgrad'

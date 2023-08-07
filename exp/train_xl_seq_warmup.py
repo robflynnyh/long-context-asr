@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
 from omegaconf.omegaconf import OmegaConf
 
-from lcasr.utils.dataloading import SimpleDataloader, chunk_spectogram, chunk_text_json
+from lcasr.utils.dataloading import VariableBatchSimpleDataloader, chunk_spectogram, chunk_text_json
 import traceback
 from lcasr.utils.hooks import add_debug_backwards_hooks
 from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager
@@ -53,7 +53,7 @@ def load_optimizer(config:Dict, model:torch.nn.Module):
     if optim_type == 'adam':
         optimizer = Adam(model.parameters(), **optim_args) if model_device == 'cpu' else FusedAdam(model.parameters(), **optim_args)
     elif optim_type == 'madgrad':
-        optimizer = madgrad.MADGRAD(model.parameters(), **optim_args)
+        optimizer = madgrad.MADGRAD(model.parameters(), **optim_args) # best
     elif optim_type == 'mirrormadgrad':
         optimizer = madgrad.MirrorMADGRAD(model.parameters(), **optim_args)
 
@@ -107,7 +107,8 @@ def train(
         model:torch.nn.Module, 
         dataloader:torch.utils.data.DataLoader, 
         optimizer:torch.optim.Optimizer,
-        scheduler:torch.optim.lr_scheduler._LRScheduler, 
+        scheduler:CosineLRScheduler,
+        sequence_scheduler:SequenceWarmupManager,
         device:torch.device,
         skip_to:int = 0,
     ):
@@ -184,7 +185,8 @@ def train(
             enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el[ix])) for i, el in enumerate(txt_chunks) if remove_mask[i]]
             enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
             enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
-
+            if enc_txt_chunks_lengths.max() == 0:
+                continue # skip if none contain text (bad batch)
             chunks.append({
                 'audio':cur_chunks,
                 'txt':enc_txt_chunks,
@@ -300,9 +302,7 @@ def train(
 
                 prev_selection_mask = selection_mask.clone()
 
-
-
-        except RuntimeError as e: # illegal mem access sometimes happening with flash attention.. 0: 
+        except RuntimeError as e: 
             if 'an illegal memory access was encountered' in str(e): 
                 print(e,'\n --- skipping batch ---')
                 continue
@@ -334,7 +334,6 @@ def main(args):
     tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
 
-    print(args.config)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
@@ -349,20 +348,31 @@ def main(args):
 
     model = model.to(device)
     optimizer, scheduler = load_optimizer(args.config, model)
+    
+    sequence_scheduler = None
+    if 'sequence_scheduler' in args.config:
+        sequence_scheduler = SequenceWarmupManager(
+            initial_batch_size = args.config['training']['batch_size'],
+            initial_sequence_length = args.config['audio_chunking']['size'],
+            **args.config['sequence_scheduler']
+        )
+
     step = load_checkpoint(
         args = args, 
         model = model, 
         optimizer = optimizer, 
         scheduler = scheduler, 
+        sequence_scheduler = sequence_scheduler,
         path = args.config['checkpointing']['dir'],
         device = device
     )
+
     if args.reset_step:
         step = 0
 
     print(f'Starting from podcast: {step}')
     # skip data up to step
-    dataloader = SimpleDataloader(
+    dataloader = VariableBatchSimpleDataloader(
         pairs = paired_data, 
         tokenizer = tokenizer, 
         batch_size = args.config['training']['batch_size'],
@@ -379,7 +389,20 @@ def main(args):
         logger = partial(wandb.log, commit=False)
         add_debug_backwards_hooks(model = model, logger = logger)
     
-    final_model = train(args, model, dataloader, optimizer, scheduler, device, skip_to = step)
+    if sequence_scheduler and dataloader.batch_size != sequence_scheduler.cur_batch_size:
+        print('WARNING: dataloader batch size does not match sequence scheduler batch size, updating dataloader batch size')
+        dataloader.update_batch_size(batch_size = sequence_scheduler.cur_batch_size, skip_to = step)
+
+    final_model = train(
+        args = args, 
+        model = model, 
+        dataloader = dataloader, 
+        optimizer = optimizer, 
+        scheduler = scheduler,
+        sequence_scheduler = sequence_scheduler, 
+        device = device, 
+        skip_to = step
+    )
 
 
 
