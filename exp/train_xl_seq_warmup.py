@@ -9,10 +9,10 @@ from omegaconf.omegaconf import OmegaConf
 from lcasr.utils.dataloading import SimpleDataloader, chunk_spectogram, chunk_text_json
 import traceback
 from lcasr.utils.hooks import add_debug_backwards_hooks
+from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager
 
 from lcasr.utils.general import load_model, save_model, load_checkpoint
 import resource
-from lcasr.utils.scheduling import CosineLRScheduler
 
 from einops import rearrange
 import numpy as np
@@ -34,6 +34,8 @@ from typing import Dict, List, Tuple
 from collections import defaultdict
 
 import warnings
+        
+
 
 
 def load_optimizer(config:Dict, model:torch.nn.Module):

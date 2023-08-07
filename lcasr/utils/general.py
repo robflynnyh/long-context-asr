@@ -32,12 +32,12 @@ def find_latest_checkpoint(path:str = './checkpoints'):
     return checkpoints[-1]
 
 
-def load_checkpoint(args, model, optimizer=None, scheduler=None, path='./checkpoints'):
+def load_checkpoint(args, model, optimizer=None, scheduler=None, path='./checkpoints', device='cpu'):
     latest_checkpoint = find_latest_checkpoint(path)
     if latest_checkpoint is None:
         return 0
     path = os.path.join(path, latest_checkpoint)
-    checkpoint = torch.load(path)
+    checkpoint = torch.load(path, map_location=device)
     if args and args.remove_scheduler:
         checkpoint['scheduler'] = None
     try:

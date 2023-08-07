@@ -58,6 +58,33 @@ def proc_stm_and_timings(stm_path:str):
     all_text = re.sub(r" +", r" ", all_text)
     return all_text, timings, remove_timings
 
+def fetch_utterances(stm_path:str, spectogram:torch.Tensor):
+    stm = open_stm(stm_path)
+    utterances = []
+    for line in stm:
+        sline = line.split(' ')
+        if len(sline) < 6:
+            continue
+        a_id, s_id, spk, start, end, meta = sline[:6]
+        text = ' '.join(sline[6:])
+        if text == 'ignore_time_segment_in_scoring':
+            continue
+        utterances.append({
+            'start': float(start), 
+            'end': float(end), 
+            'text': text, 
+            'start_frame': total_frames(float(start)), 
+            'end_frame': total_frames(float(end)),
+            'spectogram': spectogram[:, :, total_frames(float(start)):total_frames(float(end))]
+        })
+    
+    all_text = " ".join([el['text'] for el in utterances])
+    all_text = re.sub(r" '([a-z])", r"'\1", all_text)
+    all_text = re.sub(r" +", r" ", all_text)
+    
+    
+    return utterances, all_text
+
 def ctc_decoder(vocab, alpha, beta, arpa_path=''):
     arpa_path = None if arpa_path == '' else arpa_path
     alpha = None if arpa_path is None else alpha
@@ -115,79 +142,18 @@ def load_audio(audio_file:str):
     return spec
 
 
-#'''
-def fetch_logits_(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer):
-    spec_n = spec.shape[-1]
-    seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
-    seq_len = seq_len if seq_len < spec_n else spec_n
-    overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
-    
-    seq_len_overlap_dif = seq_len - overlap
-    print(f'Using seq_len: {seq_len} and overlap: {overlap}')
-
-    all_logits = torch.zeros((1, spec_n//4 + 10, tokenizer.vocab_size() + 1))
-    logit_count = torch.zeros((1, spec_n//4 + 10, tokenizer.vocab_size() + 1))
-    
-    logit_position = 0
-    finished = False
-    # PROBLEM WHEN
-    #i in tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))):
-    pbar = tqdm(total=spec_n)
-    spec_i = 0
-    while not finished:
-        audio_chunk = spec[:, :, spec_i:spec_i+seq_len]
-        cur_overlap = max(audio_chunk.shape[-1] - seq_len_overlap_dif, 0)
-
-        u_len = audio_chunk.shape[-1]
-        audio_chunk = audio_chunk.to(model.device)
-        out = model(audio_chunk)
-        logits = out['final_posteriors'].detach().cpu()
-        # convert to prob
-        logits = torch.exp(logits)
-        ds_len = logits.shape[-2] # seq_len // model.subsampling_factor
-
-        ratio = u_len / ds_len
-        #overlap_ds = int(overlap / ratio)
-        overlap_ds = cur_overlap // model.subsampling_factor
-        if spec_i != 0:
-            logit_position -= overlap_ds
-
-        logit_count[:, logit_position:logit_position+ds_len, :] += 1
-
-        #print(logits.shape, logit_position, ds_len, all_logits.shape, ratio, overlap_ds, '\n')
-        all_logits[:, logit_position:logit_position+ds_len, :] += logits
-        logit_position += ds_len 
-
-        #print(audio_chunk.shape[-1] - cur_overlap, audio_chunk.shape[-1], cur_overlap)
-        spec_i += audio_chunk.shape[-1] - cur_overlap
-        pbar.update(audio_chunk.shape[-1] - cur_overlap)
-        if spec_i >= spec_n:
-            pbar.close()
-            finished = True
-        
-    B,N,C = all_logits.shape
-    all_logits = all_logits[logit_count.sum(dim=-1) != 0]
-    all_logits = all_logits.reshape(B,-1,C)
-    logit_count = logit_count[logit_count.sum(dim=-1) != 0]
-    logit_count = logit_count.reshape(B,-1,C)
-    logits = all_logits / logit_count
-    # convert to log 
-    logits = torch.log(logits)
-    # blank_id = logits.shape[-1]-1
-    # logits = logits.argmax(dim=-1)[0].tolist()
-    # print(tokenizer.decode([el for el in logits if el != blank_id]))
-    
-    return logits.squeeze(0).numpy()
-#'''
 
 @torch.no_grad()
-def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer):
+def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer, use_tqdm=True):
     spec_n = spec.shape[-1]
+    downsampling_factor = args.config['model']['subsampling_factor']
     seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
     seq_len = seq_len if seq_len < spec_n else spec_n
     overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
     cache_len = args.cache_len if args.cache_len != -1 else args.config['training']['max_seq_len']
-    assert overlap == 0 or cache_len == 0, 'Cannot use overlap and cache_len at the same time'
+    #assert overlap == 0 or cache_len == 0, 'Cannot use overlap and cache_len at the same time'
+
+    assert overlap / downsampling_factor == overlap // downsampling_factor, 'Overlap must be a multiple of the downsampling factor'
 
     print(f'Using seq_len: {seq_len} and overlap: {overlap} and cache_len: {cache_len}')
 
@@ -197,10 +163,14 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     logit_position = 0
     
     prev_cache = None
-    for i in tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))):
-        #print(logit_position')
+    pbar = tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))) if use_tqdm else range(0, spec_n, seq_len-overlap)
+    for i in pbar:
         audio_chunk = spec[:, :, i:i+seq_len]
         u_len = audio_chunk.shape[-1]
+
+        if u_len < (seq_len - overlap):
+            continue
+
         audio_chunk = audio_chunk.to(model.device)
         out = model(
             audio_signal = audio_chunk,
@@ -221,9 +191,13 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
         if i != 0:
             logit_position -= overlap_ds
 
+        #logit_position = i 
+
         logit_count[:, logit_position:logit_position+ds_len, :] += 1
         all_logits[:, logit_position:logit_position+ds_len, :] += logits
         logit_position += ds_len 
+
+        #print(logit_position, overlap_ds, '()', u_len, i, i+seq_len, audio_chunk.shape, ratio, ds_len)
         
         
     B,N,C = all_logits.shape
@@ -240,7 +214,6 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     
     return logits.squeeze(0).numpy()
 
-#'''
 
 def parse_utterances_(decoded_frames:List[Dict[str, any]], timings:List[Dict[str, int]]):    
     parsed_decoded_frames = []
@@ -319,43 +292,63 @@ def main(args):
     
     all_texts = []
     all_golds = []
-    for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
-        #if rec < 2: continue
-        print(f'Processing {rec+1}/{len(audio_files)}')
 
-        audio_spec = load_audio(audio_files[rec])
-        print('\n\n'+paired[audio_files[rec]]+'\n\n')
-        stm_path = paired[audio_files[rec]]
-        gold_text, timings, remove_timings = proc_stm_and_timings(stm_path=stm_path)
+    if not args.single_utterance:
+        for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
+            print(f'Processing {rec+1}/{len(audio_files)}') if args.verbose else None   
 
-        audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
-        
-        logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
-        # np.save(f'logits_{rec}.npy', logits)
-        # exit()
+            audio_spec = load_audio(audio_files[rec])
+            print('\n\n'+paired[audio_files[rec]]+'\n\n') if args.verbose else None
+            stm_path = paired[audio_files[rec]]
+            gold_text, timings, remove_timings = proc_stm_and_timings(stm_path=stm_path)
 
-        ds_factor = audio_spec.shape[-1] / logits.shape[0]
-        decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
-        #print(decoded[0]['text'])
-        
-        
-        #all_text, frames = parse_utterances(decoded_frames = decoded[0]['frames'], timings = timings)
-        #all_text = post_process(decoded[0]['text']) #!!!!!!!!!1
-        all_text = normalize(decoded[0]['text']).lower()
-        gold_text = normalize(gold_text).lower()    
-        print(gold_text)
-        print(all_text)
-        all_texts.append(all_text)
-        all_golds.append(gold_text)
-        break
-        
-        
+            audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
+            
+            logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
+
+            ds_factor = audio_spec.shape[-1] / logits.shape[0]
+            decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
+
+            all_text = normalize(decoded[0]['text']).lower()
+            gold_text = normalize(gold_text).lower()    
+            print(gold_text) if args.verbose else None
+            print(all_text) if args.verbose else None
+            all_texts.append(all_text)
+            all_golds.append(gold_text)
+            break
+    else:
+        for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
+
+            print(f'Processing {rec+1}/{len(audio_files)}') if args.verbose else None
+
+            audio_spec = load_audio(audio_files[rec])
+            print('\n\n'+paired[audio_files[rec]]+'\n\n') if args.verbose else None
+            stm_path = paired[audio_files[rec]]
+            utterances, gold_text = fetch_utterances(stm_path=stm_path, spectogram=audio_spec)
+           
+            out_texts = []
+            for utterance in tqdm(utterances):
+                logit = fetch_logits(args, model, utterance['spectogram'], utterance['spectogram'].shape[-1], 0, tokenizer, use_tqdm=False)
+                ds_factor = utterance['spectogram'].shape[-1] / logit.shape[0]
+                decoded, bo = decode_beams_lm([logit], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
+                out_text = normalize(decoded[0]['text']).lower().strip()
+                out_texts.append(out_text)
+            all_text = " ".join(out_texts).strip()#
+            gold_text = normalize(gold_text).lower().strip()
+            print(gold_text) if args.verbose else None
+            print(all_text) if args.verbose else None
+            all_texts.append(all_text)
+            all_golds.append(gold_text)
 
 
         
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
 
     print(f'WER: {wer}')
+
+    if args.log != '':
+        with open(args.log, 'a') as f:
+            f.write(f'{args.checkpoint}\t overlap: {args.overlap}\t seq_len: {args.seq_len}\t WER: {wer}\n')
 
 
 if __name__ == '__main__':
@@ -371,7 +364,13 @@ if __name__ == '__main__':
     parser.add_argument('-alpha', '--alpha', type=float, default=0.5, help='alpha for lm')
     parser.add_argument('-beta', '--beta', type=float, default=0.8, help='beta for lm')
 
+    parser.add_argument('-single_utt', '--single_utterance', action='store_true', help='single utterance decoding')
+    parser.add_argument('-nv', '--not_verbose', action='store_true', help='verbose')
+
+    parser.add_argument('-log', '--log', type=str, default='')
 
     args = parser.parse_args()
+    args.verbose = not args.not_verbose
+
     main(args)
     

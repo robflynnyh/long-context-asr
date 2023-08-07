@@ -3,5 +3,6 @@ from . import (
     general,
     helpers,
     dataloading, 
-    hooks
+    hooks,
+    scheduling
 )

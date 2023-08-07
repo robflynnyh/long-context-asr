@@ -19,44 +19,36 @@ model:
   self_conditioning: true
   gated_sc: false
   decoder_norm: true
-  use_rotary: false
+  use_rotary: true
   encoder_mode: conformer
   history_vector: false
   default_norm: rms_norm
   sandwich_norm: false
   bias_in_ff: false
   checkpoint_every_n_layers: 0
-  num_position_embeddings: 256
-
 optimizer:
   name: madgrad
   args:
-    lr: 3e-3
-
+    lr: 0.003
 scheduler:
   warmup_steps: 3000
-
 audio_chunking:
-  size: 2048
+  size: 512
   overlap: 0
-
 wandb:
   use: true
   project_name: spotify_long_context
-  name: 'test'
+  name: 2048_3e3_s128_b2
   id: ''
-
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/test
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/2048_3e3_s128_b2
   save_every_n_steps: 2000
-
 data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
-
 training:
   batch_size: 88
   backprop_every: 2
-  backwards_every: 1
-  max_seq_len: 0
+  backwards_every: 2
+  max_seq_len: 128
   clip_value: 0.8
   intermediate_loss_weighting: 0.0

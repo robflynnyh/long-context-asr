@@ -238,14 +238,16 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.tokenizer = tokenizer
-        
-        super().__init__(
-                dataset = SimpleDataset(
+        self.skip_to = skip_to
+
+        dataset = SimpleDataset(
                     pairs, 
                     batch_size = batch_size,
                     skip_to = skip_to, 
                     subgroup_shuffle_size = 1000
-                ), 
+        )
+        super().__init__(
+                dataset = dataset,
                 batch_size = batch_size, 
                 shuffle = False, 
                 num_workers = num_workers, 
@@ -253,5 +255,66 @@ class SimpleDataloader(torch.utils.data.DataLoader):
                 collate_fn = collate_fn,
                 prefetch_factor = prefetch if num_workers > 0 else None,
             )
+            
+
+class VariableBatchSimpleDataloader():
+    def __init__(
+        self, 
+        pairs:Dict[str, Dict[str, str]], 
+        tokenizer:spm.SentencePieceProcessor, 
+        skip_to:int = 0,
+        batch_size:int = 5,
+        chunk_size:int = 2048,
+        chunk_overlap:int = 192,
+        num_workers:int = 0,
+        pin_memory:bool = False,
+        prefetch:int = None,
+    ):
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.tokenizer = tokenizer
+        self.subgroup_shuffle_size = 1000
+        self.pairs = pairs
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.pin_memory = pin_memory
+        self.prefetch = prefetch
+
+        self.dataloader = SimpleDataloader(
+            pairs = pairs,
+            tokenizer = tokenizer,
+            skip_to = skip_to,
+            batch_size = batch_size,
+            chunk_size = chunk_size,
+            chunk_overlap = chunk_overlap,
+            num_workers = num_workers,
+            pin_memory = pin_memory,
+            prefetch = prefetch,
+        )
+
+    def update_batch_size(self, batch_size:int, skip_to:int = 0):
+        self.batch_size = batch_size
+        self.dataloader = SimpleDataloader(
+            pairs = self.pairs,
+            tokenizer = self.tokenizer,
+            skip_to = skip_to,
+            batch_size = batch_size,
+            chunk_size = self.chunk_size,
+            chunk_overlap = self.chunk_overlap,
+            num_workers = self.num_workers,
+            pin_memory = self.pin_memory,
+            prefetch = self.prefetch,
+        )
+
+    def __iter__(self):
+        return iter(self.dataloader)
+
+    def __len__(self):
+        return len(self.dataloader) 
+
+
+
+
+
 
 

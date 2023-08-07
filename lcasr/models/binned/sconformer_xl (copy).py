@@ -1,7 +1,7 @@
 import torch, torch.nn as nn, torch.nn.functional as F
 
 import apex
-from torch.utils.checkpoint import checkpoint # # gradient/activation checkpointing
+from torch.utils.checkpoint import checkpoint # gradient/activation checkpointing
 from einops import rearrange, repeat
 from torch import einsum
 
@@ -142,6 +142,7 @@ class SCConformerXL(nn.Module):
         sandwich_norm = False,
         bias_in_ff = True,
         transformer=False, # disable convolutions
+        memory_vectors=0, # number of memory vectors to use for reccurance
         **kwargs
     ):
         super().__init__()
@@ -161,6 +162,12 @@ class SCConformerXL(nn.Module):
         self.bias_in_ff = bias_in_ff
         self.transformer = transformer
         self.self_condition_subsampling = self_condition_subsampling
+        self.num_memory_vectors = memory_vectors
+
+        if self.num_memory_vectors > 0:
+            self.memory_vectors = nn.Parameter(torch.empty(1, self.num_memory_vectors, self.d_model))
+            nn.init.uniform_(self.memory_vectors, -1e-2, 1e-2)
+        kwargs['num_memory_vectors'] = self.num_memory_vectors
 
         accepted_norms = ['rms_norm', 'layer_norm']
         accepted_subsampling_acts = ['silu', 'relu', 'gelu', 'none']
@@ -186,9 +193,6 @@ class SCConformerXL(nn.Module):
 
         self.checkpoint_every_n_layers = checkpoint_every_n_layers
 
-        #self.overlap_interp_factor_logits = nn.Parameter(torch.tensor(0.5))
-        #self.overlap_interp_factor_kvs = nn.Parameter(torch.tensor(0.5))
-
         self.dropout_ff = dropout_ff
         self.dropout_conv = dropout_conv
         self.dropout_attn = dropout_attn
@@ -210,7 +214,7 @@ class SCConformerXL(nn.Module):
                 dim = head_dim,
                 base = 10000,
                 learned_freq = learned_rotary,
-                rotary_interpolation_factor = rotary_interpolation_factor
+                rotary_interpolation_factor = rotary_interpolation_factor,
             )
 
         self.decoder = ASRLinearSCDecoder(
@@ -310,18 +314,49 @@ class SCConformerXL(nn.Module):
         audio_signal = torch.transpose(audio_signal, 1, 2)# if self.subsampling_mode != 'stacking' else audio_signal
         audio_signal, length = self.subsampling(audio_signal, lengths = length)
         max_audio_length = audio_signal.size(1)
-        ## create masks
         
-        mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
+        original_mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
+        original_max_audio_length = max_audio_length
+        original_length = length
+
+        if self.num_memory_vectors > 0:
+            memory_vectors = self.memory_vectors.repeat(audio_signal.size(0), 1, 1)
+            audio_signal = torch.cat([memory_vectors, audio_signal], dim=1)
+            # task: need to move padding to the end if there is any
+            if length.min() != length.max(): # done this with a scatter op 
+                # step 1: concat false to mask at the end
+                idx_mask = torch.cat([original_mask, torch.zeros(original_mask.size(0), self.num_memory_vectors, dtype=original_mask.dtype, device=original_mask.device)], dim=1)
+                index = torch.arange(idx_mask.size(1))[None:,].expand(idx_mask.size(0), idx_mask.size(1)).clone().to(idx_mask.device)
+                index[idx_mask] = index[idx_mask] + self.num_memory_vectors
+                pad_n = audio_signal.size(1) - length - self.num_memory_vectors
+                index[:, -self.num_memory_vectors:] = index[:, -self.num_memory_vectors:].clone() - pad_n[:, None]
+                # step 2: move padding to the end
+                B,N,D = audio_signal.shape
+                audio_signal = torch.zeros_like(audio_signal).scatter(1, index.unsqueeze(-1).expand(B,N,D), audio_signal)
+            length = length + self.num_memory_vectors
+            max_audio_length = audio_signal.size(1)
+            mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
+            # need mask to stop self conditioning on memory vectors!
+            sc_mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= original_length.unsqueeze(1)
+            cached_kv_lengths = torch.tensor([self.num_memory_vectors]*audio_signal.size(0), device=audio_signal.device) if cached_kv_lengths is None else cached_kv_lengths 
+        else:
+            mask = original_mask
+            max_audio_length = original_max_audio_length
+            length = original_length
+            sc_mask = None
+                
     
         rotary_emb_fn = None
+        
    
         full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
         #print(full_kv_lengths, '333333333')
         if self.use_rotary:
+            self.rotary_pos_emb.precision = audio_signal.dtype
             max_seq_len = full_kv_lengths.max()
             cos, sin = self.rotary_pos_emb(max_seq_len, audio_signal.device)
             q_offset = 0 if cached_kvs is None else cached_kvs.shape[1]
+            q_offset = max(q_offset, self.num_memory_vectors) # attention layers will add an embedding cache if there is none if memory is enabled
             rotary_emb_fn = apply_rotary(cos = cos, sin = sin, q_offset = q_offset, learned = self.rotary_pos_emb.learned_freq)
         
 
@@ -338,15 +373,12 @@ class SCConformerXL(nn.Module):
 
         pad_mask = mask 
         
-        iterim_posteriors = []
         kvs_to_cache = []
 
         if self.self_condition_subsampling:
             iterim_logits, x_norm = decoder(x=audio_signal, logits=True, return_norm=True)
             iterim_post = torch.nn.functional.softmax(iterim_logits, dim=-1)
-            iterim_logposteriors = torch.log(iterim_post)
-            iterim_posteriors.append(iterim_logposteriors)
-            audio_signal = decoder.integrate_projections(audio_signal, x_norm, decoder.project_back(iterim_post)) 
+            audio_signal = decoder.integrate_projections(audio_signal, x_norm, decoder.project_back(iterim_post), sc_mask=sc_mask) 
 
         for lth, layer in enumerate(self.layers):
             lth_to_grap = lth + 1 if lth + 1 < len(self.layers) and self.shift_kvs else lth
@@ -375,22 +407,22 @@ class SCConformerXL(nn.Module):
                     rotary_emb_fn = rotary_emb_fn
                 )
 
-            
-            kvs_to_cache.append(kv_to_cache) # possibly detach and move to cpu ?    
-            
+            kvs_to_cache.append(kv_to_cache)             
             if lth != len(self.layers) - 1 and self.self_conditioning:
                 iterim_logits, x_norm = decoder(x=audio_signal, logits=True, return_norm=True)
                 iterim_post = torch.nn.functional.softmax(iterim_logits, dim=-1)
-                iterim_logposteriors = torch.log(iterim_post)
-                iterim_posteriors.append(iterim_logposteriors)
-                audio_signal = decoder.integrate_projections(audio_signal, x_norm, decoder.project_back(iterim_post))        
+                audio_signal = decoder.integrate_projections(audio_signal, x_norm, decoder.project_back(iterim_post), sc_mask=sc_mask)        
 
         # stack the posteriors along the first dimension (height, batch, seq_len, dim)
         #print(len(iterim_posteriors),111111111111111111)
-        iterim_posteriors = torch.stack(iterim_posteriors, dim=0) if len(iterim_posteriors) > 0 else None
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
+        if self.num_memory_vectors > 0:
+            audio_signal = audio_signal[:, :-self.num_memory_vectors, :]
+            length = length - self.num_memory_vectors
+            full_kv_lengths = torch.tensor([self.num_memory_vectors] * audio_signal.shape[0], device=audio_signal.device) 
+
         final_posts = decoder(x=decoder.norm(audio_signal), logits=False)
 
         if self.training and self.rotary_pos_emb is not None:
@@ -398,7 +430,6 @@ class SCConformerXL(nn.Module):
 
         return {
             'final_posteriors': final_posts,
-            'iterim_posteriors': iterim_posteriors,
             'kvs_to_cache': kvs_to_cache,
             'length': length,
             'full_kv_lengths': full_kv_lengths,
@@ -578,7 +609,8 @@ class EBranchConformerLayer(nn.Module):
                 dropout = dropout_attn,
                 bias = False,
                 layer_idx = layer_idx,
-                qk_rms_norm = qk_rms_norm
+                qk_rms_norm = qk_rms_norm,
+                **kwargs
             ),
             norm = default_norm
         )
@@ -673,11 +705,16 @@ class Attention(nn.Module):
         self.layer_idx = kwargs.get('layer_idx', None)
         #self.history_vector = torch.nn.Parameter(torch.zeros(2, 1, 1, 1, head_dim), requires_grad=True)
 
-        self.num_position_embeddings = kwargs.get('num_position_embeddings', -1)
-        if self.num_position_embeddings > 0: # # B, N, KV, H, D
-            self.position_embeddings = nn.Parameter(torch.empty(1, self.num_position_embeddings, 2, n_heads, head_dim))
-            nn.init.uniform_(self.position_embeddings, -0.02, 0.02)
+        self.has_history_vector = kwargs.get('history_vector', False)
+        if self.has_history_vector:
+            self.history_vector = torch.nn.Parameter(torch.empty(1, 1, n_heads, head_dim), requires_grad=True)
+            nn.init.uniform_(self.history_vector, -1e-4, 1e-4) # small init
 
+        self.num_memory_vectors = kwargs.get('num_memory_vectors', 0)
+        if self.num_memory_vectors > 0:
+            assert not self.has_history_vector, 'cannot have both history vector and memory vectors'
+            self.bos_prior = torch.nn.Parameter(torch.empty(1, self.num_memory_vectors, 2, n_heads, head_dim), requires_grad=True) # 2 i.e key and value
+            nn.init.uniform_(self.bos_prior, -1e-2, 1e-2) # small init
 
         self.n_feats, self.head_dim, self.n_heads = n_feats, head_dim, n_heads
    
@@ -693,7 +730,6 @@ class Attention(nn.Module):
 
         self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=bias)
 
-
         self.qkv = lambda x: rearrange(self.qkv_proj(x), "b n (h d qkv) -> qkv b n h d", qkv=3, h=n_heads, d=head_dim)
 
         self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=bias)
@@ -701,24 +737,31 @@ class Attention(nn.Module):
         self.qk_rms_norm = qk_rms_norm
 
     
+
+    
     def attatch_cache(self, kv, cached_kv):
         kv = torch.stack(kv, dim=2)
-   
+
+        if self.num_memory_vectors > 0 and cached_kv is None:
+            cached_kv = self.bos_prior.to(kv.device, kv.dtype).repeat(kv.shape[0], 1, 1, 1, 1)
+
         if cached_kv is None:
             return kv, kv
             
         cached_kv = cached_kv.contiguous()
         new_kv = torch.cat([cached_kv, kv], dim=1) # B, N, KV, H, D
+        N = new_kv.shape[1]
 
-        return new_kv, new_kv.clone()
-    
-    def sdpa(self, q, k, v, mask): # use to get the attention weights for visualization/debugging
-        a_weight = torch.einsum("b h i d, b h j d -> b h i j", q, k)
-        a_weight = (a_weight / self.head_dim ** 0.5)
-        if mask is not None:
-            a_weight = a_weight.masked_fill(mask, -torch.finfo(a_weight.dtype).max)
-        a_weight = a_weight.softmax(dim=-1)
-        return torch.einsum("b h i j, b h j d -> b h i d", a_weight, v), a_weight
+        if not self.has_history_vector:
+            cache_to_keep_n = self.num_memory_vectors if self.num_memory_vectors > 0 else N # if using memory vectors then only keep those otherwise keep all
+            return new_kv, new_kv.clone()[:, -cache_to_keep_n:, :, :, :]
+
+        kv_to_cache = new_kv.clone()
+        new_kv[:, :cached_kv.shape[1], 0] += self.history_vector
+
+        return new_kv, kv_to_cache
+
+    # SHOULD ADD EQ UNIT TESTS FOR FLASH AND NORMAL !!!
 
     def forward(self, x, length, attn_mask=None, pad_mask=None, cached_kv=None, flash_attn = True, rotary_emb_fn = None):
         B, N, C, H, D = *x.shape, self.n_heads, self.head_dim
@@ -727,8 +770,9 @@ class Attention(nn.Module):
         if pad_mask is not None:
             x = x.masked_fill(pad_mask.unsqueeze(-1), 0)
 
-
         q, k, v = self.qkv(x)
+
+        
         if self.qk_rms_norm:
             q, k = map(partial(l2norm, groups = 8), (q, k))
 
@@ -741,14 +785,8 @@ class Attention(nn.Module):
                 k, v = kv[:, :, 0], kv[:, :, 1]
                 q, k = rotary_emb_fn.apply(q, k)
                 kv = torch.stack([k, v], dim=2)
-
-        if self.num_position_embeddings > 0:
-            assert kv.shape[1] <= self.num_position_embeddings, "kv_seq_len should be less than or equal to num_position_embeddings"
-            kv[:,:,0] = kv[:,:,0] + self.position_embeddings[:, :kv.shape[1], 0]
-            offset = kv.shape[1] - q.shape[1]
-            q = q + self.position_embeddings[:, offset:offset+q.shape[1], 1]
-
      
+
         ### Flash attention stuff 
         if x.device.type == 'cuda' and flash_attn:
             q, kv = q.contiguous(), kv.contiguous()
@@ -786,9 +824,7 @@ class Attention(nn.Module):
         else:
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
-            #out, weight = self.sdpa(q, k, v, attn_mask)
             out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
-
             out = rearrange(out, "b h n d -> b n (h d)")
 
         if pad_mask != None:
@@ -820,13 +856,13 @@ class ASRLinearSCDecoder(nn.Module):
     def project_back(self, x):
         return self.reprojection(x)
 
-    def integrate_projections(self, x, x_norm, proj1):
+    def integrate_projections(self, x, x_norm, proj1, sc_mask = None):
         if self.gated_sc:
             gate = torch.sigmoid(self.gate(x_norm))
-            
-            return x + gate * proj1
-        else:
-            return x + proj1
+            proj1 = proj1 * gate
+        if sc_mask is not None:
+            proj1 = proj1.masked_fill(sc_mask.unsqueeze(-1), 0)
+        return x + proj1
 
 
 class ConvolutionalSpatialGatingUnit(torch.nn.Module):
