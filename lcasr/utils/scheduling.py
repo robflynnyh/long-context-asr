@@ -31,7 +31,7 @@ class CosineLRScheduler(torch.optim.lr_scheduler._LRScheduler):
 class SequenceWarmupManager():
     def __init__(
             self,
-            increase_every:int,
+            increase_every:int, # set to -1 to disable
             stop_after:int,
             start_after:int,
             initial_sequence_length:int,
@@ -56,6 +56,9 @@ class SequenceWarmupManager():
         self.steps_since_last_increase = steps_since_last_increase
 
     def __call__(self, steps = 1):
+        if self.increase_every == -1: # disabled
+            return False, self.cur_sequence_length, self.cur_batch_size
+
         self.cur_position += steps
         if self.cur_position < self.start_after:
             return False, self.cur_sequence_length, self.cur_batch_size
@@ -73,10 +76,8 @@ class SequenceWarmupManager():
         else:
             return False, self.cur_sequence_length, self.cur_batch_size
 
-    def get_state_dict(self):
-        # return all state variables
+    def state_dict(self): # return all state variables
         return self.__dict__
 
-    def load_state_dict(self, state_dict):
-        # load all state variables
+    def load_state_dict(self, state_dict): # load all state variables
         self.__dict__.update(state_dict)

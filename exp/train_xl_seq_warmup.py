@@ -10,6 +10,7 @@ from lcasr.utils.dataloading import VariableBatchSimpleDataloader, chunk_spectog
 import traceback
 from lcasr.utils.hooks import add_debug_backwards_hooks
 from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager
+from lcasr.utils.helpers import exists
 
 from lcasr.utils.general import load_model, save_model, load_checkpoint
 import resource
@@ -91,10 +92,8 @@ def backwards_pass(
     
     scaler.unscale_(optimizer)
     torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value) if clip_value > 0 else None
-
     scaler.step(optimizer)
     scaler.update()
-
     optimizer.zero_grad()
 
     if scheduler.is_warmup:
@@ -127,7 +126,9 @@ def train(
     ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
 
     overlap = args.config.audio_chunking['overlap']
-    ds_overlap = overlap // model.subsampling_factor
+    if overlap > 0:
+        raise NotImplementedError('Overlap during trainig not implemented (also might not be good idea)')
+
     backprop_every = args.config['training']['backprop_every']
     backwards_every = args.config['training'].get('backwards_every', 1)
     assert backprop_every >= backwards_every, f'backprop_every ({backprop_every}) must be >= backwards_every ({backwards_every})'
@@ -139,35 +140,41 @@ def train(
     cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
 
     tokenizer = dataloader.tokenizer
-    chunk_size = dataloader.chunk_size
-    chunk_overlap = dataloader.chunk_overlap
+    chunk_size = args.config.audio_chunking['size']
+    chunk_overlap = overlap
+
+    if exists(sequence_scheduler):
+        chunk_size = sequence_scheduler.cur_sequence_length
+        batch_size = sequence_scheduler.cur_batch_size
+
     pad_id = tokenizer.pad_id()
 
     pbar = tqdm(dataloader)
     last_podcast = skip_to
+    cur_podcast = skip_to
     podcasts_since_last_save = 0
     for i, batch in enumerate(pbar):
-        #if i<9: continue;
+        audio, audio_lengths, txt, _ = batch
 
-        # save every 100 steps
-        cur_podcast = i*batch_size + skip_to
+        cur_podcast += audio.shape[0]
         podcasts_since_last_save += (cur_podcast - last_podcast)
         if podcasts_since_last_save > args.config['checkpointing']['save_every_n_steps']:
             torch.cuda.empty_cache() 
-            save_model(model, optimizer, scheduler, cur_podcast, args.config)
+            save_model(
+                model = model, 
+                optimizer = optimizer, 
+                scheduler = scheduler, 
+                podcast_step = cur_podcast, 
+                config = args.config,
+                sequence_scheduler = sequence_scheduler,
+            )
             podcasts_since_last_save = 0
         last_podcast = cur_podcast
 
-        audio, audio_lengths, txt, _ = batch
+        
         
         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
-        
-        # if len(audio_chunks_) != 497:
-        #     print(len(audio_chunks_), ' skipping')
-        #     continue
-
         txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
-
 
         backwards_every_loss = 0.0
         steps_since_backwards = 0
@@ -235,9 +242,7 @@ def train(
                         cached_kvs = cached_kvs[cur_selection_mask]
                         cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
                     
-                    #print(audio.shape, a_lengths.min(), a_lengths.max())
-                    # if cached_kvs != None:
-                    #     print('cached_kvs', cached_kvs.shape, cached_kv_lengths.shape)
+
                     out = model(
                         audio_signal = audio, 
                         length = a_lengths, 
@@ -248,15 +253,11 @@ def train(
                     if max_cache_length != 0:
                         out_kvs = out['kvs_to_cache'].clone()
                         last_kv_set = out_kvs[:, -max_cache_length:].clone()
-                        #print('last_kv_set', last_kv_set.shape)
                     
-                
-                    # check for nan
                     cur_probs = out['final_posteriors']
                     B,N,C = cur_probs.shape 
                     loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
                     
-
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
                 cur_loss += loss
 
@@ -294,8 +295,9 @@ def train(
                             'loss': loss_to_log,
                             'blank_p': blank_prob,
                             'learning_rate': learning_rate,
+                            'sequence_length': chunk_size,
+                            'batch_size': batch_size,
                         })
-
                     
                     cur_tokens_in_loss = 0
                     cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
@@ -312,6 +314,16 @@ def train(
 
         if not scheduler.is_warmup: # step every batch
             scheduler.step()
+
+        if exists(sequence_scheduler):
+            to_update, new_seq_len, new_bs = sequence_scheduler.step(steps = audio.shape[0])
+            if to_update:
+                chunk_size = new_seq_len
+                batch_size = new_bs
+                dataloader.update_batch_size(
+                    batch_size = batch_size,
+                    skip_to = cur_podcast,
+                )
         
         del chunks
         
@@ -348,7 +360,7 @@ def main(args):
 
     model = model.to(device)
     optimizer, scheduler = load_optimizer(args.config, model)
-    
+
     sequence_scheduler = None
     if 'sequence_scheduler' in args.config:
         sequence_scheduler = SequenceWarmupManager(

@@ -14,6 +14,7 @@ def save_model(
         scheduler:torch.optim.lr_scheduler._LRScheduler,
         podcast_step:int,
         config:Dict,
+        sequence_scheduler:SequenceWarmupManager=None,
     ):
     save_path = os.path.join(config['checkpointing']['dir'], f'step_{podcast_step}.pt')
     save_dict = {
@@ -22,6 +23,7 @@ def save_model(
         'scheduler':scheduler.state_dict() if scheduler is not None else None,
         'podcast_step':podcast_step,
         'config':config,
+        'sequence_scheduler':sequence_scheduler.state_dict() if sequence_scheduler is not None else None,
     }
     torch.save(save_dict, save_path)
 
