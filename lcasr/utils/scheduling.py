@@ -41,6 +41,7 @@ class SequenceWarmupManager():
             batch_size_multiplier:float = 0.5,
             cur_position:int = 0,
             steps_since_last_increase:int = 0,
+            **kwargs
     ):
         self.increase_every = increase_every
         self.stop_after = stop_after

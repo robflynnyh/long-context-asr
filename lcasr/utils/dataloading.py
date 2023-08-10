@@ -309,6 +309,9 @@ class VariableBatchSimpleDataloader():
     def __iter__(self):
         return iter(self.dataloader)
 
+    def total_recordings(self):
+        return len(self.pairs.keys())
+
     def __len__(self):
         return len(self.dataloader) 
 

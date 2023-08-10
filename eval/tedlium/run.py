@@ -163,13 +163,21 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     logit_position = 0
     
     prev_cache = None
+    last_ulen = None
+    kill_next = False
     pbar = tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))) if use_tqdm else range(0, spec_n, seq_len-overlap)
     for i in pbar:
         audio_chunk = spec[:, :, i:i+seq_len]
         u_len = audio_chunk.shape[-1]
 
-        if u_len < (seq_len - overlap):
-            continue
+        #   print(u_len, last_ulen, kill_next)
+        if kill_next:
+            break
+        if last_ulen != None and u_len < last_ulen:
+            kill_next = True
+        last_ulen = u_len
+        # if u_len < (seq_len - overlap):
+        #     continue
 
         audio_chunk = audio_chunk.to(model.device)
         out = model(
@@ -192,7 +200,7 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
             logit_position -= overlap_ds
 
         #logit_position = i 
-
+        print(logits.shape, logit_position, ds_len, all_logits.shape, all_logits[:,logit_position:].shape)
         logit_count[:, logit_position:logit_position+ds_len, :] += 1
         all_logits[:, logit_position:logit_position+ds_len, :] += logits
         logit_position += ds_len 
@@ -303,9 +311,11 @@ def main(args):
             gold_text, timings, remove_timings = proc_stm_and_timings(stm_path=stm_path)
 
             audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
-            
+            import time
+            stime = time.time()
             logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
-
+            etime = time.time()
+            print(f'Inference time: {etime-stime}')
             ds_factor = audio_spec.shape[-1] / logits.shape[0]
             decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
 

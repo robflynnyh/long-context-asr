@@ -1,10 +1,12 @@
 template_info:
-  create: 7 # number of experiments to create
+  create: 12 # number of experiments to create
   include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training', 'sequence_scheduler'] # keys to include in experiments config
   template_keys: [
     'checkpointing.dir', 
     'wandb.name', 
     'sequence_scheduler.increase_every',
+    'sequence_scheduler.max_sequence_length',
+    'sequence_scheduler.interpolate_rotary',
   ] # keys to use to create experiments
 
 model:
@@ -38,48 +40,69 @@ model:
 optimizer:
   name: 'madgrad'
   args:
-    lr: 3e-3
+    lr: 2e-3
 
 scheduler:
-  warmup_steps: 1500
+  warmup_steps: 2000
 
 audio_chunking: # 360000 (max = 1 hour)
   size: 512
   overlap: 0 # not using currently...
 
 sequence_scheduler:
-  increase_every: [3000, 5000, 10000, 15000, 20000, 25000, 30000]
+  increase_every: [5000, 10000, 15000, 5000, 10000, 15000, 5000, 10000, 15000, 5000, 10000, 15000]
   stop_after: 90000
-  start_after: 0
-  max_sequence_length: 360000
+  start_after: 2000
+  max_sequence_length: [8192, 8192, 8192, 8192, 8192, 8192, 4096, 4096, 4096, 4096, 4096, 4096]
   increase_by_multiplier: 2
   batch_size_multiplier: 0.5
+  interpolate_rotary: [true, true, true, false, false, false, true, true, true, false, false, false]
 
-
+# 512:0
+# 1024:3000
+# 2048: 6000
+# 4096: 9000
+# 8192: 12000
+# 16384: 15000
+# 32768: 18000
+# 65536: 21000
+# 131072: 24000
+# 262144: 27000
+# 360000: 30000
 
 wandb:
   use: true
   project_name: "spotify_long_context"
   name: [ 
-    'seq_scheduler_3k',
-    'seq_scheduler_5k',
-    'seq_scheduler_10k',
-    'seq_scheduler_15k',
-    'seq_scheduler_20k',
-    'seq_scheduler_25k',
-    'seq_scheduler_30k',
+    'seq_scheduler_5k_max_8192_interpolate_rotary',
+    'seq_scheduler_10k_max_8192_interpolate_rotary',
+    'seq_scheduler_15k_max_8192_interpolate_rotary',
+    'seq_scheduler_5k_max_8192',
+    'seq_scheduler_10k_max_8192',
+    'seq_scheduler_15k_max_8192',
+    'seq_scheduler_5k_max_4096_interpolate_rotary',
+    'seq_scheduler_10k_max_4096_interpolate_rotary',
+    'seq_scheduler_15k_max_4096_interpolate_rotary',
+    'seq_scheduler_5k_max_4096',
+    'seq_scheduler_10k_max_4096',
+    'seq_scheduler_15k_max_4096',
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_3k',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_5k',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_10k',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_15k',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_20k',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_25k',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_30k',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_5k_max_8192_interpolate_rotary',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_10k_max_8192_interpolate_rotary',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_15k_max_8192_interpolate_rotary',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_5k_max_8192',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_10k_max_8192',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_15k_max_8192',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_5k_max_4096_interpolate_rotary',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_10k_max_4096_interpolate_rotary',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_15k_max_4096_interpolate_rotary',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_5k_max_4096',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_10k_max_4096',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/seq_scheduler_15k_max_4096',
   ]
   save_every_n_steps: 2000
 
@@ -89,8 +112,8 @@ data:
   path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
   
 training:
-  batch_size: 704
-  backprop_every: 1
+  batch_size: 352
+  backprop_every: 2
   backwards_every: 1
   max_seq_len: 0
   clip_value: 0.8

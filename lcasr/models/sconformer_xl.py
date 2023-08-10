@@ -59,7 +59,8 @@ class RotaryPositionalEmbedding(torch.nn.Module):
         self.cos_cached = None
         self.sin_cached = None
         self.precision = precision
-        self.rotary_interpolation_factor = rotary_interpolation_factor
+        # register rotary interpolation factor as buffer so it can be saved
+        self.register_buffer("rotary_interpolation_factor", torch.tensor(rotary_interpolation_factor))
 
     def reset_if_needed(self):
         if self.learned_freq: # bcos we cant keep them after backward pass

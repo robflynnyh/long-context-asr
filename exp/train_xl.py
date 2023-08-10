@@ -85,7 +85,7 @@ def train(
     scaler = GradScaler()
             
     clip_value = args.config['training'].get('clip_value', 0.5) 
-    intermediate_loss_weighting = args.config['training'].get('intermediate_loss_weighting', 0.0)
+    intermediate_loss_weighting = args.config['training'].get('intermediate_loss_weighting', 0.0) # not used
 
     wandb_config = args.config['wandb']
     
@@ -127,7 +127,7 @@ def train(
     i = -1
     finished = False
     dataloader_iter = iter(dataloader)
-    total_recordings = len(dataloader) * dataloader.batch_size
+    total_recordings = dataloader.total_recordings()
     pbar = tqdm(total = len(dataloader), desc = f'Training')
 
     while not finished:#################
@@ -194,16 +194,15 @@ def train(
 
             culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
 
-        # shuffle chunks if not using cache
-        if max_cache_length == 0:
-            random.shuffle(chunks)
+        # # shuffle chunks if not using cache
+        # if max_cache_length == 0:
+        #     random.shuffle(chunks)
 
         was_warmup = scheduler.is_warmup
         if was_warmup:
             scheduler.is_warmup = scheduler.is_warming_up()
             if not scheduler.is_warmup and was_warmup:
-                current_recording = cur_podcast
-                remaining_recordings = total_recordings - current_recording
+                remaining_recordings = total_recordings - cur_podcast
                 scheduler.set_cosine_schedule(remaining_recordings)
 
         prev_selection_mask = None # selection mask from previous chunk
@@ -309,16 +308,18 @@ def train(
         if exists(sequence_scheduler):
             to_update, new_seq_len, new_bs = sequence_scheduler.step(steps = cur_batch_size)
             if to_update:
+                args.config['audio_chunking']['size'] = new_seq_len
                 chunk_size = new_seq_len
                 batch_size = new_bs
                 dataloader.update_batch_size(
                     batch_size = batch_size,
                     skip_to = cur_podcast,
                 )
+                if args.config['model']['use_rotary'] and args.config['sequence_scheduler'].get('interpolate_rotary', False):
+                    model.rotary_pos_emb.rotary_interpolation_factor = model.rotary_pos_emb.rotary_interpolation_factor * sequence_scheduler.increase_by_multiplier
                 dataloader_iter = iter(dataloader)
                 pbar.total = len(dataloader) # update total of tqdm
                 
-              
         del chunks
         
     save_model( # save final model
