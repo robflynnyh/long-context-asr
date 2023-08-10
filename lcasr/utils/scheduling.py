@@ -6,6 +6,7 @@ class CosineLRScheduler(torch.optim.lr_scheduler._LRScheduler):
         self.warmup_steps = warmup_steps
         self.peak_value = peak_value
         self.final_value = final_value
+        self.offset = 0
         super().__init__(optimizer)
         
     def is_warming_up(self):
@@ -14,17 +15,18 @@ class CosineLRScheduler(torch.optim.lr_scheduler._LRScheduler):
         else:
             return False
 
-    def set_cosine_schedule(self, remaining_steps):
+    def set_cosine_schedule(self, total_recordings, cur_podcast):
         # reset the step to 0
         self.last_epoch = 0
         self.is_warmup = False
-        self.steps = remaining_steps
+        self.steps = total_recordings - cur_podcast + 1
+        self.offset = -cur_podcast
 
     def get_lr(self):
         if self.is_warmup:
             return [self.peak_value * min(1.0, self.last_epoch / self.warmup_steps) for _ in self.base_lrs]
         else:
-            return [self.final_value + 0.5 * (self.peak_value - self.final_value) * (1 + np.cos((self.last_epoch) / (self.steps) * np.pi)) for _ in self.base_lrs]
+            return [self.final_value + 0.5 * (self.peak_value - self.final_value) * (1 + np.cos((self.last_epoch + self.offset) / (self.steps) * np.pi)) for _ in self.base_lrs]
 
         
 

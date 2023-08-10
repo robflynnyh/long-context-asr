@@ -202,8 +202,7 @@ def train(
         if was_warmup:
             scheduler.is_warmup = scheduler.is_warming_up()
             if not scheduler.is_warmup and was_warmup:
-                remaining_recordings = total_recordings - cur_podcast
-                scheduler.set_cosine_schedule(remaining_recordings)
+                scheduler.set_cosine_schedule(total_recordings=total_recordings, cur_podcast=cur_podcast)
 
         prev_selection_mask = None # selection mask from previous chunk
         last_kv_set = None
