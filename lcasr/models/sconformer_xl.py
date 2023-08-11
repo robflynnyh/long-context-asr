@@ -788,6 +788,7 @@ class Attention(nn.Module):
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
             #out, weight = self.sdpa(q, k, v, attn_mask)
+            #print('here')
             out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
 
             out = rearrange(out, "b h n d -> b n (h d)")

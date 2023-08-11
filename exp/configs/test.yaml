@@ -7,13 +7,13 @@ model:
   dropout_ff: 0.0
   dropout_attn: 0.0
   dropout_conv: 0.0
-  subsampling_factor: 8
-  subsampling: dw_striding
-  subsampling_act: silu
-  subsampling_conv_channels: 256
+  subsampling_factor: 4
+  subsampling: striding
+  subsampling_act: gelu
+  subsampling_conv_channels: -1
   self_condition_subsampling: false
   subsampling_norm_out: false
-  conv_kernel_size: 9
+  conv_kernel_size: 31
   qk_rms_norm: false
   shift_kvs: false
   self_conditioning: true
@@ -25,6 +25,7 @@ model:
   sandwich_norm: false
   bias_in_ff: false
   checkpoint_every_n_layers: 0
+  flash_attn: false
 
 optimizer:
   name: madgrad
@@ -35,16 +36,16 @@ scheduler:
   warmup_steps: 3000
 
 audio_chunking:
-  size: 512
+  size: 54000
   overlap: 0
 
-sequence_scheduler:
-  increase_every: 100
-  stop_after: 90000
-  start_after: 0
-  max_sequence_length: 360000
-  increase_by_multiplier: 2
-  batch_size_multiplier: 0.5
+# sequence_scheduler:
+#   increase_every: 100
+#   stop_after: 90000
+#   start_after: 0
+#   max_sequence_length: 360000
+#   increase_by_multiplier: 2
+#   batch_size_multiplier: 0.5
 
 # 512:0
 # 1024:4000
@@ -61,7 +62,7 @@ sequence_scheduler:
 
 
 wandb:
-  use: true
+  use: false
   project_name: spotify_long_context
   name: 'test'
   id: ''
@@ -74,7 +75,7 @@ data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
 
 training:
-  batch_size: 704
+  batch_size: 1
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
