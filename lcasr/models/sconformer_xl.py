@@ -9,6 +9,7 @@ from lcasr.components import fused_dense, subsampling, convolution
 from lcasr.utils.helpers import exists
 
 from torch.cuda.amp import autocast
+import math
 from contextlib import nullcontext
 
 ConformerConvolution = convolution.ConformerConvolution
@@ -321,8 +322,9 @@ class SCConformerXL(nn.Module):
         #print(full_kv_lengths, '333333333')
         if self.use_rotary:
             max_seq_len = full_kv_lengths.max()
-            cos, sin = self.rotary_pos_emb(max_seq_len, audio_signal.device)
             q_offset = 0 if cached_kvs is None else cached_kvs.shape[1]
+      
+            cos, sin = self.rotary_pos_emb(max_seq_len, audio_signal.device)
             rotary_emb_fn = apply_rotary(cos = cos, sin = sin, q_offset = q_offset, learned = self.rotary_pos_emb.learned_freq)
         
 
@@ -674,6 +676,7 @@ class Attention(nn.Module):
         self.layer_idx = kwargs.get('layer_idx', None)
         #self.history_vector = torch.nn.Parameter(torch.zeros(2, 1, 1, 1, head_dim), requires_grad=True)
 
+
         self.num_position_embeddings = kwargs.get('num_position_embeddings', -1)
         if self.num_position_embeddings > 0: # # B, N, KV, H, D
             self.position_embeddings = nn.Parameter(torch.empty(1, self.num_position_embeddings, 2, n_heads, head_dim))
@@ -721,6 +724,8 @@ class Attention(nn.Module):
         a_weight = a_weight.softmax(dim=-1)
         return torch.einsum("b h i j, b h j d -> b h i d", a_weight, v), a_weight
 
+   
+        
     def forward(self, x, length, attn_mask=None, pad_mask=None, cached_kv=None, flash_attn = True, rotary_emb_fn = None):
         B, N, C, H, D = *x.shape, self.n_heads, self.head_dim
         #print(x.shape, mask.shape)
@@ -734,6 +739,8 @@ class Attention(nn.Module):
             q, k = map(partial(l2norm, groups = 8), (q, k))
 
         kv, kv_to_cache = self.attatch_cache([k, v], cached_kv)
+
+       
 
         if rotary_emb_fn is not None:
             if rotary_emb_fn.learned == False:
@@ -783,15 +790,22 @@ class Attention(nn.Module):
                     )
                     out = pad_input(out, indices = q_indices, batch = b, seqlen = qs)
             out = out.to(x.dtype) 
+           
             out = rearrange(out, "b n h d -> b n (h d)")
         else:
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
-            #out, weight = self.sdpa(q, k, v, attn_mask)
+            # print(self.layer_idx, 'h')
+            # out, weight = self.sdpa(q, k, v, attn_mask)
+            # if self.layer_idx == 3:
+            #     torch.save(weight.detach().cpu().half(), 'weight.pt')
+            #     exit()
+            
             #print('here')
             out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
 
             out = rearrange(out, "b h n d -> b n (h d)")
+      
 
         if pad_mask != None:
             out = out.masked_fill(pad_mask.unsqueeze(-1), 0)

@@ -70,6 +70,9 @@ def main(args):
     
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     checkpoint['model'] = general.convert_from_ddp(checkpoint['model'])
+
+    max_len = checkpoint['config']['training']['max_seq_len']
+  
     model_config = checkpoint['config']
     args.config = model_config
     
@@ -126,6 +129,7 @@ def main(args):
             debug=False,
             prune_less_than_val = p,
             top_am_threshold = top_am_threshold,
+            max_cache_length = max_len
         )
         bs.run_search(use_tqdm=True)
         #text_out = post_process(text = bs.return_text(idx = 0))
