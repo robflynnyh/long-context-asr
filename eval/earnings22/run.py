@@ -27,10 +27,7 @@ TEST_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/test_original'
 DEV_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/dev_original'
 ALL_TEXT_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/full_transcripts.json'
 
-# TEST DATA:
-# 4453225.mp3  4479524.mp3  4481904.mp3  4482249.mp3  4483912.mp3  mtngh_fy18_call_audio_04032019.mp3
-# DEV DATE:
-# 4449269.mp3  4469669.mp3  4471586.mp3  4474955.mp3  4482613.mp3  4483338.mp3  4483633.mp3
+
 
 def post_process(text:str): return text
 
@@ -99,15 +96,18 @@ def load_audio(audio_file:str):
 @torch.no_grad()
 def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer, use_tqdm=True):
     spec_n = spec.shape[-1]
+    
     downsampling_factor = args.config['model']['subsampling_factor']
+    assert overlap / downsampling_factor == overlap // downsampling_factor, 'Overlap must be a multiple of the downsampling factor'
     seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
+    overlap = 0 if seq_len >= spec_n else overlap # no overlap if seq_len is larger than the spec
     seq_len = seq_len if seq_len < spec_n else spec_n
     overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
     cache_len = args.cache_len if args.cache_len != -1 else args.config['training']['max_seq_len']
     #assert overlap == 0 or cache_len == 0, 'Cannot use overlap and cache_len at the same time'
 
-    assert overlap / downsampling_factor == overlap // downsampling_factor, 'Overlap must be a multiple of the downsampling factor'
-
+    
+    
     print(f'Using seq_len: {seq_len} and overlap: {overlap} and cache_len: {cache_len}')
 
     all_logits = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
@@ -145,7 +145,7 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
             logit_position -= overlap_ds
 
         #logit_position = i 
-
+        #print(all_logits.shape, ds_len, logit_position, logit_position+ds_len, logits.shape)
         logit_count[:, logit_position:logit_position+ds_len, :] += 1
         all_logits[:, logit_position:logit_position+ds_len, :] += logits
         logit_position += ds_len 

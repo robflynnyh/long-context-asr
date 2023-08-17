@@ -75,28 +75,6 @@ def chunk_text_json( # legacy
     return splits if not get_seconds else (splits, start_end_times)
 
 
-# def __chunk_eq_test__(text, chunk_size, chunk_overlap, spectogram_length, timeit=False):
-#     '''equivalence test between legacy and new chunk_text_json functions'''
-#     a_start = time.time() if timeit else None
-#     a = ___chunk_text_json___(text, chunk_size, chunk_overlap, spectogram_length, get_seconds=False)
-#     if timeit:
-#         a_end, b_start = time.time(), time.time()
-#     b = chunk_text_json(text, chunk_size, chunk_overlap, spectogram_length, get_seconds=False)
-#     b_end = time.time() if timeit else None
-#     all_a = "#".join(a)
-#     all_b = "#".join(b)
-#     assert all_a == all_b, f"FAIL\nall_a: {all_a}\nall_b: {all_b}"
-#     print("PASS")
-#     if timeit:
-#         print(f"legacy: {a_end - a_start}\nnew: {b_end - b_start}")
-
-# def run_chunk_eq_test():
-#     pairs = load_pairs()
-#     text_f = [pairs[k]['txt'] for k in list(pairs.keys())[:10000]]
-#     for i in tqdm(range(len(text_f)), total=len(text_f)):
-#         json_tx = load_json(text_f[i])
-#         txt = json_tx['results'][-1]['alternatives'][0]['words']
-#         __chunk_eq_test__(txt, 2048, 2000, 100000, timeit=True)
 
 def load_sample(entry:Dict[str, str]) -> Tuple[torch.Tensor, torch.Tensor]:
     # audio_name = entry['audio'].replace('.spec.pt', '.ogg')
@@ -118,10 +96,6 @@ def load_sample(entry:Dict[str, str]) -> Tuple[torch.Tensor, torch.Tensor]:
     return audio, txt
 
 
-# def text_preprocess(txt:str) -> str:
-#     txt = re.sub('(\d+)%', r'\1 %', txt).replace(' %', ' percent') # 100% -> 100 percent
-#     return txt
-    
 
 class SimpleDataset(torch.utils.data.Dataset):
     def __init__(
@@ -130,10 +104,11 @@ class SimpleDataset(torch.utils.data.Dataset):
             batch_size:int = 8,
             subgroup_shuffle_size:int = 2000,
             skip_to:int = 0,
+            random_seed:int = 1234,
         ):
         self.batch_size = batch_size
         self.subgroup_shuffle_size = subgroup_shuffle_size
-    
+        self.random_seed = random_seed
         self.pairs = pd.DataFrame(list(pairs.values()))
         # sort pairs by duration
         self.pairs = self.pairs.sort_values(by='duration')
@@ -144,7 +119,7 @@ class SimpleDataset(torch.utils.data.Dataset):
         self.pairs = self.pairs.iloc[skip_to:].reset_index(drop=True)
 
     def create_batches(self):
-        np.random.seed(1234)
+        np.random.seed(self.random_seed)
         indices = np.arange(len(self))
         indices = [np.random.permutation(indices[i:i+self.subgroup_shuffle_size]) for i in range(0, len(indices), self.subgroup_shuffle_size)]
         indices = np.concatenate(indices)
@@ -234,6 +209,7 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         num_workers:int = 0,
         pin_memory:bool = False,
         prefetch:int = None,
+        random_seed=1234,
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -244,7 +220,8 @@ class SimpleDataloader(torch.utils.data.DataLoader):
                     pairs, 
                     batch_size = batch_size,
                     skip_to = skip_to, 
-                    subgroup_shuffle_size = 1000
+                    subgroup_shuffle_size = 1000,
+                    random_seed=random_seed,
         )
         super().__init__(
                 dataset = dataset,
@@ -269,6 +246,7 @@ class VariableBatchSimpleDataloader():
         num_workers:int = 0,
         pin_memory:bool = False,
         prefetch:int = None,
+        random_seed=1234,
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -279,6 +257,7 @@ class VariableBatchSimpleDataloader():
         self.num_workers = num_workers
         self.pin_memory = pin_memory
         self.prefetch = prefetch
+        self.random_seed = random_seed
 
         self.dataloader = SimpleDataloader(
             pairs = pairs,
@@ -290,6 +269,7 @@ class VariableBatchSimpleDataloader():
             num_workers = num_workers,
             pin_memory = pin_memory,
             prefetch = prefetch,
+            random_seed = random_seed,
         )
 
     def update_batch_size(self, batch_size:int, skip_to:int = 0):
@@ -304,6 +284,7 @@ class VariableBatchSimpleDataloader():
             num_workers = self.num_workers,
             pin_memory = self.pin_memory,
             prefetch = self.prefetch,
+            random_seed = self.random_seed,
         )
 
     def __iter__(self):

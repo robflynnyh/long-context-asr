@@ -1,12 +1,12 @@
 template_info:
-  create: 2 # number of experiments to create
+  create: 3 # number of experiments to create
   include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training'] #, 'sequence_scheduler'] # keys to include in experiments config
   template_keys: [
     'checkpointing.dir', 
     'wandb.name', 
     'optimizer.args.lr',
-    'audio_chunking.size',
     'training.batch_size',
+    'scheduler.warmup_steps',
   ] # keys to use to create experiments
 
 model:
@@ -18,13 +18,13 @@ model:
   dropout_ff: 0.0 # dropout parameters
   dropout_attn: 0.0
   dropout_conv: 0.0
-  subsampling_factor: 4 # subsampling parameters
-  subsampling: 'striding'
+  subsampling_factor: 8 # subsampling parameters
+  subsampling: 'dw_striding'
   subsampling_act: 'silu'
-  subsampling_conv_channels: -1
+  subsampling_conv_channels: 256
   self_condition_subsampling: false
   subsampling_norm_out: false
-  conv_kernel_size: 31
+  conv_kernel_size: 9
   qk_rms_norm: false 
   shift_kvs: false
   self_conditioning: true
@@ -36,13 +36,22 @@ model:
   sandwich_norm: false
   bias_in_ff: false
   checkpoint_every_n_layers: 0
+  grouped_attention: false
 
 optimizer:
   name: 'madgrad'
   args:
     lr: [
       3e-3,
-      3e-3
+      3e-3,
+      3e-3,
+      3e-3,
+      3e-3,
+      1e-3,
+      1e-3,
+      1e-3,
+      1e-3,
+      1e-3,
     ]
 
 scheduler:
@@ -50,8 +59,16 @@ scheduler:
 
 audio_chunking: # 360000 (max = 1 hour)
   size: [
-    1024,
     2048,
+    2048,
+    2048,
+    2048,
+    2048,
+    4096,
+    4096,
+    4096,
+    4096,
+    4096,
   ]
   overlap: 0 # not using currently...
 
@@ -59,7 +76,7 @@ audio_chunking: # 360000 (max = 1 hour)
 #   increase_every: 5000
 #   stop_after: 90000
 #   start_after: 0
-#   max_sequence_length: [2048, 4096, 2048, 4096]
+#   max_sequence_length: [1024, 2048, 4096, 8192, 16384, 32768]
 #   increase_by_multiplier: 2
 #   batch_size_multiplier: 0.5
 #   interpolate_rotary: false
@@ -68,19 +85,15 @@ wandb:
   use: true
   project_name: "spotify_long_context"
   name: [ 
-    'ss4x_1024_9e4',
-    'ss4x_1024_1e3',
-    'ss4x_1024_2e3',
-    'ss4x_2048_9e4',
-    'ss4x_2048_1e3',
-    'ss4x_2048_2e3',
+    'ss4x_18kernel_1024_3e3',
+    'ss4x_18kernel_2048_3e3',
+    'ss4x_18kernel_4096_1e3',
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_conformer_og/ss4x_1024_3e3_bp4',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_conformer_og/ss4x_2048_3e3_bp4',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_std_
   ]
   save_every_n_steps: 2000
 
@@ -91,10 +104,11 @@ data:
   
 training:
   batch_size: [
+    176,
     88,
-    44
+    44,
   ]
-  backprop_every: 4
+  backprop_every: 2
   backwards_every: 1
   max_seq_len: 0
   clip_value: 0.8
