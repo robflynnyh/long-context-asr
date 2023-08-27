@@ -1,5 +1,5 @@
 template_info:
-  create: 2 # number of experiments to create
+  create: 5 # number of experiments to create
   include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training', 'sequence_scheduler'] # keys to include in experiments config
   template_keys: [
     'checkpointing.dir', 
@@ -51,7 +51,13 @@ sequence_scheduler:
   increase_every: 5000
   stop_after: 90000
   start_after: 0
-  max_sequence_length: [2048, 4096]
+  max_sequence_length: [
+    2048,
+    4096,
+    16384,
+    32768,
+    360000,
+  ]
   increase_by_multiplier: 2
   batch_size_multiplier: 0.5
   interpolate_rotary: false
@@ -60,15 +66,21 @@ wandb:
   use: true
   project_name: "spotify_long_context"
   name: [ 
-    'rr_seq_sched_2048',
-    'rr_seq_sched_4096',
+    'fx_seq_sched_2048_1',
+    'fx_seq_sched_4096_1',
+    'fx_seq_sched_16384_1',
+    'fx_seq_sched_32768_1',
+    'fx_seq_sched_360000_1'
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler/2048_seq_sched',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler/4096_seq_sched',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_2/fx_seq_sched_2048_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_2/fx_seq_sched_4096_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_2/fx_seq_sched_16384_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_2/fx_seq_sched_32768_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_2/fx_seq_sched_360000_1'
   ]
   save_every_n_steps: 2000
 

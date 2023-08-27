@@ -80,7 +80,7 @@ def load_checkpoint(
     ):
     latest_checkpoint = find_latest_checkpoint(path)
     if latest_checkpoint is None:
-        return [] 
+        return [], 0
     path = os.path.join(path, latest_checkpoint)
     checkpoint = torch.load(path, map_location=device)
     if args and args.remove_scheduler:
@@ -104,4 +104,5 @@ def load_checkpoint(
         sequence_scheduler.load_state_dict(checkpoint['sequence_scheduler'])
   
     seen_ids = checkpoint.get('seen_ids', [])
-    return seen_ids
+    step = checkpoint.get('podcast_step', 0)
+    return seen_ids, step

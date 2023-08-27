@@ -80,7 +80,7 @@ def train(
         scheduler:CosineLRScheduler,
         sequence_scheduler:SequenceWarmupManager,
         device:torch.device,
-        skip_to:int = 0,
+        step:int = 0,
         seen_ids:List[str] = [],
     ):
     scaler = GradScaler()
@@ -121,8 +121,8 @@ def train(
 
     pad_id = tokenizer.pad_id()
 
-    last_podcast = skip_to
-    cur_podcast = skip_to
+    last_podcast = step
+    cur_podcast = step
     podcasts_since_last_save = 0
 
     i = -1
@@ -362,6 +362,7 @@ def main(args):
     if wandb_config['use']:
         project_name, w_id = wandb_config['project_name'], wandb_config['id']
         run_name = None if 'name' not in wandb_config else wandb_config['name']
+
         wandb.init(project=project_name, config=args.config, name=run_name) if w_id == '' else wandb.init(project=project_name, id=w_id, resume="must", config=args.config, allow_val_change=True)
         wandb.watch(model, log="all") # sometimes this causes a crash ):
         wandb.config.update({'total_params': tparams}, allow_val_change=True)
@@ -378,7 +379,7 @@ def main(args):
             **args.config['sequence_scheduler']
         )
 
-    seen_ids = load_checkpoint(
+    seen_ids, step = load_checkpoint(
         args = args, 
         model = model, 
         optimizer = optimizer, 
@@ -389,7 +390,7 @@ def main(args):
     )
 
     if args.reset_step:
-        seen_ids = []
+        seen_ids, step = [], 0
 
     print(f'Starting from podcast: {len(seen_ids)}')
     # skip data up to step
@@ -423,6 +424,7 @@ def main(args):
         sequence_scheduler = sequence_scheduler, 
         device = device, 
         seen_ids = seen_ids,
+        step = step,
     )
 
 
