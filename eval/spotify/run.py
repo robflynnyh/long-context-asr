@@ -18,12 +18,11 @@ import os
 import wandb
 import re
 
-from wer import word_error_rate_detail 
-from postprocess import post_process
+from lcasr.eval.wer import word_error_rate_detail 
 import re
 
-TEST_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/test/'
-DEV_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/dev/'
+from lcasr.utils.audio_tools import load_pairs
+from lcasr.utils.audio_tools import load_json
 
 
 from whisper.normalizers import EnglishTextNormalizer
@@ -34,56 +33,7 @@ def open_stm(path:str) -> List[str]:
         lines = f.read().split('\n')
     return lines
 
-def proc_stm_and_timings(stm_path:str):
-    stm = open_stm(stm_path)
-    all_text = ""
-    timings = []
-    remove_timings = []
-    for line in stm:
-        sline = line.split(' ')
-        if len(sline) < 6:
-            continue
-        a_id, s_id, spk, start, end, meta = sline[:6]
-        text = ' '.join(sline[6:])
-        if text == 'ignore_time_segment_in_scoring':
-            remove_timings.append({'start': float(start), 'end': float(end)})
-            continue
-        all_text += text + ' '
-        timings.append({'start': float(start), 'end': float(end)})
-    all_text = all_text.strip()
-    # regex to do all of the above
-    # i.e replace space followed by a apostrophe followed by a letter with just the apostrophe and letter
-    all_text = re.sub(r" '([a-z])", r"'\1", all_text)
-    # remove multiple spaces
-    all_text = re.sub(r" +", r" ", all_text)
-    return all_text, timings, remove_timings
 
-def fetch_utterances(stm_path:str, spectogram:torch.Tensor):
-    stm = open_stm(stm_path)
-    utterances = []
-    for line in stm:
-        sline = line.split(' ')
-        if len(sline) < 6:
-            continue
-        a_id, s_id, spk, start, end, meta = sline[:6]
-        text = ' '.join(sline[6:])
-        if text == 'ignore_time_segment_in_scoring':
-            continue
-        utterances.append({
-            'start': float(start), 
-            'end': float(end), 
-            'text': text, 
-            'start_frame': total_frames(float(start)), 
-            'end_frame': total_frames(float(end)),
-            'spectogram': spectogram[:, :, total_frames(float(start)):total_frames(float(end))]
-        })
-    
-    all_text = " ".join([el['text'] for el in utterances])
-    all_text = re.sub(r" '([a-z])", r"'\1", all_text)
-    all_text = re.sub(r" +", r" ", all_text)
-    
-    
-    return utterances, all_text
 
 def ctc_decoder(vocab, alpha, beta, arpa_path=''):
     arpa_path = None if arpa_path == '' else arpa_path
@@ -126,22 +76,30 @@ def decode_beams_lm(
 
     return decoded_data, beams[0]
 
-def fetch_data(path:str = TEST_PATH):
-    audio_path = os.path.join(path, 'sph')
-    audio_files = [os.path.join(audio_path, el) for el in os.listdir(audio_path) if el.endswith('.sph')]
-    audio_files.sort()
-    text_path = os.path.join(path, 'stm')
-    text_files = [os.path.join(text_path, el) for el in os.listdir(text_path) if el.endswith('.stm')]
-    text_files.sort()
-    assert len(audio_files) == len(text_files), 'Number of audio files and text files must match'
-    return audio_files, text_files
+def fetch_data():
+    all_data = load_pairs()
+    data_items = all_data.items()
+    audio_paths = []
+    texts = []
+    for i in range(4):
+        sample = list(data_items)[i][1]
+        audio_path = sample['audio']
+        text = sample['txt']
+        audio_paths.append(audio_path)
+        texts.append(text)
+
+    return audio_paths, texts
 
 
 def load_audio(audio_file:str):
-    spec = processing_chain(audio_file)
+    spec = torch.load(audio_file).to(dtype=torch.float32)
     return spec
 
-
+def load_text(text_path:str):
+    jfile = load_json(text_path)
+    txt = jfile['results'][-1]['alternatives'][0]['words']
+    txt = ' '.join([el['word'] for el in txt]).lower().strip()
+    return txt
 
 @torch.no_grad()
 def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer, use_tqdm=True):
@@ -223,54 +181,8 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     return logits.squeeze(0).numpy()
 
 
-def parse_utterances_(decoded_frames:List[Dict[str, any]], timings:List[Dict[str, int]]):    
-    parsed_decoded_frames = []
-    buffer = 0.0
-    for frame in decoded_frames:
-        start, end = frame['start'], frame['end']
-        to_keep = True
-        for timing in timings:
-            t_start, t_end = timing['start'] - buffer, timing['end'] + buffer
-            if start >= t_start and end <= t_end:
-                to_keep = False
-                break
-        if to_keep:
-            parsed_decoded_frames.append(frame)
-    #print(" ".join(el['word'] for el in parsed_decoded_frames))
-    all_text = post_process(" ".join(el['word'] for el in parsed_decoded_frames))
-    return all_text, parsed_decoded_frames            
-
-def parse_utterances(decoded_frames:List[Dict[str, any]], timings:List[Dict[str, int]]):    
-    parsed_decoded_frames = []
-    buffer = 10.0
-    for frame in decoded_frames:
-        start, end = frame['start'], frame['end']
-        for timing in timings:
-            t_start, t_end = timing['start'] - buffer, timing['end'] + buffer
-            if start >= t_start and end <= t_end:
-                parsed_decoded_frames.append(frame)
-                break
-    #print(" ".join(el['word'] for el in parsed_decoded_frames))
-    all_text = post_process(" ".join(el['word'] for el in parsed_decoded_frames))
-    return all_text, parsed_decoded_frames     
-
-def zero_out_spectogram(spec:torch.Tensor, remove_timings:List[Dict[str, int]]):
-    buffer = -0.5
-
-    for timing in remove_timings:
-        start, end = timing['start'] - buffer, timing['end'] + buffer
-
-        start_frame, end_frame = map(total_frames, [start, end])
-        spec[:,:,start_frame:end_frame] = 0
-
-    return spec
-
-
 def main(args):
-    assert args.split in ['test', 'dev'], 'Split must be either test or dev'
-    data_path = TEST_PATH if args.split == 'test' else DEV_PATH
 
-    
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
     args.config = model_config
@@ -286,70 +198,39 @@ def main(args):
     model = model.to(device)
     model.eval()
 
-    arpa_path = args.arpa_path if args.beam_width != 1 else ''
     decoder = ctc_decoder(
         vocab = [tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""],
         alpha = args.alpha,
         beta = args.beta,
-        arpa_path = args.arpa_path,
+        arpa_path = None,
     ) # "" = blank
 
 
-    audio_files, text_files = fetch_data(path=data_path)
-    paired = dict(zip(audio_files, text_files))
+    audio_files, text_files = fetch_data()
     
     all_texts = []
     all_golds = []
 
-    if not args.single_utterance:
-        for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
-            print(f'Processing {rec+1}/{len(audio_files)}') if args.verbose else None   
+    for ix, (rec, tex) in tqdm(enumerate(zip(audio_files, text_files)), total=len(audio_files)):
+        print(f'Processing {ix+1}/{len(audio_files)}') if args.verbose else None   
 
-            audio_spec = load_audio(audio_files[rec])
-            print('\n\n'+paired[audio_files[rec]]+'\n\n') if args.verbose else None
-            stm_path = paired[audio_files[rec]]
-            gold_text, timings, remove_timings = proc_stm_and_timings(stm_path=stm_path)
+        audio_spec = load_audio(rec)
+        gold_text = load_text(tex)
+       
+     
+       
+        logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
+       
+        ds_factor = audio_spec.shape[-1] / logits.shape[0]
+        decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
 
-            audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
-            import time
-            stime = time.time()
-            logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
-            etime = time.time()
-            print(f'Inference time: {etime-stime}')
-            ds_factor = audio_spec.shape[-1] / logits.shape[0]
-            decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
-
-            all_text = normalize(decoded[0]['text']).lower()
-            gold_text = normalize(gold_text).lower()    
-            print(gold_text) if args.verbose else None
-            print(all_text) if args.verbose else None
-            all_texts.append(all_text)
-            all_golds.append(gold_text)
-            #break
-    else:
-        for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
-
-            print(f'Processing {rec+1}/{len(audio_files)}') if args.verbose else None
-
-            audio_spec = load_audio(audio_files[rec])
-            print('\n\n'+paired[audio_files[rec]]+'\n\n') if args.verbose else None
-            stm_path = paired[audio_files[rec]]
-            utterances, gold_text = fetch_utterances(stm_path=stm_path, spectogram=audio_spec)
-           
-            out_texts = []
-            for utterance in tqdm(utterances):
-                logit = fetch_logits(args, model, utterance['spectogram'], utterance['spectogram'].shape[-1], 0, tokenizer, use_tqdm=False)
-                ds_factor = utterance['spectogram'].shape[-1] / logit.shape[0]
-                decoded, bo = decode_beams_lm([logit], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
-                out_text = normalize(decoded[0]['text']).lower().strip()
-                out_texts.append(out_text)
-            all_text = " ".join(out_texts).strip()#
-            gold_text = normalize(gold_text).lower().strip()
-            print(gold_text) if args.verbose else None
-            print(all_text) if args.verbose else None
-            all_texts.append(all_text)
-            all_golds.append(gold_text)
-
+        all_text = normalize(decoded[0]['text']).lower()
+        gold_text = normalize(gold_text).lower()    
+        print(gold_text) if args.verbose else None
+        print(all_text) if args.verbose else None
+        all_texts.append(all_text)
+        all_golds.append(gold_text)
+ 
 
         
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)

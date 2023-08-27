@@ -103,20 +103,27 @@ class SimpleDataset(torch.utils.data.Dataset):
             pairs:Dict[str, Dict[str, str]],
             batch_size:int = 8,
             subgroup_shuffle_size:int = 2000,
-            skip_to:int = 0,
+            skip_to:int = 0, # deprecated
             random_seed:int = 1234,
+            seen_ids:List[str] = [], # remove ids from dataset (i.e already trained on)
         ):
         self.batch_size = batch_size
         self.subgroup_shuffle_size = subgroup_shuffle_size
         self.random_seed = random_seed
+  
         self.pairs = pd.DataFrame(list(pairs.values()))
+        self.pairs['id'] = list(pairs.keys())
+        # remove ids
+        self.pairs = self.pairs[~self.pairs['id'].isin(seen_ids)]
+
         # sort pairs by duration
         self.pairs = self.pairs.sort_values(by='duration')
         self.pairs = self.pairs.reset_index(drop=True) # reset index drop means old index is not added as a column
 
         self.create_batches()
         # trim to skip_to
-        self.pairs = self.pairs.iloc[skip_to:].reset_index(drop=True)
+        self.pairs = self.pairs.iloc[skip_to:].reset_index(drop=True) # deprecated in favour of seen_ids !!
+       
 
     def create_batches(self):
         np.random.seed(self.random_seed)
@@ -133,7 +140,7 @@ class SimpleDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         audio, txt = load_sample({'audio': self.pairs['audio'][idx], 'txt': self.pairs['txt'][idx]})
-        id = "_".join(self.pairs['audio'][idx].split('/')[-2:]).replace('.spec.pt', '')
+        id = self.pairs['id'][idx]
         txt = txt['results'][-1]['alternatives'][0]['words']
         audio = rearrange(audio, '() f t -> t f')
         return audio, txt, id
@@ -210,6 +217,7 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         pin_memory:bool = False,
         prefetch:int = None,
         random_seed=1234,
+        seen_ids:List[str] = [],
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -221,7 +229,8 @@ class SimpleDataloader(torch.utils.data.DataLoader):
                     batch_size = batch_size,
                     skip_to = skip_to, 
                     subgroup_shuffle_size = 1000,
-                    random_seed=random_seed,
+                    random_seed = random_seed,
+                    seen_ids = seen_ids,
         )
         super().__init__(
                 dataset = dataset,
@@ -247,6 +256,7 @@ class VariableBatchSimpleDataloader():
         pin_memory:bool = False,
         prefetch:int = None,
         random_seed=1234,
+        seen_ids:List[str] = [],
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -270,14 +280,14 @@ class VariableBatchSimpleDataloader():
             pin_memory = pin_memory,
             prefetch = prefetch,
             random_seed = random_seed,
+            seen_ids = seen_ids,
         )
 
-    def update_batch_size(self, batch_size:int, skip_to:int = 0):
+    def update_batch_size(self, batch_size:int, seen_ids:List[str]=[]):
         self.batch_size = batch_size
         self.dataloader = SimpleDataloader(
             pairs = self.pairs,
             tokenizer = self.tokenizer,
-            skip_to = skip_to,
             batch_size = batch_size,
             chunk_size = self.chunk_size,
             chunk_overlap = self.chunk_overlap,
@@ -285,6 +295,7 @@ class VariableBatchSimpleDataloader():
             pin_memory = self.pin_memory,
             prefetch = self.prefetch,
             random_seed = self.random_seed,
+            seen_ids = seen_ids,
         )
 
     def __iter__(self):

@@ -81,6 +81,7 @@ def train(
         sequence_scheduler:SequenceWarmupManager,
         device:torch.device,
         skip_to:int = 0,
+        seen_ids:List[str] = [],
     ):
     scaler = GradScaler()
             
@@ -140,7 +141,9 @@ def train(
             continue
         ################################
 
-        audio, audio_lengths, txt, _ = batch
+        audio, audio_lengths, txt, ids = batch
+        seen_ids.extend(ids)
+
         cur_batch_size = audio.shape[0]
 
         ###############################
@@ -155,6 +158,7 @@ def train(
                 podcast_step = cur_podcast, 
                 config = args.config,
                 sequence_scheduler = sequence_scheduler,
+                seen_ids = seen_ids,
             )
             podcasts_since_last_save = 0
         last_podcast = cur_podcast
@@ -248,6 +252,11 @@ def train(
                     loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
                     
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
+                # check for nan in loss
+                if torch.isnan(loss):
+                    print('OH NO! NAN IN LOSS, SKIPPING') # TODO: set kv cache to None here
+                    continue
+
                 cur_loss += loss
 
                 backwards_every_loss += loss
@@ -312,7 +321,7 @@ def train(
                 batch_size = new_bs
                 dataloader.update_batch_size(
                     batch_size = batch_size,
-                    skip_to = cur_podcast,
+                    seen_ids = seen_ids,
                 )
                 if args.config['model']['use_rotary'] and args.config['sequence_scheduler'].get('interpolate_rotary', False):
                     model.rotary_pos_emb.rotary_interpolation_factor = model.rotary_pos_emb.rotary_interpolation_factor * sequence_scheduler.increase_by_multiplier
@@ -328,6 +337,7 @@ def train(
         podcast_step = cur_podcast,
         config = args.config,
         sequence_scheduler = sequence_scheduler,
+        seen_ids = seen_ids,
     )
     return model
             
@@ -368,7 +378,7 @@ def main(args):
             **args.config['sequence_scheduler']
         )
 
-    step = load_checkpoint(
+    seen_ids = load_checkpoint(
         args = args, 
         model = model, 
         optimizer = optimizer, 
@@ -379,20 +389,20 @@ def main(args):
     )
 
     if args.reset_step:
-        step = 0
+        seen_ids = []
 
-    print(f'Starting from podcast: {step}')
+    print(f'Starting from podcast: {len(seen_ids)}')
     # skip data up to step
     dataloader = VariableBatchSimpleDataloader(
         pairs = paired_data, 
         tokenizer = tokenizer, 
         batch_size = args.config['training']['batch_size'],
-        skip_to = step,
         chunk_size = args.config.audio_chunking['size'],
         chunk_overlap = args.config.audio_chunking['overlap'],
         num_workers = args.num_workers,
         pin_memory = args.pin_memory,
         prefetch = args.prefetch_factor,
+        seen_ids = seen_ids,
     )
     
     if args.debug_hooks:
@@ -402,7 +412,7 @@ def main(args):
     
     if sequence_scheduler and dataloader.batch_size != sequence_scheduler.cur_batch_size:
         print('WARNING: dataloader batch size does not match sequence scheduler batch size, updating dataloader batch size')
-        dataloader.update_batch_size(batch_size = sequence_scheduler.cur_batch_size, skip_to = step)
+        dataloader.update_batch_size(batch_size = sequence_scheduler.cur_batch_size, seen_ids = seen_ids)
 
     final_model = train(
         args = args, 
@@ -412,7 +422,7 @@ def main(args):
         scheduler = scheduler,
         sequence_scheduler = sequence_scheduler, 
         device = device, 
-        skip_to = step
+        seen_ids = seen_ids,
     )
 
 

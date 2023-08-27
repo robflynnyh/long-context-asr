@@ -25,8 +25,8 @@ model:
   sandwich_norm: false
   bias_in_ff: false
   checkpoint_every_n_layers: 0
-  grouped_attention: true
-  flash_attn: false
+  grouped_attention: false
+  flash_attn: true
 
 optimizer:
   name: madgrad
@@ -37,7 +37,7 @@ scheduler:
   warmup_steps: 3000
 
 audio_chunking:
-  size: 150000
+  size: 4096
   overlap: 0
 
 # sequence_scheduler:
@@ -76,7 +76,7 @@ data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
 
 training:
-  batch_size: 1
+  batch_size: 44
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0

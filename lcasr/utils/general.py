@@ -47,6 +47,7 @@ def save_model(
         podcast_step:int,
         config:Dict,
         sequence_scheduler:SequenceWarmupManager=None,
+        seen_ids:List[int]=[],
     ):
     save_path = os.path.join(config['checkpointing']['dir'], f'step_{podcast_step}.pt')
     save_dict = {
@@ -56,6 +57,7 @@ def save_model(
         'podcast_step':podcast_step,
         'config':config,
         'sequence_scheduler':sequence_scheduler.state_dict() if sequence_scheduler is not None else None,
+        'seen_ids':seen_ids,
     }
     torch.save(save_dict, save_path)
 
@@ -78,7 +80,7 @@ def load_checkpoint(
     ):
     latest_checkpoint = find_latest_checkpoint(path)
     if latest_checkpoint is None:
-        return 0
+        return [] 
     path = os.path.join(path, latest_checkpoint)
     checkpoint = torch.load(path, map_location=device)
     if args and args.remove_scheduler:
@@ -101,5 +103,5 @@ def load_checkpoint(
     if sequence_scheduler != None and 'sequence_scheduler' in checkpoint and checkpoint['sequence_scheduler'] != None:
         sequence_scheduler.load_state_dict(checkpoint['sequence_scheduler'])
   
-    step = checkpoint['podcast_step'] 
-    return step
+    seen_ids = checkpoint.get('seen_ids', [])
+    return seen_ids
