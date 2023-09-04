@@ -1,0 +1,62 @@
+model:
+  feat_in: 80
+  n_layers: 6
+  d_model: 768
+  n_heads: 6
+  head_dim: 128
+  dropout_ff: 0.0
+  dropout_attn: 0.0
+  dropout_conv: 0.0
+  subsampling_factor: 8
+  subsampling: dw_striding
+  subsampling_act: silu
+  subsampling_conv_channels: 256
+  self_condition_subsampling: false
+  subsampling_norm_out: false
+  conv_kernel_size: 9
+  qk_rms_norm: false
+  shift_kvs: false
+  self_conditioning: true
+  gated_sc: false
+  decoder_norm: true
+  use_rotary: true
+  encoder_mode: conformer
+  default_norm: layer_norm
+  sandwich_norm: false
+  bias_in_ff: false
+  checkpoint_every_n_layers: 0
+optimizer:
+  name: madgrad
+  args:
+    lr: 0.003
+scheduler:
+  warmup_steps: 1500
+audio_chunking:
+  size: 512
+  overlap: 0
+wandb:
+  use: true
+  project_name: spotify_long_context
+  name: n_seq_sched_360000_rp_3
+  id: ''
+checkpointing:
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_3/n_seq_sched_360000_rp_3
+  save_every_n_steps: 2000
+data:
+  path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
+training:
+  batch_size: 704
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
+  clip_value: 0.8
+  intermediate_loss_weighting: 0.0
+  random_seed: 4324
+sequence_scheduler:
+  increase_every: 5000
+  stop_after: 90000
+  start_after: 0
+  max_sequence_length: 360000
+  increase_by_multiplier: 2
+  batch_size_multiplier: 0.5
+  interpolate_rotary: false

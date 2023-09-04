@@ -38,7 +38,7 @@ def main(args):
         OmegaConf.save(copies[i], os.path.join(SAVE_DIR, f'{names[i]}.yaml'))
         run_string = f"""#!/bin/bash\n
 #SBATCH --time=96:00:00
-#SBATCH --mem=150GB
+#SBATCH --mem=170GB
 #SBATCH --partition=gpu-h100
 #SBATCH --gres=gpu:h100:1
 #SBATCH --qos=gpu

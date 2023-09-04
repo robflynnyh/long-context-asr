@@ -217,6 +217,7 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         pin_memory:bool = False,
         prefetch:int = None,
         random_seed=1234,
+        subgroup_shuffle_size:int = 2000,
         seen_ids:List[str] = [],
     ):
         self.chunk_size = chunk_size
@@ -228,7 +229,7 @@ class SimpleDataloader(torch.utils.data.DataLoader):
                     pairs, 
                     batch_size = batch_size,
                     skip_to = skip_to, 
-                    subgroup_shuffle_size = 1000,
+                    subgroup_shuffle_size = subgroup_shuffle_size,
                     random_seed = random_seed,
                     seen_ids = seen_ids,
         )
@@ -256,12 +257,13 @@ class VariableBatchSimpleDataloader():
         pin_memory:bool = False,
         prefetch:int = None,
         random_seed=1234,
+        subgroup_shuffle_size:int = 2000,
         seen_ids:List[str] = [],
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.tokenizer = tokenizer
-        self.subgroup_shuffle_size = 1000
+        self.subgroup_shuffle_size = subgroup_shuffle_size
         self.pairs = pairs
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -279,6 +281,7 @@ class VariableBatchSimpleDataloader():
             num_workers = num_workers,
             pin_memory = pin_memory,
             prefetch = prefetch,
+            subgroup_shuffle_size = subgroup_shuffle_size,
             random_seed = random_seed,
             seen_ids = seen_ids,
         )

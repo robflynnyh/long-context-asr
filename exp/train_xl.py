@@ -351,6 +351,8 @@ def main(args):
     if not os.path.exists(checkpoint_dir): os.makedirs(checkpoint_dir); print(f'created checkpoint dir: {checkpoint_dir}')
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
+    # set random seed for initialization
+    torch.manual_seed(12345), torch.cuda.manual_seed(12345)
     model = load_model(args.config, tokenizer.vocab_size())
     tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
@@ -393,6 +395,7 @@ def main(args):
         seen_ids, step = [], 0
 
     print(f'Starting from podcast: {len(seen_ids)}')
+    random_seed = args.config['training'].get('random_seed', 1234)
     # skip data up to step
     dataloader = VariableBatchSimpleDataloader(
         pairs = paired_data, 
@@ -404,6 +407,7 @@ def main(args):
         pin_memory = args.pin_memory,
         prefetch = args.prefetch_factor,
         seen_ids = seen_ids,
+        random_seed = random_seed,
     )
     
     if args.debug_hooks:

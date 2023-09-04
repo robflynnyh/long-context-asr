@@ -100,12 +100,15 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     downsampling_factor = args.config['model']['subsampling_factor']
     assert overlap / downsampling_factor == overlap // downsampling_factor, 'Overlap must be a multiple of the downsampling factor'
     seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
-    overlap = 0 if seq_len >= spec_n else overlap # no overlap if seq_len is larger than the spec
-    seq_len = seq_len if seq_len < spec_n else spec_n
-    overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
+    if seq_len > spec_n:
+        seq_len = spec_n
+        overlap = 0
+    else:
+        overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
     cache_len = args.cache_len if args.cache_len != -1 else args.config['training']['max_seq_len']
     #assert overlap == 0 or cache_len == 0, 'Cannot use overlap and cache_len at the same time'
 
+    print(f'{spec_n} !!!')
     
     
     print(f'Using seq_len: {seq_len} and overlap: {overlap} and cache_len: {cache_len}')
@@ -116,13 +119,21 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     logit_position = 0
     
     prev_cache = None
+    last_ulen = None
+    kill_next = False
     pbar = tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))) if use_tqdm else range(0, spec_n, seq_len-overlap)
     for i in pbar:
         audio_chunk = spec[:, :, i:i+seq_len]
         u_len = audio_chunk.shape[-1]
 
-        if u_len < (seq_len - overlap):
-            continue
+        if kill_next:
+            break
+        if last_ulen != None and u_len < last_ulen:
+            kill_next = True
+        last_ulen = u_len
+
+        # if u_len < (seq_len - overlap):
+        #     continue
 
         audio_chunk = audio_chunk.to(model.device)
         out = model(
@@ -146,6 +157,7 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
 
         #logit_position = i 
         #print(all_logits.shape, ds_len, logit_position, logit_position+ds_len, logits.shape)
+      
         logit_count[:, logit_position:logit_position+ds_len, :] += 1
         all_logits[:, logit_position:logit_position+ds_len, :] += logits
         logit_position += ds_len 
@@ -216,6 +228,7 @@ def main(args):
     all_texts = []
     all_golds = []
     for rec in tqdm(range(len(meetings_keys)), total=len(audio_files)):
+
         print(f'Processing {rec+1}/{len(audio_files)}')
         cur_meetings = meetings_keys[rec]
         cur_audio = audio_files[rec]['path']

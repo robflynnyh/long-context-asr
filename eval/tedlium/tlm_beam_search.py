@@ -8,7 +8,8 @@ from omegaconf.omegaconf import OmegaConf
 from lming.decoding import beam_search
 
 from lcasr.utils.audio_tools import processing_chain, total_seconds
-
+from whisper.normalizers import EnglishTextNormalizer
+normalize = EnglishTextNormalizer()
 from lcasr.utils.general import load_model
 from pyctcdecode import build_ctcdecoder
 
@@ -27,9 +28,9 @@ import re
 import pickle as pkl
 
 from postprocess import post_process
-
-
-
+from functools import partial
+import random
+import ray
 
 def open_stm(path:str) -> List[str]:
     with open(path, 'r') as f:
@@ -37,14 +38,31 @@ def open_stm(path:str) -> List[str]:
     return lines
 
 
-def log(args, wer, beam_width, alpha, beta, cur_prune_less_than_val, top_am):
+def log(args, wer, beam_width, alpha, beta, cur_prune_less_than_val, top_am, max_len):
     log_path = args.log_path
     with open(log_path, 'a') as f:
-        f.write(f'{args.checkpoint} - wer:{wer} b:{beam_width} a:{alpha} b:{beta} p:{cur_prune_less_than_val} amt:{top_am}\n')
+        f.write(f'{args.checkpoint} - wer:{wer} b:{beam_width} a:{alpha} b:{beta} p:{cur_prune_less_than_val} amt:{top_am} ml:{max_len}\n')
 
-def main(args):
+@ray.remote(num_gpus=0.1, num_cpus=0.1)
+def run_search(
+        beam_search_fn, 
+        logits, 
+        gold_text,
+        alpha,
+        beta,
+        prune_less_than_val,
+        top_am,
+    ):
+    beam_search = beam_search_fn(
+        log_probs = logits,
+    )
+    # print beam search args
+    beam_search.run_search(use_tqdm=True)
+    text_out = normalize(beam_search.return_text(idx = 0)).lower()
+    gold_text = normalize(gold_text).lower()
+    return text_out, gold_text
 
-    
+def main(args):    
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     checkpoint['model'] = general.convert_from_ddp(checkpoint['model'])
     model_config = checkpoint['config']
@@ -78,42 +96,53 @@ def main(args):
     golds = []
 
   
-    alpha_range = [0.05, 0.3] # between 
-    beta_range = [0.4, 1.1] # between
-    beams = [25, 50] # either 
-    prune_less_than_vals = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5]  # either
-    top_am_thresh = [-4, -5, -6. -7, -8, -9, -10, -11, -12] # either
+    alpha_range = [0.24, 0.26] # between 
+    beta_range = [0.64, 0.66] # between
+    beams = [25] # either 
+    prune_less_than_vals = [2.0]  # either
+    top_am_thresh = [-6] # either
 
-    while True:
+    beam_search_fn = partial(
+        beam_search.BeamSearch,
+        language_model = language_model,
+        tokenizer = tokenizer,
+        beam_width = args.beam_width,
+        blank_id = tokenizer.vocab_size(),
+        alpha = 0.25,
+        beta = 0.65,
+        debug = False,
+        prune_less_than_val = 2.0,
+        top_am_threshold = -6,
+        max_cache_length = args.max_len,
+    )
+    beam_search_fn = ray.put(beam_search_fn)
+    random.seed(123456)
+
+    for i in range(2):
         cur_alpha = np.random.uniform(alpha_range[0], alpha_range[1])
         cur_beta = np.random.uniform(beta_range[0], beta_range[1])
         cur_beam = np.random.choice(beams)
         cur_prune_less_than_val = np.random.choice(prune_less_than_vals)
         cur_top_am_thresh = np.random.choice(top_am_thresh)
 
-        hyps = []
-        golds = []
-        for i in range(1):
+
+        outputs = []
+        for i in range(len(all_logits)):
             logits = all_logits[i]['logits']
             gold_text = all_logits[i]['gold']
-
-            bs = beam_search.BeamSearch(
-                tokenizer = tokenizer,
-                beam_width = cur_beam,
-                log_probs = logits,
-                language_model = language_model,
-                blank_id = tokenizer.vocab_size(),
+            outputs.append(run_search.remote(
+                beam_search_fn = beam_search_fn,
+                logits = logits,
+                gold_text = gold_text,
                 alpha = cur_alpha,
                 beta = cur_beta,
-                debug = False,
                 prune_less_than_val = cur_prune_less_than_val,
-                top_am_threshold = cur_top_am_thresh,
-            )
-            bs.run_search(use_tqdm=True)
-            text_out = post_process(text = bs.return_text(idx = 0))
-            hyps.append(text_out)
-            golds.append(gold_text)
-           
+                top_am = cur_top_am_thresh,
+            ))
+        outputs = ray.get(outputs)
+        hyps, golds = zip(*outputs)
+        hyps, golds = list(hyps), list(golds)
+
         
         wer = word_error_rate_detail(hypotheses=hyps, references=golds)[0]
         print(wer, cur_beam, cur_alpha, cur_beta)
@@ -125,6 +154,7 @@ def main(args):
             beta = cur_beta,
             cur_prune_less_than_val = cur_prune_less_than_val,
             top_am = cur_top_am_thresh,
+            max_len = args.max_len,
         )
         #print('0.08997, 0.05626')
 
@@ -136,11 +166,12 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--checkpoint', type=str, default='/mnt/parscratch/users/acp21rjf/language_modelling/spotipile/5e4/step_108000.pt', help='path to checkpoint')
+    parser.add_argument('-c', '--checkpoint', type=str, default='/mnt/parscratch/users/acp21rjf/language_modelling/spotipile/512_1280/step_540012.pt', help='path to checkpoint')
     
     parser.add_argument('-beams', '--beam_width', type=int, default=1, help='beam width for decoding')
-    parser.add_argument('-logits', '--logits_path', type=str, default='./logits/logits.pkl', help='path to logits')
+    parser.add_argument('-logits', '--logits_path', type=str, default='./logits/512_dev_logits.pkl', help='path to logits')
     parser.add_argument('-log', '--log_path', type=str, default='tlm_beam.log', help='path to log file')
+    parser.add_argument('-max_len', '--max_len', type=int, default=2048, help='max length of text')
 
 
     # wer:0.06839218375042852 b:10 a:0.25131218509148656 b:0.8917145455147044
