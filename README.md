@@ -1,4 +1,2 @@
-# long-context-asr
-
-
-changed /spotify/audio/7/Q (blah blah @ spotify) -> /spotify/audio/7/Q 
+# Code for the paper: HOW MUCH CONTEXT DOES MY ATTENTION-BASED ASR SYSTEM NEED?
+Repository to be updated with instructions and links to all model checkpoints a.s.a.p
