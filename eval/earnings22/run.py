@@ -108,7 +108,7 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     cache_len = args.cache_len if args.cache_len != -1 else args.config['training']['max_seq_len']
     #assert overlap == 0 or cache_len == 0, 'Cannot use overlap and cache_len at the same time'
 
-    print(f'{spec_n} !!!')
+    print(f'{spec_n}')
     
     
     print(f'Using seq_len: {seq_len} and overlap: {overlap} and cache_len: {cache_len}')
@@ -185,20 +185,17 @@ def preprocess_transcript(text:str):
     text = text.replace('<silence>', '')
     text = text.replace('<inaudible>', '')
     text = text.replace('<laugh>', '')
+    text = text.replace('<noise>', '')
+    text = text.replace('<affirmative>', '')
+    text = text.replace('<crosstalk>', '')    
     text = text.replace('…', '')
     text = text.replace(',', '')
     text = text.replace('-', ' ')
     text = text.replace('.', '')
     text = text.replace('?', '')
-    # remove double spaces
     text = re.sub(' +', ' ', text)
-    return text
+    return normalize(text).lower()
 
-def postprocess_asr(text:str):
-    text = text.replace('.', '')
-    text = text.replace(',', '')
-    text = text.replace('?', '')
-    return text
 
 def main(args):
     assert args.split in ['test', 'dev'], 'Split must be either test or dev'
@@ -232,13 +229,14 @@ def main(args):
         print(f'Processing {rec+1}/{len(audio_files)}')
         cur_meetings = meetings_keys[rec]
         cur_audio = audio_files[rec]['path']
-        print(cur_audio)
+        
+        
         cur_text = preprocess_transcript(text_files[rec]['text'])
         assert cur_meetings == text_files[rec]['meeting'] and audio_files[rec]['meeting'] == text_files[rec]['meeting'], \
             f'Meeting names do not match: {cur_meetings}, {text_files[rec]["meeting"]}, {audio_files[rec]["meeting"]}'
 
         audio_spec = load_audio(cur_audio)
-        print('\n\n'+cur_meetings+'\n\n')
+        print('\n-------\n'+cur_meetings+'\n-------\n')
         
         logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
         # np.save(f'logits_{rec}.npy', logits)
@@ -247,7 +245,7 @@ def main(args):
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
         decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
         out = normalize(decoded[0]['text']).lower()
-        cur_text = normalize(cur_text).lower()
+        
         #out = postprocess_asr(decoded[0]['text'])
         print(cur_text, '\n', out, '\n\n')
         

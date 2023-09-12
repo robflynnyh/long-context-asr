@@ -1,0 +1,17 @@
+program: tlm_beam.py
+method: bayes
+metric:
+  name: wer
+  goal: minimize
+parameters:
+  alpha:
+    min: 0.15
+    max: 0.9
+  beta:
+    min: 0.8
+    max: 4.0
+  p:
+    min: 1.0
+    max: 3.8
+  max_len:
+    values: [64, 128, 256, 512, 1024]
