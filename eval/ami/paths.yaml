@@ -1,0 +1,3 @@
+dataset: ami
+test_path: /mnt/parscratch/users/acp21rjf/AMI/TEST
+dev_path: /mnt/parscratch/users/acp21rjf/AMI/DEV
