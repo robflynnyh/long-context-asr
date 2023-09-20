@@ -18,10 +18,11 @@ Below are model checkpoints for Acoustic models discussed in the paper. The <b>g
 |  160s   |    1   | Yes        |       6.5     |      18.7         | [here](https://huggingface.co/rjflynn2/lcasr-160s) |
 |  80s    |    1   | Yes        |       6.5     |      18.7         | [here](https://huggingface.co/rjflynn2/lcasr-80s) |
 |  40s    |    1   | No         |       6.5     |      19.4         | [here](https://huggingface.co/rjflynn2/lcasr-40s) |
+|  20s    |    1   | No         |       6.6     |      19.4         |   |
 
 ### Language Model
 Language Model checkpoint added soon!
 
-##All Results
+## All Results
 
 A <b>messy</b> dump of experimental results including WERs for each repeat and to a higher precision presented paper, can be found [here](https://github.com/robflynnyh/long-context-asr/blob/main/artifacts/experiment_dump.pdf)
