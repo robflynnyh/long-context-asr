@@ -14,6 +14,7 @@ Below are model checkpoints for Acoustic models discussed in the paper. The <b>g
 |  1 hour |    1   |  Yes       |       6.4     |      18.8         | [here](https://huggingface.co/rjflynn2/lcasr-1hour) |
 |  320s   |    1   | Yes        |       6.5     |      18.6         | [here](https://huggingface.co/rjflynn2/lcasr-320s) |
 |  160s   |    1   | Yes        |       6.5     |      18.7         | [here](https://huggingface.co/rjflynn2/lcasr-160s) |
+|  80s    |    1   | Yes        |       6.5     |      18.7         | [here](https://huggingface.co/rjflynn2/lcasr-80s) |
 
 Remaining checkpoints, including language model checkpoints for decoding, and instructions on how to use and train models coming soon..!
 
