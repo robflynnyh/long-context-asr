@@ -7,4 +7,5 @@ Below are model checkpoints for Acoustic models discussed in the paper. The <b>g
 |  80s    |    2   |  Yes       |       6.1     |      17.1         | [here](https://huggingface.co/rjflynn2/lcasr-80s-epoch-2/) |
 
 Remaining checkpoints, including language model checkpoints for decoding, and instructions on how to use and train models coming soon..!
-A messy dump of experimental results including WERs for each repeat and to a higher precision presented paper, can be found [here](https://github.com/robflynnyh/long-context-asr/blob/main/artifacts/experiment_dump.pdf)
+
+A <b>messy</b> dump of experimental results including WERs for each repeat and to a higher precision presented paper, can be found [here](https://github.com/robflynnyh/long-context-asr/blob/main/artifacts/experiment_dump.pdf)
