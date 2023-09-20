@@ -1,6 +1,10 @@
 # Code for the paper: How Much Context Does My Attention-Based ASR System Need?
 Repository to be updated with instructions and links to all model checkpoints a.s.a.p
+## Installation
+For lanaguage model decoding the following repo must also be installed: https://github.com/robflynnyh/language_modelling
+instructions on how to properly install this repo and the required libraries will be provided a.s.a.p
 
+## Checkpoints
 Below are model checkpoints for Acoustic models discussed in the paper. The <b>greedy</b> WERs (no LM) are also provided using overlapping inferernce (87.5% overlap). For checkpoints with multiple repeats the average WERs are provided.
 | Context | Epochs | Seq Warmup | Tedlium (WER) | Earnings-22 (WER) | Download |
 | --------|-------:|:----------:|--------------:|------------------:|----------|
