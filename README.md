@@ -9,6 +9,7 @@ Below are model checkpoints for Acoustic models discussed in the paper. The <b>g
 | Context | Epochs | Seq Warmup | Tedlium (WER) | Earnings-22 (WER) | Download |
 | --------|-------:|:----------:|--------------:|------------------:|----------|
 |  80s    |    2   |  Yes       |       6.1     |      17.1         | [here](https://huggingface.co/rjflynn2/lcasr-80s-epoch-2/) |
+|  1 hour |    1   |  Yes       |       6.4     |      18.8         | [here](https://huggingface.co/rjflynn2/lcasr-1hour) |
 
 Remaining checkpoints, including language model checkpoints for decoding, and instructions on how to use and train models coming soon..!
 
