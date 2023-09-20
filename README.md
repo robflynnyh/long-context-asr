@@ -8,4 +8,5 @@ Below are model checkpoints for Acoustic models discussed in the paper. The <b>g
 
 Remaining checkpoints, including language model checkpoints for decoding, and instructions on how to use and train models coming soon..!
 
+
 A <b>messy</b> dump of experimental results including WERs for each repeat and to a higher precision presented paper, can be found [here](https://github.com/robflynnyh/long-context-asr/blob/main/artifacts/experiment_dump.pdf)
