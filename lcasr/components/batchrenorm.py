@@ -1,5 +1,6 @@
-import torch
+# https://github.com/ludvb/batchrenorm
 
+import torch
 
 __all__ = ["BatchRenorm1d", "BatchRenorm2d", "BatchRenorm3d"]
 
