@@ -11,6 +11,7 @@ from lcasr.utils.hooks import add_debug_backwards_hooks
 from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager
 from lcasr.utils.helpers import exists
 from lcasr.utils.general import load_model, save_model, load_checkpoint, load_optimizer
+from lcasr.utils.augmentation import SpecAugment
 import resource
 
 from einops import rearrange
@@ -137,7 +138,12 @@ def train(
                 finished = True
                 continue
             else:
-                dataloader = dataloader.update(batch_size = dataloader.batch_size, seen_ids = seen_ids)
+                start_spec_augment_after_n_epochs = args.config['training'].get('start_spec_augment_after_n_epochs', -1)
+                dataloader = dataloader.update(
+                    batch_size = dataloader.batch_size, 
+                    seen_ids = seen_ids,
+                    augmentation = None if start_spec_augment_after_n_epochs == -1 or epoch < start_spec_augment_after_n_epochs else SpecAugment(**args.config['spec_augment'])
+                )
                 dataloader_iter = iter(dataloader)
                 pbar = tqdm(total = len(dataloader), desc = f'Training')
                 continue
@@ -399,6 +405,9 @@ def main(args):
 
     print(f'Starting from podcast: {len(seen_ids)}')
     random_seed = args.config['training'].get('random_seed', 1234)
+    start_spec_augment_after_n_epochs = args.config['training'].get('start_spec_augment_after_n_epochs', -1)
+    if start_spec_augment_after_n_epochs != -1:
+        print('WARNING SPEC AUGMENT NOT TESTED YET')
     # skip data up to step
     dataloader = VariableBatchSimpleDataloader(
         pairs = paired_data, 
@@ -411,6 +420,7 @@ def main(args):
         prefetch = args.prefetch_factor,
         seen_ids = seen_ids,
         random_seed = random_seed,
+        augmentation = None if start_spec_augment_after_n_epochs == -1 or epoch < start_spec_augment_after_n_epochs else SpecAugment(**args.config['spec_augment']),
     )
     
     if args.debug_hooks:

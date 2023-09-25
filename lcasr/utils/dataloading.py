@@ -213,6 +213,7 @@ class VariableBatchSimpleDataloader():
         self.pin_memory = pin_memory
         self.prefetch = prefetch
         self.random_seed = random_seed
+        self.augmentation = augmentation
 
         self.dataloader = SimpleDataloader(
             pairs = pairs,
@@ -234,7 +235,7 @@ class VariableBatchSimpleDataloader():
             self, 
             batch_size:int, 
             seen_ids:List[str]=[], 
-            augmentation:SpecAugment=None
+            augmentation:SpecAugment='same'
         ):
         self.batch_size = batch_size
         self.dataloader = SimpleDataloader(
@@ -248,7 +249,7 @@ class VariableBatchSimpleDataloader():
             prefetch = self.prefetch,
             random_seed = self.random_seed,
             seen_ids = seen_ids,
-            augmentation = augmentation,
+            augmentation = self.augmentation if augmentation == 'same' else augmentation,
         )
 
     def __iter__(self):
