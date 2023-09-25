@@ -137,7 +137,7 @@ def train(
                 finished = True
                 continue
             else:
-                dataloader = dataloader.update_batch_size(batch_size = dataloader.batch_size, seen_ids = seen_ids)
+                dataloader = dataloader.update(batch_size = dataloader.batch_size, seen_ids = seen_ids)
                 dataloader_iter = iter(dataloader)
                 pbar = tqdm(total = len(dataloader), desc = f'Training')
                 continue
@@ -323,7 +323,7 @@ def train(
                 args.config['audio_chunking']['size'] = new_seq_len
                 chunk_size = new_seq_len
                 batch_size = new_bs
-                dataloader.update_batch_size(
+                dataloader.update(
                     batch_size = batch_size,
                     seen_ids = seen_ids,
                 )
@@ -420,7 +420,7 @@ def main(args):
     
     if sequence_scheduler and dataloader.batch_size != sequence_scheduler.cur_batch_size:
         print('WARNING: dataloader batch size does not match sequence scheduler batch size, updating dataloader batch size')
-        dataloader.update_batch_size(batch_size = sequence_scheduler.cur_batch_size, seen_ids = seen_ids)
+        dataloader.update(batch_size = sequence_scheduler.cur_batch_size, seen_ids = seen_ids)
 
     final_model = train(
         args = args, 
