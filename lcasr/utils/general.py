@@ -13,8 +13,7 @@ def load_model(config:Dict, vocab_size):
     return model
 
 def load_optimizer(config:Dict, model:torch.nn.Module):
-    # check device
-    model_device = next(model.parameters()).device.type
+    model_device = next(model.parameters()).device.type # check device of model
 
     optim_type = config['optimizer']['name']
     allowed_types = ['adam', 'madgrad', 'mirrormadgrad']
@@ -48,6 +47,7 @@ def save_model(
         config:Dict,
         sequence_scheduler:SequenceWarmupManager=None,
         seen_ids:List[int]=[],
+        epoch:int=0,
     ):
     save_path = os.path.join(config['checkpointing']['dir'], f'step_{podcast_step}.pt')
     save_dict = {
@@ -58,6 +58,7 @@ def save_model(
         'config':config,
         'sequence_scheduler':sequence_scheduler.state_dict() if sequence_scheduler is not None else None,
         'seen_ids':seen_ids,
+        'epoch':epoch,
     }
     torch.save(save_dict, save_path)
 
@@ -80,7 +81,7 @@ def load_checkpoint(
     ):
     latest_checkpoint = find_latest_checkpoint(path)
     if latest_checkpoint is None:
-        return [], 0
+        return [], 0, 0 # seen_ids, step, epoch
     path = os.path.join(path, latest_checkpoint)
     checkpoint = torch.load(path, map_location=device)
     if args and args.remove_scheduler:
@@ -104,5 +105,6 @@ def load_checkpoint(
         sequence_scheduler.load_state_dict(checkpoint['sequence_scheduler'])
   
     seen_ids = checkpoint.get('seen_ids', [])
+    epoch = checkpoint.get('epoch', 0)
     step = checkpoint.get('podcast_step', 0)
-    return seen_ids, step
+    return seen_ids, step, epoch

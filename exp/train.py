@@ -82,6 +82,7 @@ def train(
         device:torch.device,
         step:int = 0,
         seen_ids:List[str] = [],
+        epoch:int = 0,
     ):
     scaler = GradScaler()
             
@@ -124,6 +125,7 @@ def train(
     last_podcast = step
     cur_podcast = step
     podcasts_since_last_save = 0
+    max_epochs = args.config['training'].get('max_epochs', 1)
 
     i = -1
     finished = False
@@ -381,7 +383,7 @@ def main(args):
             **args.config['sequence_scheduler']
         )
 
-    seen_ids, step = load_checkpoint(
+    seen_ids, step, epoch = load_checkpoint(
         args = args, 
         model = model, 
         optimizer = optimizer, 
@@ -390,9 +392,8 @@ def main(args):
         path = args.config['checkpointing']['dir'],
         device = device
     )
-
     if args.reset_step:
-        seen_ids, step = [], 0
+        seen_ids, step, epoch = [], 0, 0 
 
     print(f'Starting from podcast: {len(seen_ids)}')
     random_seed = args.config['training'].get('random_seed', 1234)

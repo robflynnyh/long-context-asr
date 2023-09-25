@@ -10,7 +10,7 @@ import time
 import pandas as pd
 import re
 
-def chunk_spectogram(
+def chunk_spectogram( # TODO: speed up
         spec: torch.Tensor, # mel spectrogram (batch, features, time)
         chunk_size: int,
         chunk_overlap: int,
@@ -23,27 +23,8 @@ def chunk_spectogram(
         splits.append(spec[:, :, i:i+chunk_size])
     return splits
 
-def chunk_text_json____( # legacy
-        text: List[Dict[str, str]],
-        chunk_size: int,
-        chunk_overlap: int,
-        spectogram_length: int,
-        get_seconds: bool = False
-    ):
-    assert chunk_size > chunk_overlap, "chunk_size must be greater than chunk_overlap"
-    
-    splits = []
-    start_end_times = []
-    for i in range(0, spectogram_length, chunk_size - chunk_overlap):
-        c_start_pos, c_end_pos = i, i + chunk_size
-        c_start_pos_sec, c_end_pos_sec = total_seconds(c_start_pos), total_seconds(c_end_pos)
-        c_text = [el['word'] for el in text if float(el['startTime'][:-1]) >= c_start_pos_sec and float(el['endTime'][:-1]) <= c_end_pos_sec]
-        splits.append(" ".join(c_text))
-        start_end_times.append((c_start_pos_sec, c_end_pos_sec))
-    
-    return splits if not get_seconds else (splits, start_end_times)
 
-def chunk_text_json( # legacy
+def chunk_text_json( # TODO: speed up
         text: List[Dict[str, str]],
         chunk_size: int,
         chunk_overlap: int,
@@ -145,55 +126,6 @@ class SimpleDataset(torch.utils.data.Dataset):
         audio = rearrange(audio, '() f t -> t f')
         return audio, txt, id
 
-
-# def collate_fn(
-#         tokenizer:spm.SentencePieceProcessor,
-#         chunk_size:int = 2048,
-#         chunk_overlap:int = 192,
-#     ):
-#     pad_id = tokenizer.pad_id()
-#     bos_id = tokenizer.bos_id()
-
-#     def collate(batch): # move as much as possible from collate to dataset bcos datloader workers aren't taken advantage of here (I don't think??)
-#         audio, txt, ids = zip(*batch)
-       
-#         audio_lengths = torch.LongTensor([el.shape[0] for el in audio])
-  
-#         audio = torch.nn.utils.rnn.pad_sequence(audio, batch_first=True, padding_value=pad_id)
-#         audio = rearrange(audio, 'b t f -> b f t')
-        
-#         txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
-
-#         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
-#         chunks = []
-#         culm_lengths_audio = torch.zeros_like(audio_lengths)
-
-#         for ix, el in enumerate(audio_chunks_):
-#             remove_mask = ~(culm_lengths_audio > audio_lengths)
-#             cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
-#             cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
-          
-#             enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el[ix])) for i, el in enumerate(txt_chunks) if remove_mask[i]]
-#             enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
-#             enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
-
-#             chunks.append({
-#                 'audio':cur_chunks,
-#                 'txt':enc_txt_chunks,
-#                 'txt_lengths':enc_txt_chunks_lengths,
-#                 'audio_lengths':cur_lengths,
-#                 'selection_mask':remove_mask,
-#                 'cur_culm_lengths':cur_culm_lengths,
-#             })
-
-#             culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
-            
-#         return {
-#             'chunks': chunks,
-#             'total_audio_lengths': audio_lengths,
-#             'ids': ids,
-#         }
-#     return collate
 
 def collate_fn(batch):
     audio, txt, ids = zip(*batch)
