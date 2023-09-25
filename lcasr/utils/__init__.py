@@ -4,5 +4,6 @@ from . import (
     helpers,
     dataloading, 
     hooks,
-    scheduling
+    scheduling,
+    augmentation
 )
