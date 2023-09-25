@@ -84,6 +84,8 @@ class SCConformerXL(nn.Module):
         self.transformer = transformer
         self.self_condition_subsampling = self_condition_subsampling
 
+        self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
+
         accepted_norms = ['rms_norm', 'layer_norm']
         accepted_subsampling_acts = ['silu', 'relu', 'gelu', 'none']
         assert subsampling_act in accepted_subsampling_acts, f'subsampling_act must be one of {accepted_subsampling_acts} (got {subsampling_act})'
@@ -228,9 +230,9 @@ class SCConformerXL(nn.Module):
         if length is None:
             length = torch.tensor([max_audio_length] * audio_signal.size(0), device=audio_signal.device)
             
-    
-        audio_signal = torch.transpose(audio_signal, 1, 2)# if self.subsampling_mode != 'stacking' else audio_signal
-        audio_signal, length = self.subsampling(audio_signal, lengths = length)
+        audio_signal = torch.transpose(audio_signal, 1, 2)
+        audio_signal, length = self.subsampling(audio_signal, lengths = length) if not self.checkpoint_subsampling else checkpoint(self.create_custom_forward(self.subsampling), audio_signal, length)
+
         max_audio_length = audio_signal.size(1)
         ## create masks
         
