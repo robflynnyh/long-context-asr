@@ -49,7 +49,7 @@ module unload cuDNN/8.4.1.50-CUDA-11.7.0
 module load Anaconda3/2022.10 binutils/2.31.1-GCCcore-8.2.0 CUDA/11.8.0 cuDNN/8.6.0.163-CUDA-11.8.0 GCCcore/8.2.0
 source activate /mnt/parscratch/users/acp21rjf/env/h100/
 
-python train_xl.py -config {os.path.join(SAVE_DIR, f'{names[i]}.yaml')} -num_workers 0 -rm_sched -reset_step""" # -debug_hooks
+python train.py -config {os.path.join(SAVE_DIR, f'{names[i]}.yaml')} -num_workers 0 -rm_sched -reset_step""" # -debug_hooks
         with open(os.path.join(SAVE_DIR, f'{names[i]}.sh'), 'w') as f:
             f.write(run_string)
         subprocess.run(['sbatch', os.path.join(SAVE_DIR, f'{names[i]}.sh')])
