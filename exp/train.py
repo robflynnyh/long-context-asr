@@ -130,7 +130,7 @@ def train(
     i = -1
     finished = False
     dataloader_iter = iter(dataloader)
-    total_recordings = dataloader.total_recordings()
+    total_recordings = dataloader.total_recordings() * max_epochs
     pbar = tqdm(total = len(dataloader), desc = f'Training')
 
     while not finished:#################
@@ -161,6 +161,7 @@ def train(
                 config = args.config,
                 sequence_scheduler = sequence_scheduler,
                 seen_ids = seen_ids,
+                epoch = epoch,
             )
             podcasts_since_last_save = 0
         last_podcast = cur_podcast

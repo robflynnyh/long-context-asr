@@ -1,5 +1,5 @@
 template_info:
-  create: 12 # number of experiments to create
+  create: 2 # number of experiments to create
   include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training'] #, 'sequence_scheduler'] # keys to include in experiments config
   template_keys: [
     'checkpointing.dir', 
