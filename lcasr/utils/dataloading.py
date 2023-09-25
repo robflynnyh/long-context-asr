@@ -77,6 +77,10 @@ def load_sample(entry:Dict[str, str]) -> Tuple[torch.Tensor, torch.Tensor]:
     return audio, txt
 
 
+def reset_seen_ids(seen_ids:List[str], epoch:int):
+    # take seen_ids that don't feature a epoch id and adds it to the string # this stops the dataloader from removeing seen_ids from previous epochs
+    seen_ids = [f'epoch_{epoch}_{el}' if 'epoch_' not in el else el for el in seen_ids]
+    return seen_ids
 
 class SimpleDataset(torch.utils.data.Dataset):
     def __init__(

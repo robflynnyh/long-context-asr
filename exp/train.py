@@ -5,21 +5,17 @@ from tqdm import tqdm
 from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
 from omegaconf.omegaconf import OmegaConf
-
-from lcasr.utils.dataloading import VariableBatchSimpleDataloader, chunk_spectogram, chunk_text_json
 import traceback
+from lcasr.utils.dataloading import VariableBatchSimpleDataloader, chunk_spectogram, chunk_text_json, reset_seen_ids
 from lcasr.utils.hooks import add_debug_backwards_hooks
 from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager
 from lcasr.utils.helpers import exists
-
 from lcasr.utils.general import load_model, save_model, load_checkpoint, load_optimizer
 import resource
 
 from einops import rearrange
 import numpy as np
 import os
-import gc
-
 import wandb
 from contextlib import nullcontext
 from functools import partial
@@ -27,12 +23,8 @@ from functools import partial
 from torch.cuda.amp import GradScaler
 from torch import autocast
 
-
-
 from typing import Dict, List, Tuple
-
 from collections import defaultdict
-
 import warnings
 import random
 random.seed(1234)
@@ -139,8 +131,16 @@ def train(
             i += 1
             pbar.update(1) if i > 0 else None
         except StopIteration:
-            finished = True
-            continue
+            epoch += 1
+            seen_ids = reset_seen_ids(seen_ids = seen_ids, epoch = epoch - 1)
+            if epoch >= max_epochs:
+                finished = True
+                continue
+            else:
+                dataloader = dataloader.update_batch_size(batch_size = dataloader.batch_size, seen_ids = seen_ids)
+                dataloader_iter = iter(dataloader)
+                pbar = tqdm(total = len(dataloader), desc = f'Training')
+                continue
         ################################
 
         audio, audio_lengths, txt, ids = batch
@@ -298,6 +298,7 @@ def train(
                             'learning_rate': learning_rate,
                             'sequence_length': chunk_size,
                             'batch_size': batch_size,
+                            'epoch': epoch,
                         })
                     
                     cur_tokens_in_loss = 0
