@@ -100,7 +100,7 @@ def train(
     assert backprop_every >= backwards_every, f'backprop_every ({backprop_every}) must be >= backwards_every ({backwards_every})'
     batch_size = args.config['training']['batch_size']
 
-    max_cache_length = args.config['training']['max_seq_len']
+    max_cache_length = args.config['training'].get('max_cache_length', 0)
 
     cur_tokens_in_loss = 0
     cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
