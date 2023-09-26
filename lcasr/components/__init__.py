@@ -3,6 +3,6 @@ from . import (
     fused_dense,
     subsampling,
     batchrenorm,
-    scaling,
-    rotary_emb
+    rotary_emb,
+    long_conv,
 )
