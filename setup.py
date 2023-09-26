@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='lcasr',
-    version='0.0.9',    
+    version='0.1',    
     description='Code for training long-context asr models on spotify podcast corpus',
     url='https://github.com/robflynnyh/long-context-asr',
     author='Rob Flynn',
