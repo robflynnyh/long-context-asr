@@ -62,12 +62,19 @@ class SpecAugment(torch.nn.Module): # taken from https://pytorch.org/audio/main/
             mask_value = specgram.mean()
         time_dim = specgram.dim() - 1
         freq_dim = time_dim - 1
+        print(time_dim, freq_dim)
 
         if specgram.dim() > 2 and self.iid_masks is True:
+            missing_channel = specgram.dim() == 3
+            if missing_channel:
+                specgram = specgram.unsqueeze(1) # (batch, 1, freq, time) 1 is channel
+                time_dim, freq_dim = time_dim + 1, freq_dim + 1
             for _ in range(self.n_time_masks):
                 specgram = F.mask_along_axis_iid(specgram, self.time_mask_param, mask_value, time_dim, p=self.p)
             for _ in range(self.n_freq_masks):
                 specgram = F.mask_along_axis_iid(specgram, self.freq_mask_param, mask_value, freq_dim, p=self.p)
+            if missing_channel:
+                specgram = specgram.squeeze(1)
         else:
             for _ in range(self.n_time_masks):
                 specgram = F.mask_along_axis(specgram, self.time_mask_param, mask_value, time_dim, p=self.p)

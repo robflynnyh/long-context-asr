@@ -124,7 +124,8 @@ def train(
     finished = False
     dataloader_iter = iter(dataloader)
     total_recordings = dataloader.total_recordings() * max_epochs
-    pbar = tqdm(total = len(dataloader), desc = f'Training')
+    pbar = tqdm(total = len(dataloader), desc = f'Training - Epoch {epoch}')
+    start_spec_augment_after_n_epochs = args.config['training'].get('start_spec_augment_after_n_epochs', -1)
 
     while not finished:#################
         try:
@@ -136,17 +137,15 @@ def train(
             seen_ids = reset_seen_ids(seen_ids = seen_ids, epoch = epoch - 1)
             if epoch >= max_epochs:
                 finished = True
-                continue
             else:
-                start_spec_augment_after_n_epochs = args.config['training'].get('start_spec_augment_after_n_epochs', -1)
                 dataloader = dataloader.update(
                     batch_size = dataloader.batch_size, 
                     seen_ids = seen_ids,
                     augmentation = None if start_spec_augment_after_n_epochs == -1 or epoch < start_spec_augment_after_n_epochs else SpecAugment(**args.config['spec_augment'])
                 )
                 dataloader_iter = iter(dataloader)
-                pbar = tqdm(total = len(dataloader), desc = f'Training')
-                continue
+                pbar = tqdm(total = len(dataloader), desc = f'Training - Epoch {epoch}')
+            continue
         ################################
 
         audio, audio_lengths, txt, ids = batch
@@ -305,6 +304,7 @@ def train(
                             'sequence_length': chunk_size,
                             'batch_size': batch_size,
                             'epoch': epoch,
+                            'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs else int(False),
                         })
                     
                     cur_tokens_in_loss = 0
@@ -406,8 +406,7 @@ def main(args):
     print(f'Starting from podcast: {len(seen_ids)}')
     random_seed = args.config['training'].get('random_seed', 1234)
     start_spec_augment_after_n_epochs = args.config['training'].get('start_spec_augment_after_n_epochs', -1)
-    if start_spec_augment_after_n_epochs != -1:
-        print('WARNING SPEC AUGMENT NOT TESTED YET')
+
     # skip data up to step
     dataloader = VariableBatchSimpleDataloader(
         pairs = paired_data, 

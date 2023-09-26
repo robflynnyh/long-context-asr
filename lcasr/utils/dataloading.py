@@ -139,6 +139,7 @@ def collate_fn(augmentation:SpecAugment=None):
         audio = torch.nn.utils.rnn.pad_sequence(audio, batch_first=True, padding_value=0)
         audio = rearrange(audio, 'b t f -> b f t')
         if augmentation is not None:
+            #print(f'augmentation: {audio.shape}')
             audio = augmentation(audio)
         return audio, audio_lengths, txt, ids
     return collate
