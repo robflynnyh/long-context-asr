@@ -65,7 +65,7 @@ wandb:
   use: true
   project_name: spotify_long_context
   name: 'multi_epoch_run_16k'
-  id: 'zhmi8ijr'
+  id: 'zhmi8ijr' #zhmi8ijr
 
 checkpointing:
   dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/multi_epoch_run_16k
@@ -75,9 +75,9 @@ data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
 
 spec_augment:
-  n_time_masks: 2 # Number of time masks. If its value is zero, no time masking will be applied
+  n_time_masks: 3 # Number of time masks. If its value is zero, no time masking will be applied
   time_mask_param: 100 # Maximum possible length of the time mask
-  n_freq_masks: 2 # Number of frequency masks. If its value is zero, no frequency masking will be applied
+  n_freq_masks: 3 # Number of frequency masks. If its value is zero, no frequency masking will be applied
   freq_mask_param: 27 # Maximum possible length of the frequency mask
   iid_masks: true # Applies iid masks to each of the examples in the batch dimension.
   p: 0.5 # maximum proportion of time steps that can be masked. Must be within range [0.0, 1.0]. (Default: 1.0)

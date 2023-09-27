@@ -263,6 +263,7 @@ def train(
                 # check for nan in loss
                 if torch.isnan(loss):
                     print('OH NO! NAN IN LOSS, SKIPPING') # TODO: set kv cache to None here
+                    wandb.log({'nan':True}) if wandb_config['use'] else None
                     continue
 
                 cur_loss += loss

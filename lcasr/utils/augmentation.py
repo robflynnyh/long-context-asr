@@ -49,20 +49,23 @@ class SpecAugment(torch.nn.Module): # taken from https://pytorch.org/audio/main/
         self.p = p
         self.zero_masking = zero_masking
 
-    def forward(self, specgram: Tensor) -> Tensor:
+    def forward(self, specgram: Tensor, audio_lengths: Tensor = None) -> Tensor:
         r"""
         Args:
             specgram (Tensor): Tensor of shape `(..., freq, time)`.
+            audio_lengths (Tensor): Tensor of shape `(batch)` containing sizes of each spectrogram in the batch. (Used when zero_masking is False to calculate mean of the spectrogram without masked values.)
         Returns:
             Tensor: Masked spectrogram of shape `(..., freq, time)`.
         """
+        f, t = specgram.shape[-2:]
         if self.zero_masking:
             mask_value = 0.0
         else:
-            mask_value = specgram.mean()
+            mask_value = specgram.mean() if audio_lengths is None else specgram[(torch.arange(t, device=specgram.device)[None, :] < audio_lengths[..., None]).unsqueeze(-2).repeat(*[1] * (specgram.dim() - 2), f, 1)].mean() # mean of the spectrogram without masked values
+
         time_dim = specgram.dim() - 1
         freq_dim = time_dim - 1
-        print(time_dim, freq_dim)
+        
 
         if specgram.dim() > 2 and self.iid_masks is True:
             missing_channel = specgram.dim() == 3
