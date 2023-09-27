@@ -18,7 +18,6 @@ model:
   self_condition_subsampling: false # whether to use self conditioning on the output of subsampling layers
   subsampling_norm_out: false # whether to use layer norm on the output of subsampling layers
   conv_kernel_size: 9 # kernel size for convolution layers in conformer blocks
-  qk_rms_norm: false # whether to use root mean square normalization on the query and key vectors (not recommended)
   self_conditioning: true # whether to use self conditioning on the output of conformer blocks
   gated_sc: false # whether to gate the self conditioning output with a sigmoid instead of simply adding it back in as standard (not recommended)
   decoder_norm: true # whether to use layer norm on the output of conformer blocks
