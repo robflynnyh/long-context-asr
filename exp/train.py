@@ -138,7 +138,7 @@ def train(
             if epoch >= max_epochs:
                 finished = True
             else:
-                dataloader = dataloader.update(
+                dataloader.update(
                     batch_size = dataloader.batch_size, 
                     seen_ids = seen_ids,
                     augmentation = None if start_spec_augment_after_n_epochs == -1 or epoch < start_spec_augment_after_n_epochs else SpecAugment(**args.config['spec_augment'])
