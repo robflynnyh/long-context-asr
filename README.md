@@ -5,7 +5,7 @@ Repository to be updated with instructions and links to all model checkpoints a.
 For lanaguage model decoding the following repo must also be installed: https://github.com/robflynnyh/language_modelling
 instructions on how to properly install this repo and the required libraries will be provided a.s.a.p
 - Requires Pytorch 2.0 or greater
-- currently we are using [flash-attention 1](https://github.com/Dao-AILab/flash-attention/tree/6d48e14a6c2f551db96f0badc658a6279a929df3)
+- currently we are using [flash-attention 1](https://github.com/Dao-AILab/flash-attention/tree/6d48e14a6c2f551db96f0badc658a6279a929df3) (update to v2 planned in future)
 - [Apex](https://github.com/NVIDIA/apex/tree/master) is used for fused rms/layer norm (and fused Adam if not using madgrad)
 
 ## Checkpoints
@@ -19,7 +19,9 @@ Below are model checkpoints for Acoustic models discussed in the paper. The <b>g
 |  160s   |    1   | Yes        |       6.5     |      18.7         | [here](https://huggingface.co/rjflynn2/lcasr-160s) |
 |  80s    |    1   | Yes        |       6.5     |      18.7         | [here](https://huggingface.co/rjflynn2/lcasr-80s) |
 |  40s    |    1   | No         |       6.5     |      19.4         | [here](https://huggingface.co/rjflynn2/lcasr-40s) |
-|  20s    |    1   | No         |       6.6     |      19.4         |   |
+|  20s    |    1   | No         |       6.6     |      19.4         | [here](https://huggingface.co/rjflynn2/lcasr-20s)  |
+|  10s    |    1   | No         |       6.8     |      20.5         | [here](https://huggingface.co/rjflynn2/lcasr-10s)  |
+|  5s    |    1   | No         |       7.4     |      21.9         | [here](https://huggingface.co/rjflynn2/lcasr-5s)  |
 
 ### Language Model
 Language Model checkpoint added soon!
