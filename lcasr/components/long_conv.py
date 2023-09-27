@@ -374,7 +374,7 @@ class LongConv(nn.Module):
             )
 
 
-
+    @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32) # rfft doesn't support bf16 and doesnt fully support fp16 (requires seq + kernel length to be power of 2)
     def forward(self, u, state=None, rate=1.0, lengths=None, **kwargs): # absorbs return_output and transformer src mask
         """
         u: (B H L) if self.transposed else (B L H)
@@ -406,6 +406,7 @@ class LongConv(nn.Module):
             k = F.pad(k0, (0, L)) \
                     + F.pad(k1.flip(-1), (L, 0))
 
+
         k_f = torch.fft.rfft(k, n=L_kernel+L) # (C H L)
         u_f = torch.fft.rfft(u, n=L_kernel+L) # (B H L)
         y_f = contract('bhl,chl->bchl', u_f, k_f)
@@ -422,7 +423,7 @@ class LongConv(nn.Module):
         y = self.dropout(y)
         y = self.output_linear(y)
 
-        return y, None
+        return y
 
     @property
     def d_state(self):

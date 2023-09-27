@@ -81,4 +81,15 @@ training:
   backwards_every: 1 # backwards pass every n steps
   clip_value: 0.8 # gradient norm clipping value
 
+# Below are batch sizes and corresponding context sizes as used in the paper
+# size: 512 = batch size 704
+# size: 1024 = batch size 352
+# size: 2048 = batch size 176
+# size: 4096 = batch size 88
+# size: 8192 = batch size 44
+# size: 16384 = batch size 22
+# size: 65536 = batch size 5 
+# size: 131072 = batch size 2
+# size: 360000 (1 hour) =  batch size 1
+
 ```

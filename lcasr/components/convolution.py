@@ -82,6 +82,8 @@ class ConformerConvolution(nn.Module):
         x = x.transpose(1, 2)
         return x
 
+
+
 class ConformerLongConvolution(nn.Module):
     """A simple convolution module for the Conformer model using long convolutions implemented via fourier transforms: https://arxiv.org/abs/2302.06646
     Args:
@@ -104,6 +106,8 @@ class ConformerLongConvolution(nn.Module):
         self.in_projection = nn.Linear(d_model, inner_dim)
         self.out_projection = nn.Linear(inner_dim, d_model)
         self.batch_norm = get_norm(norm_type, inner_dim)
+
+        self.kernel_size = kernel_size
 
         self.conv = LongConv(
             d_model = inner_dim,

@@ -9,4 +9,4 @@
 module load Anaconda3/2022.10 binutils/2.31.1-GCCcore-8.2.0 cuDNN/8.4.1.50-CUDA-11.7.0 GCCcore/8.2.0
 source activate a100
 
-python train.py -config ./configs/multi_epoch_run.yaml 
+python train.py -config ./configs/long_conv_test.yaml 
