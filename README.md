@@ -9,8 +9,8 @@ instructions on how to properly install this repo and the required libraries wil
 - [Apex](https://github.com/NVIDIA/apex/tree/master) is used for fused rms/layer norm (and fused Adam if not using madgrad)
 
 ## Data
-For training models you must request access to receive the spotify training data which can be done via the following: [link](https://podcastsdataset.byspotify.com/)
-
+- For training models you must request access to receive the spotify training data which can be done via the following: [link](https://podcastsdataset.byspotify.com/)
+- Evaluations datasets can be found at via the following links: [Earnings-22](https://github.com/revdotcom/speech-datasets/tree/main/earnings22) [Tedlium](https://www.openslr.org/51/) 
 ## Checkpoints
 ### Acoustic Model
 Below are model checkpoints for Acoustic models discussed in the paper. The <b>greedy</b> WERs (no LM) are also provided using overlapping inferernce (87.5% overlap). For checkpoints with multiple repeats the average WERs are provided.
