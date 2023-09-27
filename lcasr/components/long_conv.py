@@ -442,8 +442,6 @@ if __name__ == '__main__':
         l_max=640000,
         bidirectional=True,
         transposed=False,
-        block_fft_conv=False,
-        learn_ifft=True
     )
     lcm.to('cuda' if hascuda else 'cpu')
     B, L, H = 5, 640000, 256

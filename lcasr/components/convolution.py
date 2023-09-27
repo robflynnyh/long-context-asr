@@ -1,6 +1,20 @@
 import torch, torch.nn as nn
 from .batchrenorm import BatchRenorm1d
+from .long_conv import LongConv
 
+def get_norm(norm_type, d_model):
+    if norm_type == 'batch_norm':
+        return nn.BatchNorm1d(d_model)
+    elif norm_type == 'layer_norm':
+        return nn.LayerNorm(d_model)
+    elif norm_type == 'group_norm':
+        return nn.GroupNorm(num_groups=32, num_channels=d_model)
+    elif norm_type == 'batch_renorm':
+        return BatchRenorm1d(d_model)
+    elif norm_type == 'none':
+        return nn.Identity()
+    else:
+        raise ValueError(f"conv_norm_type={norm_type} is not valid!")
 
 class ConformerConvolution(nn.Module):
     """The convolution module for the Conformer model.
@@ -36,23 +50,16 @@ class ConformerConvolution(nn.Module):
             groups=inner_dim,
             bias=True,
         )
-        if norm_type == 'batch_norm':
-            self.batch_norm = nn.BatchNorm1d(inner_dim)
-        elif norm_type == 'layer_norm':
-            self.batch_norm = nn.LayerNorm(inner_dim)
-        elif norm_type == 'group_norm':
-            self.batch_norm = nn.GroupNorm(num_groups=32, num_channels=inner_dim)
-        elif norm_type == 'batch_renorm':
-            self.batch_norm = BatchRenorm1d(inner_dim)
-        else:
-            raise ValueError(f"conv_norm_type={norm_type} is not valid!")
+        
+        self.batch_norm = get_norm(norm_type, inner_dim)
+
 
         self.activation = nn.SiLU()
         self.pointwise_conv2 = nn.Conv1d(
             in_channels=inner_dim, out_channels=d_model, kernel_size=1, stride=1, padding=0, bias=True
         )
 
-    def forward(self, x, pad_mask=None):
+    def forward(self, x, pad_mask=None, **kwargs):
   
         x = x.transpose(1, 2)
         x = self.pointwise_conv1(x)
@@ -75,6 +82,46 @@ class ConformerConvolution(nn.Module):
         x = x.transpose(1, 2)
         return x
 
-# class ConformerLongConvolution(nn.Module):
-#     def __init__(self) -> None:
-#         super().__init__()
+class ConformerLongConvolution(nn.Module):
+    """A simple convolution module for the Conformer model using long convolutions implemented via fourier transforms: https://arxiv.org/abs/2302.06646
+    Args:
+        d_model (int): hidden dimension
+        kernel_size (int): kernel size for depthwise convolution
+
+    """
+    def __init__(
+            self, 
+            d_model, 
+            kernel_size, 
+            norm_type='none', 
+            exp_factor=1,
+            ):
+        super(ConformerLongConvolution, self).__init__()
+
+        self.d_model = d_model
+     
+        inner_dim = int(d_model * exp_factor)
+        self.in_projection = nn.Linear(d_model, inner_dim)
+        self.out_projection = nn.Linear(inner_dim, d_model)
+        self.batch_norm = get_norm(norm_type, inner_dim)
+
+        self.conv = LongConv(
+            d_model = inner_dim,
+            l_max = kernel_size,
+            bidirectional = True,
+            transposed=False,
+        )
+        
+    def forward(self, x, length=None, **kwargs):
+        x = self.in_projection(x)
+        x = self.conv(u = x, lengths = length)
+        if not isinstance(self.batch_norm, nn.LayerNorm) and not isinstance(self.batch_norm, nn.Identity):
+            x = x.transpose(1, 2)
+            x = self.batch_norm(x)
+            x = x.transpose(1, 2)
+        else:
+            x = self.batch_norm(x)
+        x = self.out_projection(x)
+        return x
+        
+
