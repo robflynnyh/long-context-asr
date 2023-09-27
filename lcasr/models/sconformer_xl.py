@@ -38,6 +38,7 @@ class SCConformerXL(nn.Module):
         dropout_attn = 0.0,
         checkpoint_every_n_layers = 0,
         conv_kernel_size = 9,
+        conv_expansion_factor = 1,
         gated_sc = False,
         decoder_norm = False,
         use_rotary = False,
@@ -59,6 +60,7 @@ class SCConformerXL(nn.Module):
         self.head_dim = head_dim
         self.expansion_factor = expansion_factor
         self.conv_kernel_size = conv_kernel_size
+        self.conv_expansion_factor = conv_expansion_factor
         self.rotary_interpolation_factor = rotary_interpolation_factor
         self.learned_rotary = learned_rotary
         self.self_conditioning = self_conditioning
@@ -143,6 +145,7 @@ class SCConformerXL(nn.Module):
                 sandwich_norm = sandwich_norm,
                 bias_in_ff = bias_in_ff,
                 transformer = transformer,
+                conv_expansion_factor = conv_expansion_factor,
                 **kwargs
             )
             self.layers.append(l)
@@ -322,6 +325,7 @@ class ConformerLayer(nn.Module):
         sandwich_norm = False,
         bias_in_ff = True,
         transformer = False,
+        conv_expansion_factor = 1,
         **kwargs
     ):
         super().__init__()
@@ -340,7 +344,8 @@ class ConformerLayer(nn.Module):
                 fn = ConformerConvolution(
                     d_model = d_model,
                     kernel_size = conv_kernel_size,
-                    norm_type = 'batch_renorm'
+                    norm_type = 'batch_renorm',
+                    exp_factor = conv_expansion_factor,
                 ),
                 norm = default_norm
             )

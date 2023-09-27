@@ -14,41 +14,42 @@ class ConformerConvolution(nn.Module):
             d_model, 
             kernel_size, 
             norm_type='batch_renorm', 
+            exp_factor=1,
             ):
 
         super(ConformerConvolution, self).__init__()
         assert (kernel_size - 1) % 2 == 0
         self.d_model = d_model
      
-
+        inner_dim = int(d_model * exp_factor)
         self.pointwise_conv1 = nn.Conv1d(
-            in_channels=d_model, out_channels=d_model * 2, kernel_size=1, stride=1, padding=0, bias=True
+            in_channels=d_model, out_channels=inner_dim * 2, kernel_size=1, stride=1, padding=0, bias=True
         )
 
         dw_conv = nn.Conv1d # if weight_standardization == False else WSConv1d
         self.depthwise_conv = dw_conv(
-            in_channels=d_model,
-            out_channels=d_model,
+            in_channels=inner_dim,
+            out_channels=inner_dim,
             kernel_size=kernel_size,
             stride=1,
             padding=(kernel_size - 1) // 2,
-            groups=d_model,
+            groups=inner_dim,
             bias=True,
         )
         if norm_type == 'batch_norm':
-            self.batch_norm = nn.BatchNorm1d(d_model)
+            self.batch_norm = nn.BatchNorm1d(inner_dim)
         elif norm_type == 'layer_norm':
-            self.batch_norm = nn.LayerNorm(d_model)
+            self.batch_norm = nn.LayerNorm(inner_dim)
         elif norm_type == 'group_norm':
-            self.batch_norm = nn.GroupNorm(num_groups=32, num_channels=d_model)
+            self.batch_norm = nn.GroupNorm(num_groups=32, num_channels=inner_dim)
         elif norm_type == 'batch_renorm':
-            self.batch_norm = BatchRenorm1d(d_model)
+            self.batch_norm = BatchRenorm1d(inner_dim)
         else:
             raise ValueError(f"conv_norm_type={norm_type} is not valid!")
 
         self.activation = nn.SiLU()
         self.pointwise_conv2 = nn.Conv1d(
-            in_channels=d_model, out_channels=d_model, kernel_size=1, stride=1, padding=0, bias=True
+            in_channels=inner_dim, out_channels=d_model, kernel_size=1, stride=1, padding=0, bias=True
         )
 
     def forward(self, x, pad_mask=None):
@@ -64,7 +65,7 @@ class ConformerConvolution(nn.Module):
 
         if isinstance(self.batch_norm, nn.LayerNorm):
             x = x.transpose(1, 2)
-            x = self.batch_norm(x) # pass pad_mask to batch norm !!!!
+            x = self.batch_norm(x) 
             x = x.transpose(1, 2)
         else:
             x = self.batch_norm(x)
@@ -73,3 +74,7 @@ class ConformerConvolution(nn.Module):
         x = self.pointwise_conv2(x)
         x = x.transpose(1, 2)
         return x
+
+# class ConformerLongConvolution(nn.Module):
+#     def __init__(self) -> None:
+#         super().__init__()
