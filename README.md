@@ -8,6 +8,9 @@ instructions on how to properly install this repo and the required libraries wil
 - currently we are using [flash-attention 1](https://github.com/Dao-AILab/flash-attention/tree/6d48e14a6c2f551db96f0badc658a6279a929df3) (update to v2 planned in future)
 - [Apex](https://github.com/NVIDIA/apex/tree/master) is used for fused rms/layer norm (and fused Adam if not using madgrad)
 
+## Data
+For training models you must request access to receive the spotify training data which can be done via the following: [link](https://podcastsdataset.byspotify.com/)
+
 ## Checkpoints
 ### Acoustic Model
 Below are model checkpoints for Acoustic models discussed in the paper. The <b>greedy</b> WERs (no LM) are also provided using overlapping inferernce (87.5% overlap). For checkpoints with multiple repeats the average WERs are provided.
