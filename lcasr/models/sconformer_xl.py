@@ -1,33 +1,20 @@
 import torch, torch.nn as nn, torch.nn.functional as F
-
 import apex
 from torch.utils.checkpoint import checkpoint # # gradient/activation checkpointing
-from einops import rearrange, repeat
-from torch import einsum
-
+from einops import rearrange
+from functools import partial
 from lcasr.components import fused_dense, subsampling, convolution
 from lcasr.components.rotary_emb import RotaryPositionalEmbedding, apply_rotary
 from lcasr.utils.helpers import exists
-
-from torch.cuda.amp import autocast
-import math
-from contextlib import nullcontext
-
 ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
-ConvSubsampling = subsampling.ConvSubsampling
-StackingSubsampling = subsampling.StackingSubsampling
-DEFAULT_NORM = apex.normalization.FusedRMSNorm
-RMSNorm = apex.normalization.FusedRMSNorm
-LayerNorm = apex.normalization.FusedLayerNorm
-
-#from flash_attn.flash_attention import FlashAttention
+ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
+DEFAULT_NORM, RMSNorm, LayerNorm = apex.normalization.FusedRMSNorm, apex.normalization.FusedRMSNorm, apex.normalization.FusedLayerNorm
 from flash_attn.flash_attention import FlashAttention
 from flash_attn.modules.mha import FlashCrossAttention
-
 from flash_attn.bert_padding import unpad_input, pad_input
 
-from functools import partial
+
 
 
 class SCConformerXL(nn.Module):
@@ -51,16 +38,13 @@ class SCConformerXL(nn.Module):
         dropout_attn = 0.0,
         checkpoint_every_n_layers = 0,
         conv_kernel_size = 9,
-        qk_rms_norm = False,
-        shift_kvs = False,
         gated_sc = False,
         decoder_norm = False,
         use_rotary = False,
-        encoder_mode = 'conformer',
         rotary_interpolation_factor = 1.0, # https://arxiv.org/abs//2306.15595 Extending Context Window of Large Language Models via Positional Interpolation
         learned_rotary = False,
         self_conditioning = True,
-        default_norm = 'rms_norm',
+        default_norm = 'layer_norm',
         sandwich_norm = False,
         bias_in_ff = False,
         transformer=False, # disable convolutions
@@ -75,7 +59,6 @@ class SCConformerXL(nn.Module):
         self.head_dim = head_dim
         self.expansion_factor = expansion_factor
         self.conv_kernel_size = conv_kernel_size
-        self.encoder_mode = encoder_mode
         self.rotary_interpolation_factor = rotary_interpolation_factor
         self.learned_rotary = learned_rotary
         self.self_conditioning = self_conditioning
@@ -101,28 +84,17 @@ class SCConformerXL(nn.Module):
         elif subsampling_act == 'none':
             subsampling_act = nn.Identity()
 
-        supported_encoders = ['conformer', 'ebranchformer', 'ebranchformer-macaron']
-        assert encoder_mode in supported_encoders, f'encoder_mode must be one of {supported_encoders} (got {encoder_mode})'
-        if transformer:
-            assert encoder_mode == 'conformer', 'transformer mode only supports conformer encoder'
-
         self.flash_attn = kwargs.get('flash_attn', True)
-
         self.checkpoint_every_n_layers = checkpoint_every_n_layers
-
-        #self.overlap_interp_factor_logits = nn.Parameter(torch.tensor(0.5))
-        #self.overlap_interp_factor_kvs = nn.Parameter(torch.tensor(0.5))
 
         self.dropout_ff = dropout_ff
         self.dropout_conv = dropout_conv
         self.dropout_attn = dropout_attn
-        self.qk_rms_norm = qk_rms_norm
 
         self.subsampling_mode = subsampling
         self.subsampling_factor = subsampling_factor
         self.subsampling_conv_channels = subsampling_conv_channels if subsampling_conv_channels != -1 else d_model
 
-        self.shift_kvs = shift_kvs
         self.gated_sc = gated_sc
         self.decoder_norm = decoder_norm
 
@@ -145,40 +117,18 @@ class SCConformerXL(nn.Module):
             norm_fn = default_norm,
         )
 
-        self.subsampling = ConvSubsampling(
-            subsampling = self.subsampling_mode,
-            subsampling_factor = self.subsampling_factor,
-            feat_in = feat_in,
-            feat_out = d_model,
-            conv_channels = self.subsampling_conv_channels,
-            activation = subsampling_act,
-            norm_out = subsampling_norm_out,
-        ) if subsampling != 'stacking' else StackingSubsampling(
-            subsampling_factor = self.subsampling_factor,
-            feat_in = feat_in,
-            feat_out = d_model,
-            norm = True if not subsampling_norm_out else False,
-            default_norm = default_norm,
-            norm_out = subsampling_norm_out,
-        )
+        subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
+        self.subsampling = \
+            ConvSubsampling(subsampling = self.subsampling_mode, conv_channels = self.subsampling_conv_channels, activation = subsampling_act, **subsampling_args) \
+                if subsampling != 'stacking' else \
+                     StackingSubsampling(norm = True if not subsampling_norm_out else False, default_norm = default_norm, **subsampling_args)
 
         
         self.layers = nn.ModuleList()
 
-        additonal_kwargs = {}
-        if encoder_mode == 'conformer':
-            encoder = ConformerLayer
-        elif encoder_mode == 'ebranchformer':
-            encoder = EBranchConformerLayer
-            additonal_kwargs['has_macaron'] = False
-        elif encoder_mode == 'ebranchformer-macaron':
-            encoder = EBranchConformerLayer
-            additonal_kwargs['has_macaron'] = True
-        else:
-            raise ValueError(f'Unknown encoder mode {encoder_mode}')
 
         for i in range(n_layers):
-            l = encoder(
+            l = ConformerLayer(
                 d_model = d_model,
                 conv_kernel_size = conv_kernel_size,
                 expansion_factor = expansion_factor,
@@ -189,12 +139,10 @@ class SCConformerXL(nn.Module):
                 total_layers = n_layers,
                 head_dim = head_dim,
                 n_heads = n_heads,
-                qk_rms_norm = qk_rms_norm,
                 default_norm = default_norm,
                 sandwich_norm = sandwich_norm,
                 bias_in_ff = bias_in_ff,
                 transformer = transformer,
-                **additonal_kwargs,
                 **kwargs
             )
             self.layers.append(l)
@@ -274,8 +222,7 @@ class SCConformerXL(nn.Module):
             audio_signal = decoder.integrate_projections(audio_signal, x_norm, decoder.project_back(iterim_post)) 
 
         for lth, layer in enumerate(self.layers):
-            lth_to_grap = lth + 1 if lth + 1 < len(self.layers) and self.shift_kvs else lth
-            current_layer_kvs = cached_kvs[:,:,lth_to_grap] if cached_kvs is not None else None
+            current_layer_kvs = cached_kvs[:,:,lth] if cached_kvs is not None else None
 
             if self.checkpoint_every_n_layers > 0 and lth % self.checkpoint_every_n_layers == 0:
                 audio_signal, kv_to_cache = checkpoint(
@@ -311,7 +258,6 @@ class SCConformerXL(nn.Module):
                 audio_signal = decoder.integrate_projections(audio_signal, x_norm, decoder.project_back(iterim_post))        
 
         # stack the posteriors along the first dimension (height, batch, seq_len, dim)
-        #print(len(iterim_posteriors),111111111111111111)
         iterim_posteriors = torch.stack(iterim_posteriors, dim=0) if len(iterim_posteriors) > 0 else None
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
@@ -326,7 +272,7 @@ class SCConformerXL(nn.Module):
             'iterim_posteriors': iterim_posteriors,
             'kvs_to_cache': kvs_to_cache,
             'length': length,
-            'full_kv_lengths': full_kv_lengths,
+            'full_kv_lengths': full_kv_lengths, # kv cache is returned, however we don't use this and is left over from prior experiments
         }
 
     def print_total_params(self, only_trainable = False):
@@ -372,7 +318,6 @@ class ConformerLayer(nn.Module):
         total_layers,
         head_dim,
         n_heads,
-        qk_rms_norm = False,
         default_norm = DEFAULT_NORM,
         sandwich_norm = False,
         bias_in_ff = True,
@@ -415,7 +360,6 @@ class ConformerLayer(nn.Module):
                 dropout = dropout_attn,
                 bias = False,
                 layer_idx = layer_idx,
-                qk_rms_norm = qk_rms_norm,
                 **kwargs
             ),
             norm = default_norm,
@@ -458,130 +402,6 @@ class ConformerLayer(nn.Module):
         return x, kv_to_cache
 
 
-class EBranchConformerLayer(nn.Module):
-    def __init__(
-        self,
-        d_model,
-        conv_kernel_size,
-        dropout_ff,
-        dropout_conv,
-        dropout_attn,
-        layer_idx,
-        total_layers,
-        head_dim,
-        n_heads,
-        qk_rms_norm = False,
-        has_macaron = True,
-        default_norm = DEFAULT_NORM,
-        sandwich_norm = False,
-        bias_in_ff = True,
-        **kwargs
-    ):
-        super().__init__()
-
-        self.d_model = d_model
-        self.conv_kernel_size = conv_kernel_size
-        self.layer_idx = layer_idx
-        self.total_layers = total_layers
-        self.has_macaron = has_macaron
-        self.bias_in_ff = bias_in_ff
-
-        assert sandwich_norm == False, 'sandwich norm not supported for EBranchConformerLayer'
-        
-        if self.has_macaron:
-            self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm))
-            self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm))
-
-        self.do_ff = nn.Dropout(dropout_ff)
-
-        self.attend = PreNorm(
-            d_model = d_model, 
-            fn = Attention(
-                n_feats = d_model,
-                head_dim = head_dim,
-                n_heads = n_heads,
-                dropout = dropout_attn,
-                bias = False,
-                layer_idx = layer_idx,
-                qk_rms_norm = qk_rms_norm
-            ),
-            norm = default_norm
-        )
-
-        self.cgmlp = PreNorm(d_model = d_model,
-            fn = ConvolutionalGatingMLP(
-                size = d_model,
-                linear_units = d_model * 6,
-                kernel_size = conv_kernel_size,
-                dropout_rate = dropout_conv,
-                default_norm = default_norm
-            ),
-            norm = default_norm
-        )
-        self.do_conv = nn.Dropout(dropout_conv)
-
-        self.depthwise_conv_fusion = torch.nn.Conv1d(
-            d_model * 2,
-            d_model * 2,
-            kernel_size=3,
-            stride=1,
-            padding=(3 - 1) // 2,
-            groups=d_model * 2,
-            bias=True,
-        )
-        self.merge_proj = torch.nn.Linear(d_model * 2, d_model)
-
-        self.do_attn_out = nn.Dropout(min(dropout_ff, 0.1)) # don't wan't this too large
-        self.norm_out = default_norm(d_model)
-
-            
-
-    def forward(self, x, attn_mask, pad_mask, length, cached_kv = None, flash_attn = True, rotary_emb_fn = None):
-        '''
-        pad_mask: mask for padding used in conv layers
-        attn_mask: attn_mask this should include the cached keys and values
-        length: list of lengths of the input sequence
-        cached_kv: kvs from previous block-reccurrent time step
-        '''
-        if self.has_macaron:
-            x = self.do_ff(self.ff1(x)) + x
-
-        # Two branches
-        x1, x2 = x, x
-
-        attn_out, kv_to_cache = self.attend(
-            x = x1,
-            length = length,
-            attn_mask = attn_mask,
-            pad_mask = pad_mask,
-            cached_kv = cached_kv,
-            flash_attn = flash_attn,
-            rotary_emb_fn = rotary_emb_fn
-        )
-        x1 = self.do_attn_out(attn_out) 
-        
-        x2 = self.do_conv(self.cgmlp(x = x2, pad_mask = pad_mask))
-        # merge branches
-        x_concat = torch.cat([x1, x2], dim=-1)
-        if pad_mask is not None:
-            x_concat = x_concat.masked_fill(pad_mask.unsqueeze(-1), 0)
-        x_tmp = self.depthwise_conv_fusion(x_concat.transpose(1, 2)).transpose(1, 2)
-        x = self.do_ff(self.merge_proj(x_tmp)) + x
-
-        if self.has_macaron:
-            x = self.do_ff(self.ff2(x)) + x
-
-        x = self.norm_out(x)
-
-        return x, kv_to_cache
-
-def l2norm(t, groups = 1, dim = -1):
-    if groups == 1:
-        return F.normalize(t, p = 2, dim = dim)
-    t = rearrange(t, '... (g d) -> ... g d', g = groups)
-    t = F.normalize(t, p = 2, dim = dim)
-    return rearrange(t, '... g d -> ... (g d)')
-
 
 class Attention(nn.Module):
     def __init__(
@@ -591,13 +411,10 @@ class Attention(nn.Module):
         n_heads,
         bias=False,
         dropout=0.0,
-        qk_rms_norm=False,
         **kwargs
     ):
         super().__init__()
         self.layer_idx = kwargs.get('layer_idx', None)
-        #self.history_vector = torch.nn.Parameter(torch.zeros(2, 1, 1, 1, head_dim), requires_grad=True)
-
 
         self.num_position_embeddings = kwargs.get('num_position_embeddings', -1)
         if self.num_position_embeddings > 0: # # B, N, KV, H, D
@@ -612,19 +429,14 @@ class Attention(nn.Module):
         self.dropout_p = dropout
 
         # softmax_scale is set to None but will default to 1/sqrt(d_k) in FlashAttention
-        softmax_scale = None if not qk_rms_norm else 10.0 
-        self.flash_attn_fn = FlashAttention(softmax_scale = softmax_scale, attention_dropout = dropout)
-        self.flash_attn_c_fn = FlashCrossAttention(softmax_scale = softmax_scale, attention_dropout = dropout)
-        ##
+        self.flash_attn_fn = FlashAttention(softmax_scale = None, attention_dropout = dropout)
+        self.flash_attn_c_fn = FlashCrossAttention(softmax_scale = None, attention_dropout = dropout)
 
         self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=bias)
-
 
         self.qkv = lambda x: rearrange(self.qkv_proj(x), "b n (h d qkv) -> qkv b n h d", qkv=3, h=n_heads, d=head_dim)
 
         self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=bias)
-
-        self.qk_rms_norm = qk_rms_norm
 
     
     def attatch_cache(self, kv, cached_kv):
@@ -650,19 +462,12 @@ class Attention(nn.Module):
         
     def forward(self, x, length, attn_mask=None, pad_mask=None, cached_kv=None, flash_attn = True, rotary_emb_fn = None):
         B, N, C, H, D = *x.shape, self.n_heads, self.head_dim
-        #print(x.shape, mask.shape)
 
         if pad_mask is not None:
             x = x.masked_fill(pad_mask.unsqueeze(-1), 0)
 
-
         q, k, v = self.qkv(x)
-        if self.qk_rms_norm:
-            q, k = map(partial(l2norm, groups = 8), (q, k))
-
         kv, kv_to_cache = self.attatch_cache([k, v], cached_kv)
-
-       
 
         if rotary_emb_fn is not None:
             if rotary_emb_fn.learned == False:
@@ -722,7 +527,6 @@ class Attention(nn.Module):
             # if self.layer_idx == 3:
             #     torch.save(weight.detach().cpu().half(), 'weight.pt')
             #     exit()
-            
             #print('here')
             out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
 
@@ -766,114 +570,3 @@ class ASRLinearSCDecoder(nn.Module):
         else:
             return x + proj1
 
-
-class ConvolutionalSpatialGatingUnit(torch.nn.Module):
-    """
-    Convolutional Spatial Gating Unit (CSGU).
-    Adapted from: https://github.com/espnet/espnet/blob/ed6ee209c93fe72b95a687272a5faf69639b7b49/espnet2/asr/layers/cgmlp.py#L84
-    """
-    def __init__(
-        self,
-        size: int,
-        kernel_size: int,
-        dropout_rate: float = 0,
-        use_linear_after_conv: bool = False,
-        activation = torch.nn.Identity,
-        default_norm = DEFAULT_NORM,
-    ):
-        super().__init__()
-
-        n_channels = size // 2  # split input channels
-        self.norm = default_norm(n_channels)
-        self.conv = torch.nn.Conv1d(
-            n_channels,
-            n_channels,
-            kernel_size,
-            1,
-            (kernel_size - 1) // 2,
-            groups=n_channels,
-        )
-        if use_linear_after_conv:
-            self.linear = torch.nn.Linear(n_channels, n_channels)
-        else:
-            self.linear = None
-
-        self.act = activation()
-
-        self.dropout = torch.nn.Dropout(dropout_rate)
-
-        self.espnet_initialization_fn()
-
-    def espnet_initialization_fn(self):
-        torch.nn.init.normal_(self.conv.weight, std=1e-6)
-        torch.nn.init.ones_(self.conv.bias)
-        if self.linear is not None:
-            torch.nn.init.normal_(self.linear.weight, std=1e-6)
-            torch.nn.init.ones_(self.linear.bias)
-
-    def forward(self, x):
-        """Forward method
-
-        Args:
-            x (torch.Tensor): (N, T, D)
-            gate_add (torch.Tensor): (N, T, D/2)
-
-        Returns:
-            out (torch.Tensor): (N, T, D/2)
-        """
-
-        x_r, x_g = x.chunk(2, dim=-1)
-
-        x_g = self.norm(x_g)  # (N, T, D/2)
-        x_g = self.conv(x_g.transpose(1, 2)).transpose(1, 2)  # (N, T, D/2)
-
-        if self.linear is not None:
-            x_g = self.linear(x_g)
-
-        x_g = self.act(x_g)
-        out = x_r * x_g  # (N, T, D/2)
-        out = self.dropout(out)
-        return out
-
-
-class ConvolutionalGatingMLP(torch.nn.Module):
-    """
-    Convolutional Gating MLP (cgMLP).
-    Adapted from https://github.com/espnet/espnet/blob/ed6ee209c93fe72b95a687272a5faf69639b7b49/espnet2/asr/layers/cgmlp.py#L84
-    """
-
-    def __init__(
-        self,
-        size: int,
-        linear_units: int,
-        kernel_size: int,
-        dropout_rate: float,
-        use_linear_after_conv: bool = False,
-        activation: torch.nn.Module = torch.nn.Identity,
-        default_norm: any = DEFAULT_NORM,
-    ):
-        super().__init__()
-
-        self.channel_proj1 = torch.nn.Sequential(
-            torch.nn.Linear(size, linear_units), torch.nn.GELU()
-        )
-        self.csgu = ConvolutionalSpatialGatingUnit(
-            size=linear_units,
-            kernel_size=kernel_size,
-            dropout_rate=dropout_rate,
-            use_linear_after_conv=use_linear_after_conv,
-            activation=activation,
-            default_norm=default_norm,
-        )
-        self.channel_proj2 = torch.nn.Linear(linear_units // 2, size)
-
-    def forward(self, x, pad_mask):
-
-        if pad_mask is not None: 
-            x = x.masked_fill(pad_mask.unsqueeze(-1), 0.0)
-
-        x = self.channel_proj1(x)  # size -> linear_units
-        x = self.csgu(x)  # linear_units -> linear_units/2
-        out = self.channel_proj2(x)  # linear_units/2 -> size
-        
-        return out
