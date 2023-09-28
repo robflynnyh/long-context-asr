@@ -2,8 +2,9 @@
 This file contains augmentation functions i.e specaugment
 '''
 
-import torch, torchaudio.functional as F
+import torch, torchaudio.functional as F, torch.nn as nn
 from torch import Tensor
+
 
 
 class SpecAugment(torch.nn.Module): # taken from https://pytorch.org/audio/main/_modules/torchaudio/transforms/_transforms.html#FrequencyMasking
@@ -38,7 +39,7 @@ class SpecAugment(torch.nn.Module): # taken from https://pytorch.org/audio/main/
         freq_mask_param: int,
         iid_masks: bool = True,
         p: float = 1.0,
-        zero_masking: bool = False,
+        zero_masking: bool = False, # set to true if spectogram is normalized per input i.e then it is equal to mean of the spectogram
     ) -> None:
         super(SpecAugment, self).__init__()
         self.n_time_masks = n_time_masks
@@ -85,3 +86,93 @@ class SpecAugment(torch.nn.Module): # taken from https://pytorch.org/audio/main/
                 specgram = F.mask_along_axis(specgram, self.freq_mask_param, mask_value, freq_dim, p=self.p)
 
         return specgram
+
+
+
+# class SpectrogramAugmentation(nn.Module): nvidia's implementation
+#     """
+#     Performs time and freq cuts in one of two ways.
+#     SpecAugment zeroes out vertical and horizontal sections as described in
+#     SpecAugment (https://arxiv.org/abs/1904.08779). Arguments for use with
+#     SpecAugment are `freq_masks`, `time_masks`, `freq_width`, and `time_width`.
+#     SpecCutout zeroes out rectangulars as described in Cutout
+#     (https://arxiv.org/abs/1708.04552). Arguments for use with Cutout are
+#     `rect_masks`, `rect_freq`, and `rect_time`.
+
+#     Args:
+#         freq_masks (int): how many frequency segments should be cut.
+#             Defaults to 0.
+#         time_masks (int): how many time segments should be cut
+#             Defaults to 0.
+#         freq_width (int): maximum number of frequencies to be cut in one
+#             segment.
+#             Defaults to 10.
+#         time_width (int): maximum number of time steps to be cut in one
+#             segment
+#             Defaults to 10.
+#         rect_masks (int): how many rectangular masks should be cut
+#             Defaults to 0.
+#         rect_freq (int): maximum size of cut rectangles along the frequency
+#             dimension
+#             Defaults to 5.
+#         rect_time (int): maximum size of cut rectangles along the time
+#             dimension
+#             Defaults to 25.
+#     """
+
+#     def __init__(
+#         self,
+#         freq_masks=0,
+#         time_masks=0,
+#         freq_width=10,
+#         time_width=10,
+#         rect_masks=0,
+#         rect_time=5,
+#         rect_freq=20,
+#         rng=None,
+#         mask_value=0.0,
+#         use_numba_spec_augment: bool = True,
+#     ):
+#         super().__init__()
+
+#         if rect_masks > 0:
+#             self.spec_cutout = SpecCutout(rect_masks=rect_masks, rect_time=rect_time, rect_freq=rect_freq, rng=rng,)
+#             # self.spec_cutout.to(self._device)
+#         else:
+#             self.spec_cutout = lambda input_spec: input_spec
+#         if freq_masks + time_masks > 0:
+#             self.spec_augment = SpecAugment(
+#                 freq_masks=freq_masks,
+#                 time_masks=time_masks,
+#                 freq_width=freq_width,
+#                 time_width=time_width,
+#                 rng=rng,
+#                 mask_value=mask_value,
+#             )
+#         else:
+#             self.spec_augment = lambda input_spec, length: input_spec
+
+#         # Check if numba is supported, and use a Numba kernel if it is
+#         if use_numba_spec_augment and numba_utils.numba_cuda_is_supported(__NUMBA_MINIMUM_VERSION__):
+#             logging.info('Numba CUDA SpecAugment kernel is being used')
+#             self.spec_augment_numba = SpecAugmentNumba(
+#                 freq_masks=freq_masks,
+#                 time_masks=time_masks,
+#                 freq_width=freq_width,
+#                 time_width=time_width,
+#                 rng=rng,
+#                 mask_value=mask_value,
+#             )
+#         else:
+#             self.spec_augment_numba = None
+
+#     def forward(self, input_spec, length):
+#         augmented_spec = self.spec_cutout(input_spec=input_spec)
+
+#         # To run the Numba kernel, correct numba version is required as well as
+#         # tensor must be on GPU and length must be provided
+#         if self.spec_augment_numba is not None and spec_augment_launch_heuristics(augmented_spec, length):
+#             augmented_spec = self.spec_augment_numba(input_spec=augmented_spec, length=length)
+#         else:
+#             augmented_spec = self.spec_augment(input_spec=augmented_spec, length=length)
+#         return augmented_spec

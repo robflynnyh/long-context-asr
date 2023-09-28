@@ -341,6 +341,7 @@ class ConformerLayer(nn.Module):
         self.bias_in_ff = bias_in_ff
         self.trasformer = transformer
 
+        
         if not self.trasformer:
             assert conv_type in ['standard', 'longconv'], 'conv_type must be either standard or longcov'
             conv_module = ConformerConvolution if conv_type == 'standard' else ConformerLongConvolution
@@ -349,7 +350,7 @@ class ConformerLayer(nn.Module):
                 fn = conv_module(
                     d_model = d_model,
                     kernel_size = conv_kernel_size,
-                    norm_type = 'batch_renorm',
+                    norm_type = kwargs.get('conv_norm', 'batch_renorm'),
                     exp_factor = conv_expansion_factor,
                 ),
                 norm = default_norm

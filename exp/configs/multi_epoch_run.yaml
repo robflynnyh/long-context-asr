@@ -9,7 +9,7 @@ model:
   dropout_conv: 0.0
   subsampling_factor: 8
   subsampling: dw_striding
-  subsampling_act: relu
+  subsampling_act: silu
   subsampling_conv_channels: 256
   self_condition_subsampling: false
   subsampling_norm_out: false
@@ -65,7 +65,7 @@ wandb:
   use: true
   project_name: spotify_long_context
   name: 'multi_epoch_run_16k'
-  id: 'zhmi8ijr' #zhmi8ijr
+  id: '' #zhmi8ijr
 
 checkpointing:
   dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/multi_epoch_run_16k
@@ -75,7 +75,7 @@ data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
 
 spec_augment:
-  n_time_masks: 3 # Number of time masks. If its value is zero, no time masking will be applied
+  n_time_masks: 5 # Number of time masks. If its value is zero, no time masking will be applied
   time_mask_param: 100 # Maximum possible length of the time mask
   n_freq_masks: 3 # Number of frequency masks. If its value is zero, no frequency masking will be applied
   freq_mask_param: 27 # Maximum possible length of the frequency mask

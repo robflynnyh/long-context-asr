@@ -97,13 +97,14 @@ class ConformerLongConvolution(nn.Module):
             kernel_size, 
             norm_type='none', 
             exp_factor=1,
+            **kwargs
             ):
         super(ConformerLongConvolution, self).__init__()
 
         self.d_model = d_model
      
         inner_dim = int(d_model * exp_factor)
-        self.in_projection = nn.Linear(d_model, inner_dim)
+        self.in_projection = nn.Linear(d_model, inner_dim*2)
         self.out_projection = nn.Linear(inner_dim, d_model)
         self.batch_norm = get_norm(norm_type, inner_dim)
 
@@ -118,6 +119,7 @@ class ConformerLongConvolution(nn.Module):
         
     def forward(self, x, length=None, **kwargs):
         x = self.in_projection(x)
+        x = nn.functional.glu(x, dim=-1)
         x = self.conv(u = x, lengths = length)
         if not isinstance(self.batch_norm, nn.LayerNorm) and not isinstance(self.batch_norm, nn.Identity):
             x = x.transpose(1, 2)

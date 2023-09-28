@@ -1,0 +1,8 @@
+README.md
+fftconv.cpp
+fftconv_cuda.cu
+setup.py
+fftconv.egg-info/PKG-INFO
+fftconv.egg-info/SOURCES.txt
+fftconv.egg-info/dependency_links.txt
+fftconv.egg-info/top_level.txt

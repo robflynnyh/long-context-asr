@@ -224,10 +224,10 @@ class LongConvKernel(OptimModule):
         L,
         channels=1, 
         learning_rate=None, 
-        lam=0.1, 
+        lam=0.001, 
         causal=True, 
         kernel_dropout=0,
-        weight_init="random",
+        weight_init="double_exp",
         use_ma_smoothing = False,
         ma_window_len = 7,
         smooth_freq = False,
@@ -268,7 +268,7 @@ class LongConvKernel(OptimModule):
             return torch.randn(self.channels, self.H, self.L) * 0.002
         elif self.weight_init=="double_exp":
             K = torch.randn(self.channels, self.H, self.L,dtype=torch.float32) * 0.02
-            double_exp = torch.zeros((self.H,self.L),dtype=torch.float32)
+            double_exp = torch.zeros((self.H,self.L),dtype=torch.float32) # do this with vmap?
             for i in range(self.H):
                 for j in range(self.L):
                     double_exp[i,j] = torch.exp(-(j/self.L)*torch.pow(torch.tensor(int(self.H/2)),torch.tensor(i/self.H)))
@@ -405,11 +405,13 @@ class LongConv(nn.Module):
             k0, k1 = rearrange(k, '(s c) h l -> s c h l', s=2)
             k = F.pad(k0, (0, L)) \
                     + F.pad(k1.flip(-1), (L, 0))
-
-
+            # this pads k0 with zeros on the right and k1 with zeros on the left to a length of L + L_kernel
+        
         k_f = torch.fft.rfft(k, n=L_kernel+L) # (C H L)
         u_f = torch.fft.rfft(u, n=L_kernel+L) # (B H L)
-        y_f = contract('bhl,chl->bchl', u_f, k_f)
+
+        y_f = contract('bhl,chl->bchl', u_f, k_f) 
+    
         y = torch.fft.irfft(y_f, n=L_kernel+L)[..., :L] # (B C H L)
 
         # Compute skip connection
@@ -440,17 +442,20 @@ if __name__ == '__main__':
     hascuda = torch.cuda.is_available()
     lcm = LongConv(
         d_model=256,
-        l_max=640000,
+        l_max=8192,
         bidirectional=True,
         transposed=False,
+        channels = 1,
     )
+    print(f'total params: {sum(p.numel() for p in lcm.parameters()) / 1e6} (M)')
     lcm.to('cuda' if hascuda else 'cpu')
-    B, L, H = 5, 640000, 256
+    B, L, H = 5, 64000, 256
     stime = time()
     u = torch.randn(B, L, H).to('cuda' if hascuda else 'cpu')
+    #u = rearrange(u, 'b l (h 1) -> (b h) l 1', h=H)
     print(time() - stime)
     print(u.device)
-    y, _ = lcm(u)
+    y = lcm(u)
     print(y.shape)
 
     

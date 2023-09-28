@@ -297,6 +297,9 @@ def train(
 
                     learning_rate = scheduler.get_last_lr()[0]
 
+    
+                 
+
                     if wandb_config['use']:
                         wandb.log({
                             'loss': loss_to_log,
