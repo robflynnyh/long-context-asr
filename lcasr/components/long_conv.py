@@ -310,7 +310,7 @@ class LongConv(nn.Module):
             bidirectional=False,
             # Arguments for position-wise feedforward components
             #activation='gelu', # activation between conv and FF
-            postact='glu', # activation after FF
+            postact='swish', # activation after FF (glu)
             initializer=None, # initializer on FF
             weight_norm=False, # weight normalization on FF
             dropout=0.0, tie_dropout=False,
@@ -415,43 +415,20 @@ class LongConv(nn.Module):
                     + F.pad(k1.flip(-1), (L, 0))
             # this pads k0 with zeros on the right and k1 with zeros on the left to a length of L + L_kernel
         
-        use_fftconv = True
-        if not exists(fftconv_funcs):
-            use_fftconv = False
+        k_f = torch.fft.rfft(k, n=L_kernel+L) # (C H L)
+        u_f = torch.fft.rfft(u, n=L_kernel+L) # (B H L)
+        y_f = contract('bhl,chl->bchl', u_f, k_f) 
+     
+        y = torch.fft.irfft(y_f, n=L_kernel+L)[..., :L] # (B C H L)
+        # Compute skip connection
+        y = y + contract('bhl,ch->bchl', u, self.D)
 
-        print(fftconv_funcs, 'HERE')
-        if use_fftconv:
-            dropout_mask = None
-            if not isinstance(self.dropout, nn.Identity):
-                dropout_mask = self.dropout(torch.ones(u.shape[:2], dtype=torch.float32, device=u.device)) # generate dropout mask (not tested)
-            y = fftconv_funcs.fftconv_func(
-                u = u,
-                k = k,
-                D = self.D,
-                dropout_mask = dropout_mask,
-                gelu = True,
-                force_fp16_output = False,
-                output_hbl_layout = False,
-                v = None,
-                head_dim = 1,
-                q = None,
-                fftfp16 = True,
-                k_rev = None,
-            )
-        else:
-            k_f = torch.fft.rfft(k, n=L_kernel+L) # (C H L)
-            u_f = torch.fft.rfft(u, n=L_kernel+L) # (B H L)
-            y_f = contract('bhl,chl->bchl', u_f, k_f) 
-            y = torch.fft.irfft(y_f, n=L_kernel+L)[..., :L] # (B C H L)
-            # Compute skip connection
-            y = y + contract('bhl,ch->bchl', u, self.D)
+        # Reshape to flatten channels
+        y = rearrange(y, '... c h l -> ... (c h) l')
 
-            # Reshape to flatten channels
-            y = rearrange(y, '... c h l -> ... (c h) l')
-
-            if not self.transposed: y = y.transpose(-1, -2)
-            y = self.activation(y)
-            y = self.dropout(y)
+        if not self.transposed: y = y.transpose(-1, -2)
+        y = self.activation(y)
+        y = self.dropout(y)
 
         y = self.output_linear(y)
 
@@ -481,7 +458,7 @@ if __name__ == '__main__':
     print(f'total params: {sum(p.numel() for p in lcm.parameters()) / 1e6} (M)')
     lcm.to('cuda' if hascuda else 'cpu')
     print('HERE')
-    B, L, H = 5, 64000, 256
+    B, L, H = 5, 118192, 256
     stime = time()
     
     u = torch.randn(B, L, H).to('cuda' if hascuda else 'cpu')

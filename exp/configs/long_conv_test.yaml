@@ -9,7 +9,7 @@ model:
   dropout_conv: 0.0
   subsampling_factor: 8
   subsampling: dw_striding
-  subsampling_act: relu
+  subsampling_act: silu
   subsampling_conv_channels: 256
   self_condition_subsampling: false
   subsampling_norm_out: false

@@ -55,10 +55,10 @@ def fftconv_h3_ref(k, ssm_kernel, D, q, v, head_dim=1, ssm_kernel_rev=None):
 class FFTConvFunc(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, u, k, D, dropout_mask=None, gelu=True, force_fp16_output=False,
+    def forward(ctx, u, k, D, fft_size, dropout_mask=None, gelu=True, force_fp16_output=False,
                 output_hbl_layout=False, v=None, head_dim=1, q=None, fftfp16=False, k_rev=None):
         seqlen = u.shape[-1]
-        fft_size = max(2 * 2 ** int(math.ceil(math.log2(seqlen))), 16)
+        #fft_size = max(2 * 2 ** int(math.ceil(math.log2(seqlen))), 16)
         k_f = torch.fft.rfft(k, n=fft_size)
         if k_rev is not None:
             k_f = k_f + torch.fft.rfft(k_rev, n=fft_size).conj()
@@ -78,6 +78,8 @@ class FFTConvFunc(torch.autograd.Function):
         ctx.gelu = gelu
         ctx.fftfp16 = fftfp16
         ctx.has_k_rev = k_rev is not None
+        print(k_f.shape, u.shape, fft_size, k.shape)
+    
         out = fftconv_fwd(u, k_f, D, v, head_dim, q, dropout_mask, gelu, False, False, fft_size, force_fp16_output, output_hbl_layout, fftfp16)
         return out
 
@@ -99,7 +101,7 @@ class FFTConvFunc(torch.autograd.Function):
             dv = dv.to(dtype=v.dtype)  # We do atomicAdd in fp32 so might need to convert to fp16
         return du, dk, dD, None, None, None, None, dv if v is not None else None, None, dq if q is not None else None, None, dk_rev
 
-def fftconv_func(u, k, D, dropout_mask=None, gelu=True, force_fp16_output=False,
+def fftconv_func(u, k, D, fft_size, dropout_mask=None, gelu=True, force_fp16_output=False,
                  output_hbl_layout=False, v=None, head_dim=1, q=None, fftfp16=False, k_rev=None):
-    return FFTConvFunc.apply(u, k, D, dropout_mask, gelu, force_fp16_output,
+    return FFTConvFunc.apply(u, k, D, fft_size, dropout_mask, gelu, force_fp16_output,
                              output_hbl_layout, v, head_dim, q, fftfp16, k_rev)

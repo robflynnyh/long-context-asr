@@ -4,5 +4,4 @@ from . import (
     subsampling,
     batchrenorm,
     rotary_emb,
-    long_conv,
 )

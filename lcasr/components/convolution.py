@@ -1,6 +1,6 @@
 import torch, torch.nn as nn
-from .batchrenorm import BatchRenorm1d
-from .long_conv import LongConv
+from lcasr.components.batchrenorm import BatchRenorm1d
+from lcasr.components.long_conv import LongConv
 
 def get_norm(norm_type, d_model):
     if norm_type == 'batch_norm':
@@ -114,7 +114,8 @@ class ConformerLongConvolution(nn.Module):
             d_model = inner_dim,
             l_max = kernel_size,
             bidirectional = True,
-            transposed=False,
+            transposed = False,
+            weight_init = 'double_exp'
         )
         
     def forward(self, x, length=None, **kwargs):

@@ -91,10 +91,10 @@ ext_modules = []
 raise_if_cuda_home_none("fftconv")
 # Check, if CUDA11 is installed for compute capability 8.0
 cc_flag = []
-# cc_flag.append("-gencode")
-# cc_flag.append("arch=compute_70,code=sm_70")
 cc_flag.append("-gencode")
-cc_flag.append("arch=compute_80,code=sm_80")
+cc_flag.append("arch=compute_70,code=sm_70")
+#cc_flag.append("-gencode")
+#cc_flag.append("arch=compute_80,code=sm_80")
 
 ext_modules.append(
     CUDAExtension(
