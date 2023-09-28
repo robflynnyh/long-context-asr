@@ -6,7 +6,15 @@ from einops import rearrange
 import opt_einsum as oe
 from einops import repeat
 from functools import partial
+from lcasr.utils.helpers import exists
 import math
+
+try:
+    from lcasr.components import fftconv_funcs 
+except ImportError:
+    fftconv_funcs = None
+
+
 
 optimized = True
 if optimized:
@@ -301,7 +309,7 @@ class LongConv(nn.Module):
             channels=1,
             bidirectional=False,
             # Arguments for position-wise feedforward components
-            activation='gelu', # activation between conv and FF
+            #activation='gelu', # activation between conv and FF
             postact='glu', # activation after FF
             initializer=None, # initializer on FF
             weight_norm=False, # weight normalization on FF
@@ -352,7 +360,7 @@ class LongConv(nn.Module):
         self.kernel = LongConvKernel(self.H, L=self.L, channels=channels, verbose=verbose, **kernel_args)
             
         # Pointwise
-        self.activation = Activation(activation)
+        self.activation = Activation('gelu')
         # dropout_fn = nn.Dropout2d if self.transposed else nn.Dropout # Broken in torch==1.11
         dropout_fn = DropoutNd if tie_dropout else nn.Dropout
         self.dropout = dropout_fn(dropout) if dropout > 0.0 else nn.Identity()
@@ -407,22 +415,44 @@ class LongConv(nn.Module):
                     + F.pad(k1.flip(-1), (L, 0))
             # this pads k0 with zeros on the right and k1 with zeros on the left to a length of L + L_kernel
         
-        k_f = torch.fft.rfft(k, n=L_kernel+L) # (C H L)
-        u_f = torch.fft.rfft(u, n=L_kernel+L) # (B H L)
+        use_fftconv = True
+        if not exists(fftconv_funcs):
+            use_fftconv = False
 
-        y_f = contract('bhl,chl->bchl', u_f, k_f) 
-    
-        y = torch.fft.irfft(y_f, n=L_kernel+L)[..., :L] # (B C H L)
+        print(fftconv_funcs, 'HERE')
+        if use_fftconv:
+            dropout_mask = None
+            if not isinstance(self.dropout, nn.Identity):
+                dropout_mask = self.dropout(torch.ones(u.shape[:2], dtype=torch.float32, device=u.device)) # generate dropout mask (not tested)
+            y = fftconv_funcs.fftconv_func(
+                u = u,
+                k = k,
+                D = self.D,
+                dropout_mask = dropout_mask,
+                gelu = True,
+                force_fp16_output = False,
+                output_hbl_layout = False,
+                v = None,
+                head_dim = 1,
+                q = None,
+                fftfp16 = True,
+                k_rev = None,
+            )
+        else:
+            k_f = torch.fft.rfft(k, n=L_kernel+L) # (C H L)
+            u_f = torch.fft.rfft(u, n=L_kernel+L) # (B H L)
+            y_f = contract('bhl,chl->bchl', u_f, k_f) 
+            y = torch.fft.irfft(y_f, n=L_kernel+L)[..., :L] # (B C H L)
+            # Compute skip connection
+            y = y + contract('bhl,ch->bchl', u, self.D)
 
-        # Compute skip connection
-        y = y + contract('bhl,ch->bchl', u, self.D)
+            # Reshape to flatten channels
+            y = rearrange(y, '... c h l -> ... (c h) l')
 
-        # Reshape to flatten channels
-        y = rearrange(y, '... c h l -> ... (c h) l')
+            if not self.transposed: y = y.transpose(-1, -2)
+            y = self.activation(y)
+            y = self.dropout(y)
 
-        if not self.transposed: y = y.transpose(-1, -2)
-        y = self.activation(y)
-        y = self.dropout(y)
         y = self.output_linear(y)
 
         return y
@@ -446,16 +476,19 @@ if __name__ == '__main__':
         bidirectional=True,
         transposed=False,
         channels = 1,
+        weight_init = 'random'
     )
     print(f'total params: {sum(p.numel() for p in lcm.parameters()) / 1e6} (M)')
     lcm.to('cuda' if hascuda else 'cpu')
+    print('HERE')
     B, L, H = 5, 64000, 256
     stime = time()
+    
     u = torch.randn(B, L, H).to('cuda' if hascuda else 'cpu')
     #u = rearrange(u, 'b l (h 1) -> (b h) l 1', h=H)
-    print(time() - stime)
     print(u.device)
     y = lcm(u)
+    print(time() - stime)
     print(y.shape)
 
     
