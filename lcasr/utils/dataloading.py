@@ -132,14 +132,12 @@ class SimpleDataset(torch.utils.data.Dataset):
         return audio, txt, id
 
 
-def collate_fn(augmentation:SpecAugment=None):
+def collate_fn():
     def collate(batch):
         audio, txt, ids = zip(*batch)
         audio_lengths = torch.LongTensor([el.shape[0] for el in audio])
         audio = torch.nn.utils.rnn.pad_sequence(audio, batch_first=True, padding_value=0)
         audio = rearrange(audio, 'b t f -> b f t')
-        if augmentation is not None:
-            audio = augmentation(specgram = audio, audio_lengths = audio_lengths)
         return audio, audio_lengths, txt, ids
     return collate
 
@@ -160,7 +158,6 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         random_seed=1234,
         subgroup_shuffle_size:int = 2000,
         seen_ids:List[str] = [],
-        augmentation:SpecAugment = None,
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -181,7 +178,7 @@ class SimpleDataloader(torch.utils.data.DataLoader):
                 shuffle = False, 
                 num_workers = num_workers, 
                 pin_memory = pin_memory, 
-                collate_fn = collate_fn(augmentation=augmentation),
+                collate_fn = collate_fn(),
                 prefetch_factor = prefetch if num_workers > 0 else None,
             )
             
@@ -200,8 +197,7 @@ class VariableBatchSimpleDataloader():
         prefetch:int = None,
         random_seed=1234,
         subgroup_shuffle_size:int = 2000,
-        seen_ids:List[str] = [],
-        augmentation:SpecAugment = None,
+        seen_ids:List[str] = []
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -213,7 +209,6 @@ class VariableBatchSimpleDataloader():
         self.pin_memory = pin_memory
         self.prefetch = prefetch
         self.random_seed = random_seed
-        self.augmentation = augmentation
 
         self.dataloader = SimpleDataloader(
             pairs = pairs,
@@ -228,14 +223,13 @@ class VariableBatchSimpleDataloader():
             subgroup_shuffle_size = subgroup_shuffle_size,
             random_seed = random_seed,
             seen_ids = seen_ids,
-            augmentation = augmentation,
         )
 
     def update(
             self, 
             batch_size:int, 
-            seen_ids:List[str]=[], 
-            augmentation:SpecAugment='same'
+            seen_ids:List[str]=[],
+            random_seed:int='same'
         ):
         self.batch_size = batch_size
         self.dataloader = SimpleDataloader(
@@ -247,9 +241,8 @@ class VariableBatchSimpleDataloader():
             num_workers = self.num_workers,
             pin_memory = self.pin_memory,
             prefetch = self.prefetch,
-            random_seed = self.random_seed,
+            random_seed = self.random_seed if random_seed == 'same' else random_seed,
             seen_ids = seen_ids,
-            augmentation = self.augmentation if augmentation == 'same' else augmentation,
         )
 
     def __iter__(self):

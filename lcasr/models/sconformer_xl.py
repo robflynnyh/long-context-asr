@@ -107,7 +107,7 @@ class SCConformerXL(nn.Module):
         if self.use_rotary:
             self.rotary_pos_emb = RotaryPositionalEmbedding(
                 dim = head_dim,
-                base = 10000,
+                base = kwargs.get('rotary_base_freq', 10000),
                 learned_freq = learned_rotary,
                 rotary_interpolation_factor = rotary_interpolation_factor
             )

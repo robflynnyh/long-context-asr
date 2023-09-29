@@ -64,6 +64,11 @@ def backwards_pass(
         scheduler.step()
 
 
+def apply_augmentation(audio, lengths, augmentation, epoch, start_augment_after_n_epochs, is_warmup):
+    if start_augment_after_n_epochs == -1 or epoch < start_augment_after_n_epochs or not exists(augmentation) or is_warmup:
+        return audio
+    else:
+        return augmentation(audio, lengths)
 
 def train(
         args:argparse.Namespace,
@@ -76,12 +81,13 @@ def train(
         step:int = 0,
         seen_ids:List[str] = [],
         epoch:int = 0,
+        augmentation:SpecAugment = None,
     ):
     scaler = GradScaler()
             
     clip_value = args.config['training'].get('clip_value', 0.5) 
     intermediate_loss_weighting = args.config['training'].get('intermediate_loss_weighting', 0.0) # not used
-
+    random.seed(args.config['training'].get('random_seed', 12345))
     wandb_config = args.config['wandb']
     
     rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
@@ -141,7 +147,7 @@ def train(
                 dataloader.update(
                     batch_size = dataloader.batch_size, 
                     seen_ids = seen_ids,
-                    augmentation = None if start_spec_augment_after_n_epochs == -1 or epoch < start_spec_augment_after_n_epochs else SpecAugment(**args.config['spec_augment'])
+                    random_seed = random.randint(0, 10000),
                 )
                 dataloader_iter = iter(dataloader)
                 pbar = tqdm(total = len(dataloader), desc = f'Training - Epoch {epoch}')
@@ -172,6 +178,7 @@ def train(
         last_podcast = cur_podcast
         ###############################
         
+        audio = apply_augmentation(audio=audio, lengths=a_lengths, augmentation=augmentation, start_augment_after_n_epochs=start_spec_augment_after_n_epochs, epoch=epoch, is_warmup=scheduler.is_warmup)
         
         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
         txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
@@ -236,6 +243,7 @@ def train(
                 audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
 
                 with autocast(device.type, dtype=torch.bfloat16) if torch.cuda.is_available() else nullcontext():
+
                     cached_kvs = last_kv_set.clone() if last_kv_set != None else None
                     cached_kv_lengths = torch.LongTensor([cached_kvs.shape[1]] * cached_kvs.shape[0]).to(device) if cached_kvs != None else None
 
@@ -294,10 +302,7 @@ def train(
                         scheduler = scheduler,
                         scaler = scaler
                     )
-
                     learning_rate = scheduler.get_last_lr()[0]
-
-    
                  
 
                     if wandb_config['use']:
@@ -423,9 +428,11 @@ def main(args):
         prefetch = args.prefetch_factor,
         seen_ids = seen_ids,
         random_seed = random_seed,
-        augmentation = None if start_spec_augment_after_n_epochs == -1 or epoch < start_spec_augment_after_n_epochs else SpecAugment(**args.config['spec_augment']),
     )
-    
+
+    # None if start_spec_augment_after_n_epochs == -1 or epoch < start_spec_augment_after_n_epochs else 
+    augmentation = SpecAugment(**(args.config['spec_augment'] if 'spec_augment' in args.config else {}))
+
     if args.debug_hooks:
         assert wandb_config['use'], 'must have wandb enabled when - arg.debug_hooks ==  True - to log debug hooks outputs'
         logger = partial(wandb.log, commit=False)
@@ -445,6 +452,7 @@ def main(args):
         device = device, 
         seen_ids = seen_ids,
         step = step,
+        augmentation = augmentation,
     )
 
 

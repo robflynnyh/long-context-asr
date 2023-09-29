@@ -39,7 +39,7 @@ class SpecAugment(torch.nn.Module): # taken from https://pytorch.org/audio/main/
         freq_mask_param: int,
         iid_masks: bool = True,
         p: float = 1.0,
-        zero_masking: bool = False, # set to true if spectogram is normalized per input i.e then it is equal to mean of the spectogram
+        zero_masking: bool = True, # set to true if spectogram is normalized per input i.e then it is equal to mean of the spectogram
     ) -> None:
         super(SpecAugment, self).__init__()
         self.n_time_masks = n_time_masks

@@ -235,7 +235,7 @@ class LongConvKernel(OptimModule):
         lam=0.001, 
         causal=True, 
         kernel_dropout=0,
-        weight_init="double_exp",
+        weight_init="random",
         use_ma_smoothing = False,
         ma_window_len = 7,
         smooth_freq = False,
@@ -310,7 +310,7 @@ class LongConv(nn.Module):
             bidirectional=False,
             # Arguments for position-wise feedforward components
             #activation='gelu', # activation between conv and FF
-            postact='swish', # activation after FF (glu)
+            postact='glu', # activation after FF (glu)
             initializer=None, # initializer on FF
             weight_norm=False, # weight normalization on FF
             dropout=0.0, tie_dropout=False,

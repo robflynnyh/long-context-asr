@@ -95,7 +95,7 @@ class ConformerLongConvolution(nn.Module):
             self, 
             d_model, 
             kernel_size, 
-            norm_type='none', 
+            norm_type='batch_renorm', 
             exp_factor=1,
             **kwargs
             ):
@@ -115,7 +115,8 @@ class ConformerLongConvolution(nn.Module):
             l_max = kernel_size,
             bidirectional = True,
             transposed = False,
-            weight_init = 'double_exp'
+            weight_init = 'random',
+            channels = 1,
         )
         
     def forward(self, x, length=None, **kwargs):
