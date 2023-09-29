@@ -34,21 +34,27 @@ class SpecAugment(torch.nn.Module): # taken from https://pytorch.org/audio/main/
     def __init__(
         self,
         n_time_masks: int,
-        time_mask_param: int,
         n_freq_masks: int,
         freq_mask_param: int,
         iid_masks: bool = True,
-        p: float = 1.0,
+        time_mask_param: int = -1, # time mask width if -1 then it is calculated from min_p
+        min_p: float = -1, # minimun amount of spectogram to be masked, only use when time_mask_param is -1
+        max_p: float = 1.0,
         zero_masking: bool = True, # set to true if spectogram is normalized per input i.e then it is equal to mean of the spectogram
     ) -> None:
         super(SpecAugment, self).__init__()
+        assert min_p != -1 or time_mask_param != -1, "Either min_p or n_time_masks must be set o:"
+        assert min_p == -1 or (min_p >= 0 and min_p <= 1), "min_p must be within range [0.0, 1.0]"
+        assert max_p >= 0 and max_p <= 1, "max_p must be within range [0.0, 1.0]"
+
         self.n_time_masks = n_time_masks
         self.time_mask_param = time_mask_param
         self.n_freq_masks = n_freq_masks
         self.freq_mask_param = freq_mask_param
         self.iid_masks = iid_masks
-        self.p = p
+        self.max_p = max_p
         self.zero_masking = zero_masking
+        self.min_p = min_p
 
     def forward(self, specgram: Tensor, audio_lengths: Tensor = None) -> Tensor:
         r"""
@@ -67,23 +73,28 @@ class SpecAugment(torch.nn.Module): # taken from https://pytorch.org/audio/main/
         time_dim = specgram.dim() - 1
         freq_dim = time_dim - 1
         
+        time_mask_width, num_time_masks = self.time_mask_param, self.n_time_masks
+        if self.min_p != -1:
+            total_time_mask_coverage = int(t * self.min_p) # calculate time_mask_width from min_p
+            time_mask_width = int(total_time_mask_coverage / num_time_masks) if num_time_masks != 0 else 0 # calculate number of time mask width so that total time mask coverage is equal to min_p
+            print(total_time_mask_coverage, num_time_masks, time_mask_width, t, f, specgram.shape)           
 
         if specgram.dim() > 2 and self.iid_masks is True:
             missing_channel = specgram.dim() == 3
             if missing_channel:
                 specgram = specgram.unsqueeze(1) # (batch, 1, freq, time) 1 is channel
                 time_dim, freq_dim = time_dim + 1, freq_dim + 1
-            for _ in range(self.n_time_masks):
-                specgram = F.mask_along_axis_iid(specgram, self.time_mask_param, mask_value, time_dim, p=self.p)
+            for _ in range(num_time_masks):
+                specgram = F.mask_along_axis_iid(specgram, time_mask_width, mask_value, time_dim, p=self.max_p)
             for _ in range(self.n_freq_masks):
-                specgram = F.mask_along_axis_iid(specgram, self.freq_mask_param, mask_value, freq_dim, p=self.p)
+                specgram = F.mask_along_axis_iid(specgram, self.freq_mask_param, mask_value, freq_dim, p=self.max_p)
             if missing_channel:
                 specgram = specgram.squeeze(1)
         else:
-            for _ in range(self.n_time_masks):
-                specgram = F.mask_along_axis(specgram, self.time_mask_param, mask_value, time_dim, p=self.p)
+            for _ in range(num_time_masks):
+                specgram = F.mask_along_axis(specgram, time_mask_width, mask_value, time_dim, p=self.max_p)
             for _ in range(self.n_freq_masks):
-                specgram = F.mask_along_axis(specgram, self.freq_mask_param, mask_value, freq_dim, p=self.p)
+                specgram = F.mask_along_axis(specgram, self.freq_mask_param, mask_value, freq_dim, p=self.max_p)
 
         return specgram
 

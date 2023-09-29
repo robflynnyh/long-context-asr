@@ -178,8 +178,6 @@ def train(
         last_podcast = cur_podcast
         ###############################
         
-        #audio = apply_augmentation(audio=audio, lengths=a_lengths, augmentation=augmentation, start_augment_after_n_epochs=start_spec_augment_after_n_epochs, epoch=epoch, is_warmup=scheduler.is_warmup)
-        
         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
         txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
 
@@ -243,7 +241,7 @@ def train(
                 audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
 
                 with autocast(device.type, dtype=torch.bfloat16) if torch.cuda.is_available() else nullcontext():
-
+                    audio = apply_augmentation(audio=audio, lengths=a_lengths, augmentation=augmentation, start_augment_after_n_epochs=start_spec_augment_after_n_epochs, epoch=epoch, is_warmup=scheduler.is_warmup)
                     cached_kvs = last_kv_set.clone() if last_kv_set != None else None
                     cached_kv_lengths = torch.LongTensor([cached_kvs.shape[1]] * cached_kvs.shape[0]).to(device) if cached_kvs != None else None
 
@@ -313,7 +311,7 @@ def train(
                             'sequence_length': chunk_size,
                             'batch_size': batch_size,
                             'epoch': epoch,
-                            'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs else int(False),
+                            'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
                         })
                     
                     cur_tokens_in_loss = 0
@@ -431,7 +429,7 @@ def main(args):
     )
 
     # None if start_spec_augment_after_n_epochs == -1 or epoch < start_spec_augment_after_n_epochs else 
-    augmentation = SpecAugment(args.config['spec_augment']) if 'spec_augment' in args.config else None
+    augmentation = SpecAugment(**args.config['spec_augment']) if 'spec_augment' in args.config else None
     assert exists(augmentation) or start_spec_augment_after_n_epochs == -1, 'must have spec augment in config if start_spec_augment_after_n_epochs > 0'
 
     if args.debug_hooks:
