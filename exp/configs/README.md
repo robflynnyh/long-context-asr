@@ -93,3 +93,6 @@ training:
 # size: 360000 (1 hour) =  batch size 1
 
 ```
+
+# Instructions for creating templates
+to be added, for recreating the experiments shown in paper, see the 'paper_templates' directory for the corresponding template files
