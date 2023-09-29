@@ -21,6 +21,7 @@ Below are model checkpoints for Acoustic models discussed in the paper. The <b>g
 |  320s   |    1   | Yes        |       6.5     |      18.6         | [here](https://huggingface.co/rjflynn2/lcasr-320s) |
 |  160s   |    1   | Yes        |       6.5     |      18.7         | [here](https://huggingface.co/rjflynn2/lcasr-160s) |
 |  80s    |    1   | Yes        |       6.5     |      18.7         | [here](https://huggingface.co/rjflynn2/lcasr-80s) |
+|  40s    |    1   | Yes        |       6.7     |      19.2         | [here](https://huggingface.co/rjflynn2/lcasr-40s-seq_warmup) |
 |  40s    |    1   | No         |       6.5     |      19.4         | [here](https://huggingface.co/rjflynn2/lcasr-40s) |
 |  20s    |    1   | No         |       6.6     |      19.4         | [here](https://huggingface.co/rjflynn2/lcasr-20s)  |
 |  10s    |    1   | No         |       6.8     |      20.5         | [here](https://huggingface.co/rjflynn2/lcasr-10s)  |
