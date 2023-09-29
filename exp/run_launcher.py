@@ -11,7 +11,7 @@ SAVE_DIR = './.tmp'
 run_strings = {
     'a100':f"""#!/bin/bash\n
 #SBATCH --time=50:00:00
-#SBATCH --mem=150GB
+#SBATCH --mem=180GB
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --qos=gpu
@@ -23,7 +23,7 @@ source activate a100
 """,
     'h100':f"""#!/bin/bash\n
 #SBATCH --time=96:00:00
-#SBATCH --mem=170GB
+#SBATCH --mem=190GB
 #SBATCH --partition=gpu-h100
 #SBATCH --gres=gpu:h100:1
 #SBATCH --qos=gpu
