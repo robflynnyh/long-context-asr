@@ -11,4 +11,4 @@ module load Anaconda3/2022.10 binutils/2.31.1-GCCcore-8.2.0 cuDNN/8.4.1.50-CUDA-
 source activate a100
 
 
-python train.py -config ./.tmp/2_912287.yaml -num_workers 0
+python train.py -config ./.tmp/0_145700.yaml -num_workers 0
