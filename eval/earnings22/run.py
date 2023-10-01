@@ -1,25 +1,11 @@
-import lcasr
-import torch, numpy as np
-import argparse
+import torch, argparse, lcasr, os, re, json
 from tqdm import tqdm
-from typing import Dict, List, Tuple
-from lcasr.models.sconformer_xl import SCConformerXL
-from omegaconf.omegaconf import OmegaConf
-
-from lcasr.utils.audio_tools import processing_chain, total_seconds
-
+from typing import Tuple
+from lcasr.utils.audio_tools import processing_chain
+from lcasr.eval.utils import fetch_logits, decode_beams_lm
 from lcasr.utils.general import load_model
 from pyctcdecode import build_ctcdecoder
-
-import torchaudio
-
-from einops import rearrange
-import os
-import wandb
-import re
-import json
-from wer import word_error_rate_detail 
-
+from lcasr.eval.wer import word_error_rate_detail 
 from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
 
@@ -29,45 +15,6 @@ ALL_TEXT_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/full_transcripts.json
 
 
 
-def post_process(text:str): return text
-
-def ctc_decoder(vocab):  
-    decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
-    return decoder
-
-def decode_beams_lm(
-        logits_list, 
-        decoder, 
-        beam_width=100, 
-        encoded_lengths=None,
-        ds_factor=4
-    ):
-    decoded_data = []
-    if encoded_lengths is None:
-        encoded_lengths = [len(logits) for logits in logits_list]
-
-    def proc_text_frame(tx_frame:Tuple[str, Tuple[int, int]]):
-        text, frame = tx_frame
-        return {'word': text, 'start': total_seconds(frame[0] * ds_factor), 'end': total_seconds(frame[1] * ds_factor)}
-
-    for logits, length in zip(logits_list, encoded_lengths):
- 
-        beams = decoder.decode_beams(
-            logits = logits[:length],
-            beam_width = beam_width,
-            # beam_prune_logp = beam_prune_logp, 
-            # token_min_logp = token_min_logp,
-            # prune_history = prune_history
-        )
-        decoded_data.append({
-                'text': beams[0].text,
-                'frames': [proc_text_frame(el) for el in beams[0].text_frames],
-                'ngram_score': beams[0].lm_score - beams[0].logit_score,
-                'am_score': beams[0].logit_score,
-                'score': beams[0].lm_score # # score = ngram_score + am_score
-        })
-
-    return decoded_data, beams[0]
 
 def fetch_data(audio_path:str = TEST_PATH, txt_path:str = ALL_TEXT_PATH):
     with open(txt_path, 'r') as f:
@@ -86,98 +33,6 @@ def fetch_data(audio_path:str = TEST_PATH, txt_path:str = ALL_TEXT_PATH):
 
     return audio_files, text_files
 
-
-def load_audio(audio_file:str):
-    spec = processing_chain(audio_file)
-    return spec
-
-
-
-@torch.no_grad()
-def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer, use_tqdm=True):
-    spec_n = spec.shape[-1]
-    
-    downsampling_factor = args.config['model']['subsampling_factor']
-    assert overlap / downsampling_factor == overlap // downsampling_factor, 'Overlap must be a multiple of the downsampling factor'
-    seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
-    if seq_len > spec_n:
-        seq_len = spec_n
-        overlap = 0
-    else:
-        overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
-    cache_len = args.cache_len if args.cache_len != -1 else args.config['training']['max_seq_len']
-    #assert overlap == 0 or cache_len == 0, 'Cannot use overlap and cache_len at the same time'
-
-    print(f'{spec_n}')
-    
-    
-    print(f'Using seq_len: {seq_len} and overlap: {overlap} and cache_len: {cache_len}')
-
-    all_logits = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
-    logit_count = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
-    
-    logit_position = 0
-    
-    prev_cache = None
-    last_ulen = None
-    kill_next = False
-    pbar = tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))) if use_tqdm else range(0, spec_n, seq_len-overlap)
-    for i in pbar:
-        audio_chunk = spec[:, :, i:i+seq_len]
-        u_len = audio_chunk.shape[-1]
-
-        if kill_next:
-            break
-        if last_ulen != None and u_len < last_ulen:
-            kill_next = True
-        last_ulen = u_len
-
-        # if u_len < (seq_len - overlap):
-        #     continue
-
-        audio_chunk = audio_chunk.to(model.device)
-        out = model(
-            audio_signal = audio_chunk,
-            cached_kvs = prev_cache,
-            cached_kv_lengths = None if prev_cache is None else torch.LongTensor([prev_cache.shape[1]] * prev_cache.shape[0]).to(prev_cache.device)
-        )
-
-        if cache_len != 0:
-            prev_cache = out['kvs_to_cache'][:, -cache_len:].clone()
-
-        logits = out['final_posteriors'].detach().cpu()
-        # convert to prob
-        logits = torch.exp(logits)
-        ds_len = logits.shape[-2]
-
-        ratio = u_len / ds_len
-        overlap_ds = int(overlap / ratio)
-        if i != 0:
-            logit_position -= overlap_ds
-
-        #logit_position = i 
-        #print(all_logits.shape, ds_len, logit_position, logit_position+ds_len, logits.shape)
-      
-        logit_count[:, logit_position:logit_position+ds_len, :] += 1
-        all_logits[:, logit_position:logit_position+ds_len, :] += logits
-        logit_position += ds_len 
-
-        #print(logit_position, overlap_ds, '()', u_len, i, i+seq_len, audio_chunk.shape, ratio, ds_len)
-        
-        
-    B,N,C = all_logits.shape
-    all_logits = all_logits[logit_count.sum(dim=-1) != 0]
-    all_logits = all_logits.reshape(B,-1,C)
-    logit_count = logit_count[logit_count.sum(dim=-1) != 0]
-    logit_count = logit_count.reshape(B,-1,C)
-    logits = all_logits / logit_count
-    # convert to log 
-    logits = torch.log(logits)
-    # blank_id = logits.shape[-1]-1
-    # logits = logits.argmax(dim=-1)[0].tolist()
-    # print(tokenizer.decode([el for el in logits if el != blank_id]))
-    
-    return logits.squeeze(0).numpy()
 
 
 def preprocess_transcript(text:str):
@@ -216,8 +71,8 @@ def main(args):
     model = model.to(device)
     model.eval()
 
-    decoder = ctc_decoder([tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""]) # "" = blank
-
+    vocab = [tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""]
+    decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
 
     audio_files, text_files = fetch_data(audio_path=data_path, txt_path=ALL_TEXT_PATH)
     meetings_keys = [el['meeting'] for el in audio_files]
@@ -235,32 +90,19 @@ def main(args):
         assert cur_meetings == text_files[rec]['meeting'] and audio_files[rec]['meeting'] == text_files[rec]['meeting'], \
             f'Meeting names do not match: {cur_meetings}, {text_files[rec]["meeting"]}, {audio_files[rec]["meeting"]}'
 
-        audio_spec = load_audio(cur_audio)
+        audio_spec = processing_chain(cur_audio)
         print('\n-------\n'+cur_meetings+'\n-------\n')
         
         logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
-        # np.save(f'logits_{rec}.npy', logits)
-        # exit()
 
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
         decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
         out = normalize(decoded[0]['text']).lower()
         
-        #out = postprocess_asr(decoded[0]['text'])
         print(cur_text, '\n', out, '\n\n')
         
         all_texts.append(out)
         all_golds.append(cur_text)
-        #break
-        # stm_path = paired[audio_files[rec]]
-        # gold_text, timings = proc_stm_and_timings(stm_path=stm_path)
-        # all_text, frames = parse_utterances(decoded_frames = decoded[0]['frames'], timings = timings)
-        # print(all_text)
-        # all_texts.append(all_text)
-        # all_golds.append(gold_text)
-        
-        
-
         
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
 

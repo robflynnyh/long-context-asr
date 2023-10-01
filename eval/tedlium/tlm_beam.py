@@ -1,35 +1,13 @@
-import lcasr
-import torch, numpy as np
-import argparse
+import torch, argparse, lcasr, wandb, re, pickle as pkl, ray, random
 from tqdm import tqdm
-from typing import Dict, List, Tuple
-from lcasr.models.sconformer_xl import SCConformerXL
+from typing import List 
 from omegaconf.omegaconf import OmegaConf
 from lming.decoding import beam_search
-
-from lcasr.utils.audio_tools import processing_chain, total_seconds
-
-from lcasr.utils.general import load_model
-from pyctcdecode import build_ctcdecoder
-
-import torchaudio
-import lming
 from lming.utils import general
-
-
-from einops import rearrange
-import os
-import wandb
-import re
-
 from wer import word_error_rate_detail 
-import re
-import pickle as pkl
-import ray
 from functools import partial
-import wandb
 from whisper.normalizers import EnglishTextNormalizer
-import random
+
 normalize = EnglishTextNormalizer()
 
 #train_path = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/train/stm/EllenGustafson_2010X.stm'

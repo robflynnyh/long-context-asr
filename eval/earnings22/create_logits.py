@@ -1,26 +1,12 @@
 import lcasr
-import torch, numpy as np
 import argparse
 from tqdm import tqdm
-from typing import Dict, List, Tuple
+from typing import Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
-from omegaconf.omegaconf import OmegaConf
-
-from lcasr.utils.audio_tools import processing_chain, total_seconds, total_frames
-
+from lcasr.utils.audio_tools import processing_chain
 from lcasr.utils.general import load_model
 from pyctcdecode import build_ctcdecoder
-
-import torchaudio
-
-from einops import rearrange
-import os
-import wandb
-import re
-import json
-from wer import word_error_rate_detail 
-
-import re
+import os, re, json, torch
 
 TEST_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/test_original'
 DEV_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/dev_original'
@@ -28,44 +14,6 @@ ALL_TEXT_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/full_transcripts.json
 
 import pickle as pkl
 
-
-def ctc_decoder(vocab):  
-    decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
-    return decoder
-
-def decode_beams_lm(
-        logits_list, 
-        decoder, 
-        beam_width=100, 
-        encoded_lengths=None,
-        ds_factor=4
-    ):
-    decoded_data = []
-    if encoded_lengths is None:
-        encoded_lengths = [len(logits) for logits in logits_list]
-
-    def proc_text_frame(tx_frame:Tuple[str, Tuple[int, int]]):
-        text, frame = tx_frame
-        return {'word': text, 'start': total_seconds(frame[0] * ds_factor), 'end': total_seconds(frame[1] * ds_factor)}
-
-    for logits, length in zip(logits_list, encoded_lengths):
- 
-        beams = decoder.decode_beams(
-            logits = logits[:length],
-            beam_width = beam_width,
-            # beam_prune_logp = beam_prune_logp, 
-            # token_min_logp = token_min_logp,
-            # prune_history = prune_history
-        )
-        decoded_data.append({
-                'text': beams[0].text,
-                'frames': [proc_text_frame(el) for el in beams[0].text_frames],
-                'ngram_score': beams[0].lm_score - beams[0].logit_score,
-                'am_score': beams[0].logit_score,
-                'score': beams[0].lm_score # # score = ngram_score + am_score
-        })
-
-    return decoded_data, beams[0]
 
 def fetch_data(audio_path:str = TEST_PATH, txt_path:str = ALL_TEXT_PATH):
     with open(txt_path, 'r') as f:
@@ -83,11 +31,6 @@ def fetch_data(audio_path:str = TEST_PATH, txt_path:str = ALL_TEXT_PATH):
  
 
     return audio_files, text_files
-
-
-def load_audio(audio_file:str):
-    spec = processing_chain(audio_file)
-    return spec
 
 
 
@@ -213,8 +156,8 @@ def main(args):
     model = model.to(device)
     model.eval()
 
-    decoder = ctc_decoder([tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""]) # "" = blank
-
+    vocab = [tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""] # "" = blank
+    decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
 
     audio_files, text_files = fetch_data(audio_path=data_path, txt_path=ALL_TEXT_PATH)
     meetings_keys = [el['meeting'] for el in audio_files]
@@ -230,7 +173,7 @@ def main(args):
         assert cur_meetings == text_files[rec]['meeting'] and audio_files[rec]['meeting'] == text_files[rec]['meeting'], \
             f'Meeting names do not match: {cur_meetings}, {text_files[rec]["meeting"]}, {audio_files[rec]["meeting"]}'
 
-        audio_spec = load_audio(cur_audio)
+        audio_spec = processing_chain(cur_audio)
         print('\n-------\n'+cur_meetings+'\n-------\n')
         
         logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)

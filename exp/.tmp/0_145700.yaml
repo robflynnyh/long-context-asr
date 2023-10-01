@@ -52,7 +52,7 @@ training:
   max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
-  random_seed: 6934
+  random_seed: 6931
 sequence_scheduler:
   increase_every: 5000
   stop_after: 90000

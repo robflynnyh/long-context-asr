@@ -1,6 +1,7 @@
 #!/bin/bash
-#SBATCH --time=95:00:00
-#SBATCH --mem=190GB
+
+#SBATCH --time=50:00:00
+#SBATCH --mem=150GB
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --qos=gpu
@@ -9,4 +10,5 @@
 module load Anaconda3/2022.10 binutils/2.31.1-GCCcore-8.2.0 cuDNN/8.4.1.50-CUDA-11.7.0 GCCcore/8.2.0
 source activate a100
 
-python train.py -config ./configs/learn_base_freq.yaml
+
+python train.py -config ./.tmp/7_355138.yaml -num_workers 0

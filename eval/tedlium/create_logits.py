@@ -1,26 +1,10 @@
-import lcasr
-import torch, numpy as np
+import torch, lcasr, os, re
 import argparse
 from tqdm import tqdm
-from typing import Dict, List, Tuple
-from lcasr.models.sconformer_xl import SCConformerXL
-from omegaconf.omegaconf import OmegaConf
-
-from lcasr.utils.audio_tools import processing_chain, total_seconds, total_frames
-
+from typing import List
+from lcasr.utils.audio_tools import processing_chain
 from lcasr.utils.general import load_model
-from pyctcdecode import build_ctcdecoder
-
-import torchaudio
-
-from einops import rearrange
-import os
-import wandb
-import re
-
-from wer import word_error_rate_detail 
-from postprocess import post_process
-import re
+from lcasr.eval.utils import zero_out_spectogram, fetch_logits
 
 TEST_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/test/'
 DEV_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/dev/'
@@ -57,46 +41,6 @@ def proc_stm_and_timings(stm_path:str):
     all_text = re.sub(r" +", r" ", all_text)
     return all_text, timings, remove_timings
 
-def ctc_decoder(vocab, alpha, beta, arpa_path=''):
-    arpa_path = None if arpa_path == '' else arpa_path
-    alpha = None if arpa_path is None else alpha
-    beta = None if arpa_path is None else beta
-    decoder = build_ctcdecoder(vocab, kenlm_model_path=arpa_path, alpha=alpha, beta=beta)
-    return decoder
-
-def decode_beams_lm(
-        logits_list, 
-        decoder, 
-        beam_width=100, 
-        encoded_lengths=None,
-        ds_factor=4
-    ):
-    decoded_data = []
-    if encoded_lengths is None:
-        encoded_lengths = [len(logits) for logits in logits_list]
-
-    def proc_text_frame(tx_frame:Tuple[str, Tuple[int, int]]):
-        text, frame = tx_frame
-        return {'word': text, 'start': total_seconds(frame[0] * ds_factor), 'end': total_seconds(frame[1] * ds_factor)}
-
-    for logits, length in zip(logits_list, encoded_lengths):
- 
-        beams = decoder.decode_beams(
-            logits = logits[:length],
-            beam_width = beam_width,
-            # beam_prune_logp = beam_prune_logp, 
-            # token_min_logp = token_min_logp,
-            # prune_history = prune_history
-        )
-        decoded_data.append({
-                'text': beams[0].text,
-                'frames': [proc_text_frame(el) for el in beams[0].text_frames],
-                'ngram_score': beams[0].lm_score - beams[0].logit_score,
-                'am_score': beams[0].logit_score,
-                'score': beams[0].lm_score # # score = ngram_score + am_score
-        })
-
-    return decoded_data, beams[0]
 
 def fetch_data(path:str = TEST_PATH):
     audio_path = os.path.join(path, 'sph')
@@ -109,108 +53,6 @@ def fetch_data(path:str = TEST_PATH):
     return audio_files, text_files
 
 
-def load_audio(audio_file:str):
-    spec = processing_chain(audio_file)
-    return spec
-
-
-
-@torch.no_grad()
-def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer, use_tqdm=True):
-    spec_n = spec.shape[-1]
-    downsampling_factor = args.config['model']['subsampling_factor']
-    seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
- 
-    if seq_len > spec_n:
-        seq_len = spec_n
-        overlap = 0
-    else:
-        overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
-    cache_len = args.cache_len if args.cache_len != -1 else args.config['training']['max_seq_len']
-    #assert overlap == 0 or cache_len == 0, 'Cannot use overlap and cache_len at the same time'
-
-    assert overlap / downsampling_factor == overlap // downsampling_factor, 'Overlap must be a multiple of the downsampling factor'
-
-
-    print(f'Using seq_len: {seq_len} and overlap: {overlap} and cache_len: {cache_len}')
-
-    all_logits = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
-    logit_count = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
-    
-    logit_position = 0
-    
-    prev_cache = None
-    last_ulen = None
-    kill_next = False
-    pbar = tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))) if use_tqdm else range(0, spec_n, seq_len-overlap)
-    for i in pbar:
-        audio_chunk = spec[:, :, i:i+seq_len]
-        u_len = audio_chunk.shape[-1]
-
-        #   print(u_len, last_ulen, kill_next)
-        if kill_next:
-            break
-        if last_ulen != None and u_len < last_ulen:
-            kill_next = True
-        last_ulen = u_len
-        # if u_len < (seq_len - overlap):
-        #     continue
-
-        audio_chunk = audio_chunk.to(model.device)
-        out = model(
-            audio_signal = audio_chunk,
-            cached_kvs = prev_cache,
-            cached_kv_lengths = None if prev_cache is None else torch.LongTensor([prev_cache.shape[1]] * prev_cache.shape[0]).to(prev_cache.device)
-        )
-
-        if cache_len != 0:
-            prev_cache = out['kvs_to_cache'][:, -cache_len:].clone()
-
-        logits = out['final_posteriors'].detach().cpu()
-        # convert to prob
-        logits = torch.exp(logits)
-        ds_len = logits.shape[-2]
-
-        ratio = u_len / ds_len
-        overlap_ds = int(overlap / ratio)
-        if i != 0:
-            logit_position -= overlap_ds
-
-        #logit_position = i 
-        #print(logits.shape, logit_position, ds_len, all_logits.shape, all_logits[:,logit_position:].shape)
-        logit_count[:, logit_position:logit_position+ds_len, :] += 1
-        all_logits[:, logit_position:logit_position+ds_len, :] += logits
-        logit_position += ds_len 
-
-        #print(logit_position, overlap_ds, '()', u_len, i, i+seq_len, audio_chunk.shape, ratio, ds_len)
-        
-        
-    B,N,C = all_logits.shape
-    all_logits = all_logits[logit_count.sum(dim=-1) != 0]
-    all_logits = all_logits.reshape(B,-1,C)
-    logit_count = logit_count[logit_count.sum(dim=-1) != 0]
-    logit_count = logit_count.reshape(B,-1,C)
-    logits = all_logits / logit_count
-    # convert to log 
-    logits = torch.log(logits)
-    # blank_id = logits.shape[-1]-1
-    # logits = logits.argmax(dim=-1)[0].tolist()
-    # print(tokenizer.decode([el for el in logits if el != blank_id]))
-    
-    return logits.squeeze(0).numpy()
-
-#'''
-
-def zero_out_spectogram(spec:torch.Tensor, remove_timings:List[Dict[str, int]]):
-    buffer = -0.5
-
-    for timing in remove_timings:
-        start, end = timing['start'] - buffer, timing['end'] + buffer
-
-        start_frame, end_frame = map(total_frames, [start, end])
-        spec[:,:,start_frame:end_frame] = 0
-
-    return spec
 
 
 def main(args):
@@ -246,14 +88,12 @@ def main(args):
         stm_path = paired[audio_files[rec]]
         gold_text, timings, remove_timings = proc_stm_and_timings(stm_path=stm_path)
 
-        audio_spec = load_audio(audio_files[rec])
+        audio_spec = processing_chain(audio_files[rec])
         audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
         
         print('\n\n'+paired[audio_files[rec]]+'\n\n')
         
         logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
-        # np.save(f'logits_{rec}.npy', logits)
-        # exit()
 
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
       

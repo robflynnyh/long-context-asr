@@ -76,8 +76,7 @@ class SpecAugment(torch.nn.Module): # taken from https://pytorch.org/audio/main/
         time_mask_width, num_time_masks = self.time_mask_param, self.n_time_masks
         if self.min_p != -1:
             total_time_mask_coverage = int(t * self.min_p) # calculate time_mask_width from min_p
-            time_mask_width = int(total_time_mask_coverage / num_time_masks) if num_time_masks != 0 else 0 # calculate number of time mask width so that total time mask coverage is equal to min_p
-            print(total_time_mask_coverage, num_time_masks, time_mask_width, t, f, specgram.shape)           
+            time_mask_width = int(total_time_mask_coverage / num_time_masks) if num_time_masks != 0 else 0 # calculate number of time mask width so that total time mask coverage is equal to min_p   
 
         if specgram.dim() > 2 and self.iid_masks is True:
             missing_channel = specgram.dim() == 3

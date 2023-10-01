@@ -37,7 +37,7 @@ wandb:
   use: true
   project_name: spotify_long_context
   name: n_seq_sched_16384_rp_3_spec_aug
-  id: ''
+  id: 'mb4qnx9k'
 checkpointing:
   dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_spec_aug/n_seq_sched_16384_rp_3
   save_every_n_steps: 2000
@@ -51,7 +51,7 @@ training:
   max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
-  random_seed: 67819
+  random_seed: 67811
 sequence_scheduler:
   increase_every: 5000
   stop_after: 90000
