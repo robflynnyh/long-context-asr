@@ -83,6 +83,7 @@ training:
   max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
+  random_seed: 9922
 
 
 # size: 512 = batch size 704

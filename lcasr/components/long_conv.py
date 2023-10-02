@@ -209,23 +209,7 @@ def Activation(activation=None, size=None, dim=-1):
         raise NotImplementedError("hidden activation '{}' is not implemented".format(activation))
 
 
-class OptimModule(nn.Module):
-    """ Interface for Module that allows registering buffers/parameters with configurable optimizer hyperparameters """
-
-    def register(self, name, tensor, lr=None, wd=0.0):
-        """Register a tensor with a configurable learning rate and 0 weight decay"""
-
-        if lr == 0.0:
-            self.register_buffer(name, tensor)
-        else:
-            self.register_parameter(name, nn.Parameter(tensor))
-
-            optim = {}
-            if lr is not None: optim["lr"] = lr
-            if wd is not None: optim["weight_decay"] = wd
-            setattr(getattr(self, name), "_optim", optim)
-
-class LongConvKernel(OptimModule):
+class LongConvKernel(nn.Module):
     def __init__(
         self, 
         H, 
@@ -253,7 +237,6 @@ class LongConvKernel(OptimModule):
         self.lam = lam
         self.kernel = torch.nn.Parameter(self._parameter_initialization()) #(c,H,L) 
 
-        self.register("kernel", self.kernel, learning_rate)
         
         self.use_ma_smoothing=use_ma_smoothing
         self.smooth_freq = smooth_freq
@@ -276,7 +259,7 @@ class LongConvKernel(OptimModule):
             return torch.randn(self.channels, self.H, self.L) * 0.002
         elif self.weight_init=="double_exp":
             K = torch.randn(self.channels, self.H, self.L,dtype=torch.float32) * 0.02
-            double_exp = torch.zeros((self.H,self.L),dtype=torch.float32) # do this with vmap?
+            double_exp = torch.zeros((self.H,self.L),dtype=torch.float32) 
             for i in range(self.H):
                 for j in range(self.L):
                     double_exp[i,j] = torch.exp(-(j/self.L)*torch.pow(torch.tensor(int(self.H/2)),torch.tensor(i/self.H)))
@@ -301,6 +284,49 @@ class LongConvKernel(OptimModule):
     def d_output(self):
         return self.H
 
+
+class PositionKernel(nn.Module):
+    '''
+    Rather than having a parameter for each position in the kernel/seq we just predict a value for the kernel at each positon given the position in the sequence
+    Similar to dynamic position embeddings in transformers
+    '''
+    def __init__(
+        self,
+        H,
+        L,
+        channels=1,
+        intermediate_dim=128,
+        activation=nn.SiLU,
+        **kwargs
+    ):
+        super().__init__()
+        self.H = H
+        self.L = L
+        self.channels = channels
+        self.kernel = nn.Sequential(
+            nn.Linear(1, intermediate_dim),
+            activation(),
+            nn.Linear(intermediate_dim, self.H*self.channels)
+        )
+        # init linear layers to be small i.e normal(0,0.002)
+        for layer in self.kernel:
+            if isinstance(layer, nn.Linear):
+                layer.weight.data.normal_(mean=0.0, std=0.002)
+                layer.bias.data.normal_(mean=0.0, std=0.002)
+
+
+    def forward(self, L, rate=1.0, state=None):
+        # create linear sequence of float of length L increasing by rate
+        x = torch.arange(L, dtype=torch.float32, device=self.kernel[0].weight.device)[:, None]
+        if rate != 1.0: x = x * rate
+        # get kernel
+        k = self.kernel(x) # (L, H*C)
+        k = rearrange(k, 'l (c h) -> c h l', c=self.channels) # (C, H, L)
+        return k, None
+
+        
+
+
 class LongConv(nn.Module):
     def __init__(
             self,
@@ -308,6 +334,7 @@ class LongConv(nn.Module):
             l_max=1024,
             channels=1,
             bidirectional=False,
+            position_kernel=True,
             # Arguments for position-wise feedforward components
             #activation='gelu', # activation between conv and FF
             postact='glu', # activation after FF (glu)
@@ -357,7 +384,10 @@ class LongConv(nn.Module):
             channels *= 2
 
         # SSM Kernel
-        self.kernel = LongConvKernel(self.H, L=self.L, channels=channels, verbose=verbose, **kernel_args)
+        if not position_kernel:
+            self.kernel = LongConvKernel(self.H, L=self.L, channels=channels, verbose=verbose, **kernel_args)
+        else:
+            self.kernel = PositionKernel(self.H, L=self.L, channels=channels, **kernel_args)
             
         # Pointwise
         self.activation = Activation('gelu')
@@ -445,6 +475,7 @@ class LongConv(nn.Module):
 
 from time import time
 if __name__ == '__main__':
+
     print('oki')
     hascuda = torch.cuda.is_available()
     lcm = LongConv(

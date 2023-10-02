@@ -98,7 +98,7 @@ class ConformerLongConvolution(nn.Module):
             kernel_size, 
             norm_type='batch_renorm', 
             exp_factor=1,
-            scale_grad_by=0.1, # scales the gradient of long conv by this factor
+            scale_grad_by=1.0, # scales the gradient of long conv by this factor
             **kwargs
             ):
         super(ConformerLongConvolution, self).__init__()
@@ -122,7 +122,7 @@ class ConformerLongConvolution(nn.Module):
         )
         
         if scale_grad_by != 1.0:
-            for param in self.conv.parameters():
+            for param in self.conv.kernel.parameters():
                 param.register_hook(lambda grad: grad * scale_grad_by)
         
     def forward(self, x, length=None, **kwargs):
