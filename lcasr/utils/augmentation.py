@@ -41,6 +41,8 @@ class SpecAugment(torch.nn.Module): # taken from https://pytorch.org/audio/main/
         min_p: float = -1, # minimun amount of spectogram to be masked, only use when time_mask_param is -1
         max_p: float = 1.0,
         zero_masking: bool = True, # set to true if spectogram is normalized per input i.e then it is equal to mean of the spectogram
+        **kwargs,
+        
     ) -> None:
         super(SpecAugment, self).__init__()
         assert min_p != -1 or time_mask_param != -1, "Either min_p or n_time_masks must be set o:"
