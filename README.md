@@ -7,6 +7,7 @@ instructions on how to properly install this repo and the required libraries wil
 - Requires Pytorch 2.0 or greater
 - currently we are using [flash-attention 1](https://github.com/Dao-AILab/flash-attention/tree/6d48e14a6c2f551db96f0badc658a6279a929df3) (update to v2 planned in future)
 - [Apex](https://github.com/NVIDIA/apex/tree/master) is used for fused rms/layer norm (and fused Adam if not using madgrad)
+TODO: setup code to work without flash-attention and fused layers installed for easier usage
 
 ## Data
 - For training models you must request access to receive the spotify training data which can be done via the following: [link](https://podcastsdataset.byspotify.com/)
