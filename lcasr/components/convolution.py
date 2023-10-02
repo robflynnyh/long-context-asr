@@ -1,8 +1,7 @@
 import torch, torch.nn as nn
 from lcasr.components.batchrenorm import BatchRenorm1d
 from lcasr.components.long_conv import LongConv
-from lcasr.components.misc import scale_grad
-from functools import partial
+
 
 def get_norm(norm_type, d_model):
     if norm_type == 'batch_norm':
@@ -122,7 +121,8 @@ class ConformerLongConvolution(nn.Module):
             channels = 1,
         )
         
-        self.conv.register_backward_hook(partial(scale_grad, scale=scale_grad_by))
+        for param in self.conv.parameters():
+            param.register_hook(lambda grad: grad * scale_grad_by)
         
     def forward(self, x, length=None, **kwargs):
         x = self.in_projection(x)

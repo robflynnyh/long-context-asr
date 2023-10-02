@@ -14,6 +14,7 @@ from lcasr.utils.general import load_model, save_model, load_checkpoint, load_op
 from lcasr.utils.augmentation import SpecAugment
 import resource
 
+
 from einops import rearrange
 import numpy as np
 import os
@@ -94,6 +95,8 @@ def train(
     resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
 
     model.train()
+
+
     model_dtype = next(model.parameters()).dtype
     ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
 
