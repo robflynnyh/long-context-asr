@@ -121,8 +121,9 @@ class ConformerLongConvolution(nn.Module):
             channels = 1,
         )
         
-        for param in self.conv.parameters():
-            param.register_hook(lambda grad: grad * scale_grad_by)
+        if scale_grad_by != 1.0:
+            for param in self.conv.parameters():
+                param.register_hook(lambda grad: grad * scale_grad_by)
         
     def forward(self, x, length=None, **kwargs):
         x = self.in_projection(x)

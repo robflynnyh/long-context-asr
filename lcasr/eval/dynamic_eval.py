@@ -1,35 +1,39 @@
 import torch
 import torch.nn as nn
 from tqdm import tqdm
+import torch.optim as optim
 
 
-@torch.no_grad()
-def fetch_logits(args, model:nn.Module, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer, use_tqdm=True):
+def dynamic_eval(
+        args, 
+        model:nn.Module, 
+        spec:torch.Tensor, 
+        seq_len:int, 
+        overlap:int, 
+        tokenizer, 
+        use_tqdm=True,
+        optim:optim.Optimizer=optim.AdamW,
+        lr_args:dict={'lr':1e-5},
+    ):
+
     spec_n = spec.shape[-1]
     downsampling_factor = args.config['model']['subsampling_factor']
     seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
+
+    optimizer = optim(model.parameters(), **lr_args)
  
     if seq_len > spec_n:
-        seq_len = spec_n
-        overlap = 0
+        seq_len, overlap = spec_n, 0
     else:
         overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
     cache_len = args.cache_len if args.cache_len != -1 else args.config['training']['max_seq_len']
-    #assert overlap == 0 or cache_len == 0, 'Cannot use overlap and cache_len at the same time'
 
     assert overlap / downsampling_factor == overlap // downsampling_factor, 'Overlap must be a multiple of the downsampling factor'
-
-
     print(f'Using seq_len: {seq_len} and overlap: {overlap} and cache_len: {cache_len}')
 
-    all_logits = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
-    logit_count = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
-    
-    logit_position = 0
-    
-    prev_cache = None
-    last_ulen = None
-    kill_next = False
+    all_logits, logit_count = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1)), torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
+    prev_cache, last_ulen, kill_next, logit_position = None, None, False, 0
+
     pbar = tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))) if use_tqdm else range(0, spec_n, seq_len-overlap)
     for i in pbar:
         audio_chunk = spec[:, :, i:i+seq_len]
