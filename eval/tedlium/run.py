@@ -132,6 +132,7 @@ def main(args):
             decoded, bo = decode_beams_lm([logits], decoder, beam_width=1, ds_factor=ds_factor)
 
             all_text = normalize(decoded[0]['text']).lower()
+            all_text = all_text[:-1].strip() if all_text.endswith('.') else all_text.strip()
             gold_text = normalize(gold_text).lower()    
             print(gold_text) if args.verbose else None
             print(all_text) if args.verbose else None
@@ -154,6 +155,7 @@ def main(args):
                 ds_factor = utterance['spectogram'].shape[-1] / logit.shape[0]
                 decoded, bo = decode_beams_lm([logit], decoder, beam_width=1, ds_factor=ds_factor)
                 out_text = normalize(decoded[0]['text']).lower().strip()
+                out_text = out_text[:-1].strip() if out_text.endswith('.') else out_text
                 out_texts.append(out_text)
             all_text = " ".join(out_texts).strip()#
             gold_text = normalize(gold_text).lower().strip()
