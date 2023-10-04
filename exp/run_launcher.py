@@ -66,7 +66,7 @@ def main(args):
 
     for i in range(len(copies)):
         OmegaConf.save(copies[i], os.path.join(SAVE_DIR, f'{names[i]}.yaml'))
-        run_string = f"\npython train.py -config {os.path.join(SAVE_DIR, f'{names[i]}.yaml')} -num_workers 0 -rm_sched -reset_step" # -debug_hooks
+        run_string = f"\npython train.py -config {os.path.join(SAVE_DIR, f'{names[i]}.yaml')} -num_workers 0" # -debug_hooks
         run_string = run_strings[args.mode] + run_string
         with open(os.path.join(SAVE_DIR, f'{names[i]}.sh'), 'w') as f:
             f.write(run_string)

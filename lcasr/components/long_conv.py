@@ -285,6 +285,10 @@ class LongConvKernel(nn.Module):
         return self.H
 
 
+from torch import nn
+import torch
+from einops import rearrange
+
 class PositionKernel(nn.Module):
     '''
     Rather than having a parameter for each position in the kernel/seq we just predict a value for the kernel at each positon given the position in the sequence
@@ -295,8 +299,8 @@ class PositionKernel(nn.Module):
         H,
         L,
         channels=1,
-        intermediate_dim=128,
-        activation=nn.SiLU,
+        intermediate_dim=32,
+        activation=nn.ReLU,
         **kwargs
     ):
         super().__init__()
@@ -304,7 +308,7 @@ class PositionKernel(nn.Module):
         self.L = L
         self.channels = channels
         self.kernel = nn.Sequential(
-            nn.Linear(1, intermediate_dim),
+            nn.Linear(3, intermediate_dim),
             activation(),
             nn.Linear(intermediate_dim, self.H*self.channels)
         )
@@ -314,18 +318,150 @@ class PositionKernel(nn.Module):
                 layer.weight.data.normal_(mean=0.0, std=0.002)
                 layer.bias.data.normal_(mean=0.0, std=0.002)
 
-
+        self.base_rates = torch.nn.Parameter(torch.tensor([0.01, 1.0, 1.0]))
+     
     def forward(self, L, rate=1.0, state=None):
         # create linear sequence of float of length L increasing by rate
-        x = torch.arange(L, dtype=torch.float32, device=self.kernel[0].weight.device)[:, None]
-        if rate != 1.0: x = x * rate
+        L = min(L, self.L)
+        x = torch.arange(L, dtype=torch.float32, device=self.kernel[0].weight.device)[:, None].repeat(1,3) + 1
+   
+        a, b, c = x.transpose(-1,-2)
+        a = a*self.base_rates[0]
+        b = (b*self.base_rates[1]).log()
+        c = torch.sin(c*self.base_rates[2])
+        x = torch.stack([a,b,c],dim=1)
+    
         # get kernel
         k = self.kernel(x) # (L, H*C)
         k = rearrange(k, 'l (c h) -> c h l', c=self.channels) # (C, H, L)
+        
+        #k = (self.squash((self.squash(k + self.limit) - self.limit) * -1 + self.limit) - self.limit) * -1
         return k, None
-
         
 
+class PositionalEmbedding(nn.Module):
+    def __init__(self, emb_dim: int, seq_len: int, **kwargs): 
+        """Complex exponential positional embeddings for Hyena filters."""  
+        super().__init__()
+        
+        self.seq_len = seq_len
+        # The time embedding fed to the filteres is normalized so that t_f = 1
+        t = torch.linspace(0, 1, self.seq_len)[None, :, None] # 1, L, 1
+        
+        if emb_dim > 1:
+            bands = (emb_dim - 1) // 2            
+        # To compute the right embeddings we use the "proper" linspace 
+        t_rescaled = torch.linspace(0, seq_len - 1, seq_len)[None, :, None]
+        w = 2 * math.pi * t_rescaled / seq_len # 1, L, 1 
+        
+        f = torch.linspace(1e-4, bands - 1, bands)[None, None] 
+        z = torch.exp(-1j * f * w)
+        self.z = torch.nn.Parameter(torch.cat([t, z.real, z.imag], dim=-1), requires_grad=True) # add backwards hook to decreae lr
+        self.t = torch.nn.Parameter(t, requires_grad=False)
+        
+    def forward(self, L):
+        return self.z[:, :L], self.t[:, :L]
+
+
+class ExponentialModulation(nn.Module):
+    def __init__(
+        self,
+        d_model,
+        channels=1,
+        fast_decay_pct=0.3,
+        slow_decay_pct=1.5,
+        target=1e-2,
+        modulation_lr=0.0,
+        modulate: bool=True,
+        shift: float = 0.0,
+        **kwargs
+    ):
+        super().__init__()
+        self.modulate = modulate
+        self.shift = shift
+        max_decay = math.log(target) / fast_decay_pct
+        min_decay = math.log(target) / slow_decay_pct
+        deltas = torch.linspace(min_decay, max_decay, d_model)[None, None].repeat(channels, 1, 1)
+        self.deltas = nn.Parameter(deltas, requires_grad=True) # add backwards hook to decreae lr
+     
+        
+    def forward(self, t, x):
+        if self.modulate:
+            decay = torch.exp(-t * self.deltas.abs()) 
+            x = x * (decay + self.shift)
+        return x                  
+
+class Sin(nn.Module):
+    def __init__(self, dim, w=10, train_freq=True):
+        super().__init__()
+        self.freq = nn.Parameter(w * torch.ones(1, dim)) if train_freq else w * torch.ones(1, dim)
+
+    def forward(self, x):
+        return torch.sin(self.freq * x)
+
+class HyenaFilter(nn.Module):
+    def __init__(
+            self, 
+            d_model,
+            channels=1,
+            emb_dim=3, # dim of input to MLP, augments with positional encoding
+            order=16, # width of the implicit MLP 
+            fused_fft_conv=False,
+            seq_len=1024, 
+            w=1, # frequency of periodic activations 
+            wd=0, # weight decay of kernel parameters 
+            bias=True,
+            num_inner_mlps=2,
+            normalized=False,
+            **kwargs
+        ):
+        """
+        Implicit long filter with modulation.
+        
+        Args:
+            d_model: number of channels in the input
+            emb_dim: dimension of the positional encoding (`emb_dim` - 1) // 2 is the number of bands
+            order: width of the FFN
+            num_inner_mlps: number of inner linear layers inside filter MLP
+        """
+        super().__init__()
+        self.d_model = d_model
+        self.use_bias = bias
+        self.fused_fft_conv = fused_fft_conv
+        
+        act = Sin(dim=order, w=w)
+        self.emb_dim = emb_dim
+        assert emb_dim % 2 != 0 and emb_dim >= 3, "emb_dim must be odd and greater or equal to 3 (time, sine and cosine)"
+        self.seq_len = seq_len
+  
+        self.pos_emb = PositionalEmbedding(emb_dim, seq_len)
+        
+        self.implicit_filter = nn.Sequential(
+            nn.Linear(emb_dim, order),
+            act,
+        )
+        for i in range(num_inner_mlps):
+            self.implicit_filter.append(nn.Linear(order, order))
+            self.implicit_filter.append(act)
+
+        self.implicit_filter.append(nn.Linear(order, d_model*channels, bias=False))
+        self.channels = channels
+            
+        self.modulation = ExponentialModulation(d_model, **kwargs)
+        
+        self.normalized = normalized
+    
+
+    def filter(self, L, *args, **kwargs):
+        z, t = self.pos_emb(L)
+        h = self.implicit_filter(z)
+        h = rearrange(h, '1 l (c h) -> (1 c) l h', c=self.channels) # (C, L, H)
+        h = self.modulation(t, h).transpose(-1, -2) # (C, H, L)
+        return h
+
+    def forward(self, L, **kwargs):
+        k = self.filter(L)
+        return k
 
 class LongConv(nn.Module):
     def __init__(
@@ -383,12 +519,13 @@ class LongConv(nn.Module):
         if self.bidirectional:
             channels *= 2
 
-        # SSM Kernel
+        #SSM Kernel
         if not position_kernel:
             self.kernel = LongConvKernel(self.H, L=self.L, channels=channels, verbose=verbose, **kernel_args)
         else:
             self.kernel = PositionKernel(self.H, L=self.L, channels=channels, **kernel_args)
-            
+        # self.kernel = HyenaFilter(d_model=self.H, channels=channels, seq_len=self.L)
+
         # Pointwise
         self.activation = Activation('gelu')
         # dropout_fn = nn.Dropout2d if self.transposed else nn.Dropout # Broken in torch==1.11
@@ -476,6 +613,9 @@ class LongConv(nn.Module):
 from time import time
 if __name__ == '__main__':
 
+    # f = HyenaFilter(d_model=768, channels=2, seq_len=1024)
+    # f(256)
+    # exit()
     print('oki')
     hascuda = torch.cuda.is_available()
     lcm = LongConv(

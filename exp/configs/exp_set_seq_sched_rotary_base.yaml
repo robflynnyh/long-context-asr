@@ -1,11 +1,11 @@
 template_info:
-  create: 9 # number of experiments to create
+  create: 12 # number of experiments to create
   include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training', 'sequence_scheduler'] # keys to include in experiments config
   template_keys: [
     'checkpointing.dir', 
     'wandb.name', 
     'sequence_scheduler.max_sequence_length',
-    'training.random_seed'
+    'model.rotary_base_freq',
   ] # keys to use to create experiments
 
 model:
@@ -35,7 +35,20 @@ model:
   sandwich_norm: false
   bias_in_ff: false
   checkpoint_every_n_layers: 0
-  rotary_base_freq: 500000 # https://arxiv.org/pdf/2309.16039.pdf
+  rotary_base_freq: [
+    10000,
+    100000,
+    250000,
+    500000,
+    750000,
+    1000000,
+    1250000,
+    1500000,
+    1750000,
+    2000000,
+    3000000,
+    4000000,
+  ] # https://arxiv.org/pdf/2309.16039.pdf
 
 optimizer:
   name: 'madgrad'
@@ -54,15 +67,18 @@ sequence_scheduler:
   stop_after: 90000
   start_after: 0
   max_sequence_length: [
-    8192,
-    8192,
-    8192,
-    16384,
-    16384,
-    16384,
-    32768,
-    32768,
-    32768,
+    65536, #1
+    65536, #2
+    65536, #3
+    65536, #4
+    65536, #5
+    65536, #6
+    65536, #7
+    65536, #8
+    65536, #9
+    65536, #10
+    65536, #11
+    65536, #12
   ]
   increase_by_multiplier: 2
   batch_size_multiplier: 0.5
@@ -72,29 +88,35 @@ wandb:
   use: true
   project_name: "spotify_long_context"
   name: [ 
-    'n_seq_sched_8192_rp_1_rotarybase',
-    'n_seq_sched_8192_rp_2_rotarybase',
-    'n_seq_sched_8192_rp_3_rotarybase',
-    'n_seq_sched_16384_rp_1_rotarybase',
-    'n_seq_sched_16384_rp_2_rotarybase',
-    'n_seq_sched_16384_rp_3_rotarybase',
-    'n_seq_sched_32768_rp_1_rotarybase',
-    'n_seq_sched_32768_rp_2_rotarybase',
-    'n_seq_sched_32768_rp_3_rotarybase',
+    'n_seq_sched_65536_freq_10000', #1
+    'n_seq_sched_65536_freq_100000', #2
+    'n_seq_sched_65536_freq_250000', #3
+    'n_seq_sched_65536_freq_500000', #4
+    'n_seq_sched_65536_freq_750000', #5
+    'n_seq_sched_65536_freq_1000000', #6
+    'n_seq_sched_65536_freq_1250000', #7
+    'n_seq_sched_65536_freq_1500000', #8
+    'n_seq_sched_65536_freq_1750000', #9
+    'n_seq_sched_65536_freq_2000000', #10
+    'n_seq_sched_65536_freq_3000000', #11
+    'n_seq_sched_65536_freq_4000000', #12
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_8192_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_8192_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_8192_rp_3',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_16384_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_16384_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_16384_rp_3',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_32768_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_32768_rp_2',  
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_32768_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_freq_10000', #1
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_freq_100000', #2
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_freq_250000', #3
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_freq_500000', #4
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_freq_750000', #5
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_freq_1000000', #6
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_freq_1250000', #7
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_freq_1500000', #8
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_freq_1750000', #9
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_freq_2000000', #10
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_freq_3000000', #11
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_freq_4000000', #12
   ]
   save_every_n_steps: 2000
 
@@ -110,17 +132,7 @@ training:
   max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
-  random_seed: [
-    1234,
-    6432,
-    9876, #1
-    9643,
-    4321,
-    6789, #2
-    8241,
-    1233,
-    4322, #3
-  ]
+  random_seed: 33412
 
 # size: 512 = batch size 704
 # size: 1024 = batch size 352

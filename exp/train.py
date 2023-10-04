@@ -358,6 +358,7 @@ def train(
         config = args.config,
         sequence_scheduler = sequence_scheduler,
         seen_ids = seen_ids,
+        epoch = epoch,
     )
     return model
             

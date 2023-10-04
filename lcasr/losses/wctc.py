@@ -53,7 +53,7 @@ def wctc_loss(log_probs : torch.Tensor, targets : torch.Tensor, input_lengths : 
     # track the entire last row
     l1l2 = log_alpha.gather(-1, torch.stack([zero_padding + target_lengths * 2 - 1, zero_padding + target_lengths * 2], dim = -1).repeat(input_time_size, 1, 1))
     l1l2_sum = torch.logsumexp(l1l2, dim=-1)
-
+    
     # 3 different modes
     if mode == 'soft':
         l1l2_sigma = torch.sum(F.softmax(l1l2_sum, dim=0) * l1l2_sum, dim=0)
