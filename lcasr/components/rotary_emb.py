@@ -23,7 +23,7 @@ class RotaryPositionalEmbedding(torch.nn.Module): # TODO: incl fused kernel vers
         super().__init__()
         bases = torch.tensor([base+((i*2*base)**2)/100 for i  in range(rotary_heads)], dtype=precision)[:, None]
         inv_freq = 1.0 / (bases ** (torch.arange(0, dim, 2).float() / dim)[None,:].repeat(rotary_heads, 1))
-     
+        inv_freq = inv_freq if rotary_heads > 1 else inv_freq.squeeze(0) # back compatability with older checkpoints
         
         self.learned_freq = learned_freq
 
@@ -54,7 +54,7 @@ class RotaryPositionalEmbedding(torch.nn.Module): # TODO: incl fused kernel vers
         if seq_len != self.seq_len_cached:
             self.seq_len_cached = seq_len
             t = torch.arange(seq_len, device=device).type_as(self.inv_freq) / self.rotary_interpolation_factor
-            freqs = torch.einsum("i,hj->ihj", t, self.inv_freq)
+            freqs = torch.einsum("i,hj->ihj", t, self.inv_freq if self.inv_freq.ndim == 2 else self.inv_freq[None, :, :])
             emb = torch.cat((freqs, freqs), dim=-1).to(device)
             self.cos_cached = emb.cos()[None, :, :]
             self.sin_cached = emb.sin()[None, :, :]
