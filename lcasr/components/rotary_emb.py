@@ -54,7 +54,7 @@ class RotaryPositionalEmbedding(torch.nn.Module): # TODO: incl fused kernel vers
         if seq_len != self.seq_len_cached:
             self.seq_len_cached = seq_len
             t = torch.arange(seq_len, device=device).type_as(self.inv_freq) / self.rotary_interpolation_factor
-            freqs = torch.einsum("i,hj->ihj", t, self.inv_freq if self.inv_freq.ndim == 2 else self.inv_freq[None, :, :])
+            freqs = torch.einsum("i,hj->ihj", t, self.inv_freq if self.inv_freq.ndim == 2 else self.inv_freq[None, :])
             emb = torch.cat((freqs, freqs), dim=-1).to(device)
             self.cos_cached = emb.cos()[None, :, :]
             self.sin_cached = emb.sin()[None, :, :]
