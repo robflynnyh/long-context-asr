@@ -105,9 +105,12 @@ class SCConformerXL(nn.Module):
 
         self.rotary_pos_emb = None
         if self.use_rotary:
+            rotary_heads = kwargs.get('rotary_heads', 1)
+            assert rotary_heads == 1 or rotary_heads == n_heads, 'rotary_heads must be 1 or equal to n_heads'
             self.rotary_pos_emb = RotaryPositionalEmbedding(
                 dim = head_dim,
                 base = kwargs.get('rotary_base_freq', 10000),
+                rotary_heads = rotary_heads,
                 learned_freq = learned_rotary,
                 rotary_interpolation_factor = rotary_interpolation_factor
             )
