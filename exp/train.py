@@ -456,6 +456,7 @@ def main(args):
         seen_ids = seen_ids,
         step = step,
         augmentation = augmentation,
+        epoch = epoch
     )
 
 

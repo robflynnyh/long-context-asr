@@ -44,7 +44,7 @@ sequence_scheduler:
   increase_every: 5000
   stop_after: 90000
   start_after: 0
-  max_sequence_length: 16384
+  max_sequence_length: 65536
   increase_by_multiplier: 2
   batch_size_multiplier: 0.5
 
@@ -76,19 +76,19 @@ data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
 
 spec_augment:
-  n_time_masks: 4 # Number of time masks. If its value is zero, no time masking will be applied 
+  n_time_masks: 3 # Number of time masks. If its value is zero, no time masking will be applied 
   time_mask_param: -1 # Maximum possible length of the time mask if it is set to -1, min_p is used
   n_freq_masks: 2 # Number of frequency masks. If its value is zero, no frequency masking will be applied
-  freq_mask_param: 27 # Maximum possible length of the frequency mask
+  freq_mask_param: 30 # Maximum possible length of the frequency mask
   iid_masks: true # Applies iid masks to each of the examples in the batch dimension.
-  min_p: 0.1 # minimum proportion of time steps that can be masked. Must be within range [0.0, 1.0]. (Default: -1 which means use fixed number of masks)
+  min_p: 0.025 # minimum proportion of time steps that can be masked. Must be within range [0.0, 1.0]. (Default: -1 which means use fixed number of masks)
   max_p: 0.5 # maximum proportion of time steps that can be masked. Must be within range [0.0, 1.0]. (Default: 1.0)
-  zero_masking: false # If true, masked values will be set to zero, otherwise they will be set to the mean value of the input spectrogram
+  zero_masking: true # If true, masked values will be set to zero, otherwise they will be set to the mean value of the input spectrogram
 
 
 training:
   start_spec_augment_after_n_epochs: 1 # -1 to disable
-  max_epochs: 9
+  max_epochs: 3
   batch_size: 704
   backprop_every: 1
   backwards_every: 1
