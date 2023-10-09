@@ -16,7 +16,7 @@ TODO: setup code to work without flash-attention and fused layers installed for 
 
 ## Checkpoints
 ### Acoustic Model
-Below are model checkpoints for Acoustic models discussed in the paper. The <b>greedy</b> WERs (no LM) are also provided using overlapping inferernce (87.5% overlap). For checkpoints with multiple repeats the average WERs are provided.
+Below are model checkpoints for Acoustic models discussed in the paper. The <b>greedy</b> WERs (no LM) are also provided using overlapping inferernce (87.5% overlap). For checkpoints with multiple repeats the average WERs are provided. Models can be loaded from pretrained checkpoints using the load_pretrained.py script.
 | Context | Epochs | Seq Warmup | Tedlium (WER) | Earnings-22 (WER) | Download |
 | --------|-------:|:----------:|--------------:|------------------:|----------|
 |  80s    |    2   |  Yes       |       6.1     |      17.1         | [here](https://huggingface.co/rjflynn2/lcasr-80s-epoch-2/) |
@@ -38,7 +38,6 @@ Language Model checkpoint added soon!
 A <b>messy</b> dump of experimental results including WERs for each repeat and to a higher precision presented paper, can be found [here](https://github.com/robflynnyh/long-context-asr/blob/main/artifacts/experiment_dump.pdf)
 
 ## TODO's
-- Add huggingface .from_pretrained loading ability
 - Finish install instructions
 - Add ability to use without installing fused kernels
-- ?
+- add language model checkpoints and instructions
