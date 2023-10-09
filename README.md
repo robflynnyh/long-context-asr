@@ -11,7 +11,9 @@ TODO: setup code to work without flash-attention and fused layers installed for 
 
 ## Data
 - For training models you must request access to receive the spotify training data which can be done via the following: [link](https://podcastsdataset.byspotify.com/)
-- Evaluations datasets can be found at via the following links: [Earnings-22](https://github.com/revdotcom/speech-datasets/tree/main/earnings22) [Tedlium](https://www.openslr.org/51/) 
+- Evaluation dev/test splits for Earnings-22 and Tedlium can be found in [/data](https://github.com/robflynnyh/long-context-asr/tree/main/data)
+- Alternatively the full datasets can be found via the following links: [Earnings-22](https://github.com/revdotcom/speech-datasets/tree/main/earnings22) [Tedlium](https://www.openslr.org/51/) 
+
 ## Checkpoints
 ### Acoustic Model
 Below are model checkpoints for Acoustic models discussed in the paper. The <b>greedy</b> WERs (no LM) are also provided using overlapping inferernce (87.5% overlap). For checkpoints with multiple repeats the average WERs are provided.
