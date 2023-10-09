@@ -37,7 +37,7 @@ Language Model checkpoint added soon!
 
 A <b>messy</b> dump of experimental results including WERs for each repeat and to a higher precision presented paper, can be found [here](https://github.com/robflynnyh/long-context-asr/blob/main/artifacts/experiment_dump.pdf)
 
-##TODO's
+## TODO's
 - Add huggingface .from_pretrained loading ability
 - Finish install instructions
 - Add ability to use without installing fused kernels
