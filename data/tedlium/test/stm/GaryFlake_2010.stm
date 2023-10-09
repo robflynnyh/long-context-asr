@@ -1,0 +1,41 @@
+GaryFlake_2010 1 inter_segment_gap 0 16.06 <o,,unknown> ignore_time_segment_in_scoring
+GaryFlake_2010 1 GaryFlake 16.06 27.12 <o,f0,male> if i can leave you with one big idea today it 's that the whole of the data in which we consume is greater that the sum of the parts and instead of thinking about information overload  
+GaryFlake_2010 1 GaryFlake 27.12 40.72 <o,f0,male> what i 'd like you to think about is how we can use information so that patterns pop and we can see trends that would otherwise be invisible so what we 're looking at right here is a typical mortality chart organized by age this  
+GaryFlake_2010 1 GaryFlake 40.72 52.45 <o,f0,male> tool that i 'm using here is a little experiment it 's called pivot and with pivot what i can do is i can choose to filter in one particular cause of deaths say accidents and right away i see there 's a different pattern that emerges  
+GaryFlake_2010 1 GaryFlake 52.45 62.53 <o,f0,male> this is because in the mid area here people are at their most active and over here they 're at their most frail we can step back out again and then reorganize the data by cause of death  
+GaryFlake_2010 1 GaryFlake 62.53 70.7 <o,f0,male> seeing that circulatory diseases and cancer are the usual suspects but not for everyone if we go ahead and we filter  
+GaryFlake_2010 1 GaryFlake 70.7 77.97 <o,f0,male> by age say forty years or less we see that accidents are actually the greatest cause that people have to be worried about  
+GaryFlake_2010 1 GaryFlake 77.97 87.62 <o,f0,male> and if you drill into that it 's especially the case for men so you get the idea that viewing information viewing data in this way is a lot like  
+GaryFlake_2010 1 GaryFlake 87.62 95.89 <o,f0,male> swimming in an living information info graphic and if we can do this for raw data why not do it for content as well 
+GaryFlake_2010 1 GaryFlake 95.89 103.06 <o,f0,male> so what we have right here is the cover of every single sports illustrated ever produced  
+GaryFlake_2010 1 GaryFlake 103.06 115.91 <o,f0,male> it 's all here it 's all on the web you can go back to your rooms and try this after my talk with pivot you can drill into a decade you can drill into a particular year you can jump right into a specific issue  
+GaryFlake_2010 1 GaryFlake 115.91 127.55 <o,f0,male> so i 'm looking at this i see the athletes that have appeared in this issue the sports i 'm a lance armstrong fan so i 'll go ahead and i 'll click on that which reveals for me all the issues in which lance armstrong 's been a part of 
+GaryFlake_2010 1 inter_segment_gap 127.55 130.68 <o,,unknown> ignore_time_segment_in_scoring
+GaryFlake_2010 1 GaryFlake 130.68 141.41 <o,f0,male> now if i want to just kind of take a peek at these i might think well what about taking a look at all of cycling so i can step back and expand on that and i see greg lemond now 
+GaryFlake_2010 1 GaryFlake 141.41 154.69 <o,f0,male> and so you get the idea that when you navigate over information this way going narrower broader backing in backing out you 're not searching you 're not browsing you 're doing something that 's actually a little bit different it 's in between and  
+GaryFlake_2010 1 GaryFlake 154.69 181.26 <o,f0,male> we think it changes the way information can be used so i want to extrapolate on this idea a bit with something that 's a little bit crazy what we 're done here is we 've taken every single wikipedia page and we 've reduced it down to a little summary so the summary consisted of just little synopsis and an icon to indicate the topical area that it comes from i 'm only showing the top five hundred most popular wikipedia pages right here but even in this limited view 
+GaryFlake_2010 1 GaryFlake 181.26 189.76 <o,f0,male> we can do a lot of things right away we get a sense of what are the topical domains that are most popular on wikipedia i 'm going to go ahead and select government  
+GaryFlake_2010 1 GaryFlake 189.76 198.95 <o,f0,male> now having selected government i can now see that the wikipedia categories that most frequently correspond to that are time magazine people of the year  
+GaryFlake_2010 1 GaryFlake 198.95 215.57 <o,f0,male> so this is really important because this is an insight that was not contained within any one wikipedia page it 's only possible to see that insight when you step back and look at all of them looking at one of these particular summaries i can then drill into the concept of  
+GaryFlake_2010 1 GaryFlake 215.57 224.61 <o,f0,male> time magazine person of the year bringing up all of them so looking at these people i can see that the majority come from government 
+GaryFlake_2010 1 GaryFlake 224.61 229.45 <o,f0,male> some have come from natural sciences  
+GaryFlake_2010 1 GaryFlake 229.45 232.52 <o,f0,male> some fewer still have come from business  
+GaryFlake_2010 1 inter_segment_gap 232.52 233.17 <o,,unknown> ignore_time_segment_in_scoring
+GaryFlake_2010 1 GaryFlake 233.17 235.85 <o,f0,male> there 's my boss and  
+GaryFlake_2010 1 inter_segment_gap 235.85 237.11 <o,,unknown> ignore_time_segment_in_scoring
+GaryFlake_2010 1 GaryFlake 237.11 239.77 <o,f0,male> one has come from music  
+GaryFlake_2010 1 inter_segment_gap 239.77 240.6 <o,,unknown> ignore_time_segment_in_scoring
+GaryFlake_2010 1 GaryFlake 240.6 245.01 <o,f0,male> and interestingly enough bono is also a ted prize winner 
+GaryFlake_2010 1 GaryFlake 245.01 256.48 <o,f0,male> so we can go jump and take a look at all the ted prize winners so you see we 're navigating the web for the first time as if it 's actually a web not page to page but at a higher level of abstraction 
+GaryFlake_2010 1 GaryFlake 256.48 268.88 <o,f0,male> and so i want to show you one other thing that may catch you a little bit by surprise i 'm just showing the new york times website here so pivot this application i don 't want to call it a browser it 's really not a browser  
+GaryFlake_2010 1 GaryFlake 268.88 278.89 <o,f0,male> but you can view web pages with it and we bring that zoomable technology to every single web page like this so i can step back  
+GaryFlake_2010 1 GaryFlake 278.89 292.49 <o,f0,male> pop right back in to a specific section now the reason why this is important is because by virtue of just viewing web pages in this way i can look at my entire browsing history in the exact same way so i can drill in to what i 've done  
+GaryFlake_2010 1 GaryFlake 292.49 301.8 <o,f0,male> over specific time frames here in fact is the state of all the demo that i just gave and i can sort of replay some stuff that i was looking at earlier today  
+GaryFlake_2010 1 GaryFlake 301.8 308.58 <o,f0,male> and if i want to step back and look at everything i can slice and dice my history perhaps by my search history  
+GaryFlake_2010 1 GaryFlake 308.58 318.69 <o,f0,male> here i was doing some nepotistic searching looking for bing over here for live labs pivot and from these i can drill into the web page and just launch them again it 's one metaphor  
+GaryFlake_2010 1 GaryFlake 318.69 325.56 <o,f0,male> repurposed multiple times and in each case it makes the whole greater than the sum of the parts with the data so  
+GaryFlake_2010 1 GaryFlake 325.56 334.25 <o,f0,male> right now in this world we think about data as being this curse we talk about the curse of information overload we talk about  
+GaryFlake_2010 1 GaryFlake 334.25 339.91 <o,f0,male> drowning in data what if we can actually turn that upside down and turn the web upside down  
+GaryFlake_2010 1 GaryFlake 339.91 352.82 <o,f0,male> so that instead of navigating from one thing to the next we get used to the habit of being able to go from many things to many things and then being able to see the patterns that were otherwise hidden if we can do that then instead 
+GaryFlake_2010 1 GaryFlake 352.82 367.14 <o,f0,male> of being trapped in data we might actually extract information and instead of dealing just with information we can tease out knowledge and if we get the knowledge then maybe even there 's wisdom to be found so with that i thank you 
+GaryFlake_2010 1 inter_segment_gap 367.14 410.23 <o,,unknown> ignore_time_segment_in_scoring
