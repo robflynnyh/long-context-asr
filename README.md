@@ -1,5 +1,5 @@
 # Code for the paper: How Much Context Does My Attention-Based ASR System Need?
-Repository to be updated with instructions and links to all model checkpoints a.s.a.p
+Repository is continually being updated with more intstructions, eventually I hope to have a colab that can be used to run the evaluations in the paper using the pretrained checkpoints provided. Link to pre-print to be added shortly 
 
 ## Installation
 For lanaguage model decoding the following repo must also be installed: https://github.com/robflynnyh/language_modelling
