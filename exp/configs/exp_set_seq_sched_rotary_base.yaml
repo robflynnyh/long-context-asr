@@ -30,13 +30,11 @@ model:
   gated_sc: false
   decoder_norm: true
   use_rotary: true
-  encoder_mode: 'conformer'
   default_norm: 'layer_norm'
   sandwich_norm: false
   bias_in_ff: false
   checkpoint_every_n_layers: 0
-  rotary_heads: 6
-  rotary_base_freq: 1000 # https://arxiv.org/pdf/2309.16039.pdf
+  rotary_base_freq: 1500000 # https://arxiv.org/pdf/2309.16039.pdf
 
 optimizer:
   name: 'madgrad'
@@ -55,18 +53,22 @@ sequence_scheduler:
   stop_after: 90000
   start_after: 0
   max_sequence_length: [
-    65536, #1
-    65536, #2
-    65536, #3
-    8192, #4
-    8192, #5
-    8192, #6
-    32768, #7
-    32768, #8
-    32768, #9
-    16384, #10
-    16384, #11
-    16384, #12
+    4096,
+    4096,
+    4096, #1
+    8192,
+    8192,
+    8192, #2
+    16384,
+    16384,
+    16384, #3
+    32768,
+    32768,
+    32768, #4
+    65536,
+    65536,
+    65536, #5
+
   ]
   increase_by_multiplier: 2
   batch_size_multiplier: 0.5
@@ -76,35 +78,41 @@ wandb:
   use: true
   project_name: "spotify_long_context"
   name: [ 
-    'n_seq_sched_65536_multi_headed_rotary_test_rp_1', #0
-    'n_seq_sched_65536_multi_headed_rotary_test_rp_2', #1
-    'n_seq_sched_65536_multi_headed_rotary_test_rp_3', #2
-    'n_seq_sched_8192_multi_headed_rotary_test_rp_1', #3
-    'n_seq_sched_8192_multi_headed_rotary_test_rp_2', #4
-    'n_seq_sched_8192_multi_headed_rotary_test_rp_3', #5
-    'n_seq_sched_32768_multi_headed_rotary_test_rp_1', #6
-    'n_seq_sched_32768_multi_headed_rotary_test_rp_2', #7
-    'n_seq_sched_32768_multi_headed_rotary_test_rp_3', #8
-    'n_seq_sched_16384_multi_headed_rotary_test_rp_1', #9
-    'n_seq_sched_16384_multi_headed_rotary_test_rp_2', #10
-    'n_seq_sched_16384_multi_headed_rotary_test_rp_3', #11
+    '4096_rotbase_1p5M_spec_freq_mask_repeat_1', #0
+    '4096_rotbase_1p5M_spec_freq_mask_repeat_2', #1
+    '4096_rotbase_1p5M_spec_freq_mask_repeat_3', #2
+    '8192_rotbase_1p5M_spec_freq_mask_repeat_1', #3
+    '8192_rotbase_1p5M_spec_freq_mask_repeat_2', #4
+    '8192_rotbase_1p5M_spec_freq_mask_repeat_3', #5
+    '16384_rotbase_1p5M_spec_freq_mask_repeat_1', #6
+    '16384_rotbase_1p5M_spec_freq_mask_repeat_2', #7
+    '16384_rotbase_1p5M_spec_freq_mask_repeat_3', #8
+    '32768_rotbase_1p5M_spec_freq_mask_repeat_1', #9
+    '32768_rotbase_1p5M_spec_freq_mask_repeat_2', #10
+    '32768_rotbase_1p5M_spec_freq_mask_repeat_3', #11
+    '65536_rotbase_1p5M_spec_freq_mask_repeat_1', #12
+    '65536_rotbase_1p5M_spec_freq_mask_repeat_2', #13
+    '65536_rotbase_1p5M_spec_freq_mask_repeat_3', #14
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_multi_headed_rotary_test_rp_1', #0
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_multi_headed_rotary_test_rp_2', #1
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_65536_multi_headed_rotary_test_rp_3', #2
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_8192_multi_headed_rotary_test_rp_1', #3
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_8192_multi_headed_rotary_test_rp_2', #4
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_8192_multi_headed_rotary_test_rp_3', #5
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_32768_multi_headed_rotary_test_rp_1', #6
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_32768_multi_headed_rotary_test_rp_2', #7
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_32768_multi_headed_rotary_test_rp_3', #8
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_16384_multi_headed_rotary_test_rp_1', #9
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_16384_multi_headed_rotary_test_rp_2', #10
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/n_seq_sched_16384_multi_headed_rotary_test_rp_3', #11
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/4096_rotbase_1p5M_spec_freq_mask_repeat_1', #0
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/4096_rotbase_1p5M_spec_freq_mask_repeat_2', #1
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/4096_rotbase_1p5M_spec_freq_mask_repeat_3', #2
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/8192_rotbase_1p5M_spec_freq_mask_repeat_1', #3
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/8192_rotbase_1p5M_spec_freq_mask_repeat_2', #4
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/8192_rotbase_1p5M_spec_freq_mask_repeat_3', #5
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/16384_rotbase_1p5M_spec_freq_mask_repeat_1', #6
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/16384_rotbase_1p5M_spec_freq_mask_repeat_2', #7
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/16384_rotbase_1p5M_spec_freq_mask_repeat_3', #8
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/32768_rotbase_1p5M_spec_freq_mask_repeat_1', #9
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/32768_rotbase_1p5M_spec_freq_mask_repeat_2', #10
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/32768_rotbase_1p5M_spec_freq_mask_repeat_3', #11
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/65536_rotbase_1p5M_spec_freq_mask_repeat_1', #12
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/65536_rotbase_1p5M_spec_freq_mask_repeat_2', #13
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/65536_rotbase_1p5M_spec_freq_mask_repeat_3', #14
   ]
   save_every_n_steps: 2000
 
@@ -127,7 +135,7 @@ spec_augment:
 
 
 training:
-  start_spec_augment_after_n_epochs: -1 # -1 to disable
+  start_spec_augment_after_n_epochs: 0 # -1 to disable
   batch_size: 704
   backprop_every: 1
   backwards_every: 1
@@ -147,6 +155,9 @@ training:
     33412, # 9
     12345, # 10
     75849, # 11
+    33412, # 12
+    12345, # 13
+    75849, # 14
   ]
 
 # size: 512 = batch size 704
