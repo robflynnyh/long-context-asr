@@ -1,5 +1,5 @@
 template_info:
-  create: 12 # number of experiments to create
+  create: 14 # number of experiments to create
   include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training', 'sequence_scheduler', 'spec_augment'] # keys to include in experiments config
   template_keys: [
     'checkpointing.dir', 
@@ -67,7 +67,7 @@ sequence_scheduler:
     32768, #4
     65536,
     65536,
-    65536, #5
+    #65536, #5
 
   ]
   increase_by_multiplier: 2
@@ -92,7 +92,7 @@ wandb:
     '32768_rotbase_1p5M_spec_freq_mask_repeat_3', #11
     '65536_rotbase_1p5M_spec_freq_mask_repeat_1', #12
     '65536_rotbase_1p5M_spec_freq_mask_repeat_2', #13
-    '65536_rotbase_1p5M_spec_freq_mask_repeat_3', #14
+    #'65536_rotbase_1p5M_spec_freq_mask_repeat_3', #14
   ]
   id: "" # leave empty if not resuming a previous run
 
@@ -112,7 +112,7 @@ checkpointing:
     '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/32768_rotbase_1p5M_spec_freq_mask_repeat_3', #11
     '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/65536_rotbase_1p5M_spec_freq_mask_repeat_1', #12
     '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/65536_rotbase_1p5M_spec_freq_mask_repeat_2', #13
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/65536_rotbase_1p5M_spec_freq_mask_repeat_3', #14
+    #'/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/65536_rotbase_1p5M_spec_freq_mask_repeat_3', #14
   ]
   save_every_n_steps: 2000
 
@@ -157,7 +157,7 @@ training:
     75849, # 11
     33412, # 12
     12345, # 13
-    75849, # 14
+    #75849, # 14
   ]
 
 # size: 512 = batch size 704

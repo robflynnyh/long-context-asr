@@ -84,10 +84,8 @@ def train(
         epoch:int = 0,
         augmentation:SpecAugment = None,
     ):
-    scaler = GradScaler()
-            
-    clip_value = args.config['training'].get('clip_value', 0.5) 
-    intermediate_loss_weighting = args.config['training'].get('intermediate_loss_weighting', 0.0) # not used
+    scaler = GradScaler() 
+    clip_value = args.config['training'].get('clip_value', 0.8) 
     random.seed(args.config['training'].get('random_seed', 12345))
     wandb_config = args.config['wandb']
     
@@ -96,41 +94,29 @@ def train(
 
     model.train()
 
-
     model_dtype = next(model.parameters()).dtype
     ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
 
-    overlap = args.config.audio_chunking['overlap']
-    if overlap > 0:
-        raise NotImplementedError('Overlap during trainig not implemented (also might not be a good idea :P)')
-
-    backprop_every = args.config['training']['backprop_every']
-    backwards_every = args.config['training'].get('backwards_every', 1)
+    backprop_every, backwards_every = args.config['training']['backprop_every'], args.config['training'].get('backwards_every', 1)
     assert backprop_every >= backwards_every, f'backprop_every ({backprop_every}) must be >= backwards_every ({backwards_every})'
+    
     batch_size = args.config['training']['batch_size']
-
     max_cache_length = args.config['training'].get('max_cache_length', 0)
 
-    cur_tokens_in_loss = 0
-    cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
+    cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
 
     tokenizer = dataloader.tokenizer
-    chunk_size = args.config.audio_chunking['size']
-    chunk_overlap = overlap
+    chunk_size, chunk_overlap = args.config.audio_chunking['size'], 0 # previously args.config.audio_chunking['overlap'] though this is not used anymore
 
     if exists(sequence_scheduler):
         chunk_size = sequence_scheduler.cur_sequence_length
         batch_size = sequence_scheduler.cur_batch_size
 
     pad_id = tokenizer.pad_id()
-
-    last_podcast = step
-    cur_podcast = step
-    podcasts_since_last_save = 0
+    last_podcast, cur_podcast, podcasts_since_last_save = step, step, 0
     max_epochs = args.config['training'].get('max_epochs', 1)
 
-    i = -1
-    finished = False
+    i, finished = -1, False
     dataloader_iter = iter(dataloader)
     total_recordings = dataloader.total_recordings() * max_epochs
     pbar = tqdm(total = len(dataloader), desc = f'Training - Epoch {epoch}')
@@ -138,8 +124,7 @@ def train(
 
     while not finished:#################
         try:
-            batch = next(dataloader_iter)
-            i += 1
+            batch, i = next(dataloader_iter), i + 1
             pbar.update(1) if i > 0 else None
         except StopIteration:
             epoch += 1
@@ -159,7 +144,6 @@ def train(
 
         audio, audio_lengths, txt, ids = batch
         seen_ids.extend(ids)
-
         cur_batch_size = audio.shape[0]
 
         ###############################
@@ -182,16 +166,11 @@ def train(
         ###############################
         
         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
-        txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt]
-
-        backwards_every_loss = 0.0
-        steps_since_backwards = 0
+        txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt] # becomes v slow for v large batch sizes !!
 
         del audio
-        chunks = []
-        culm_lengths_audio = torch.zeros_like(audio_lengths)
-
-        nans_in_a_row = 0
+        backwards_every_loss, steps_since_backwards = 0.0, 0
+        chunks, culm_lengths_audio, nans_in_a_row = [], torch.zeros_like(audio_lengths), 0
 
         ################################
         for ix, el in enumerate(audio_chunks_):
@@ -213,19 +192,13 @@ def train(
                 'selection_mask':remove_mask,
                 'cur_culm_lengths':cur_culm_lengths,
             })
-
             culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
-
-        # # shuffle chunks if not using cache
-        # if max_cache_length == 0:
-        #     random.shuffle(chunks)
 
         was_warmup = scheduler.is_warmup
         if was_warmup:
             scheduler.is_warmup = scheduler.is_warming_up()
             if not scheduler.is_warmup and was_warmup:
                 scheduler.set_cosine_schedule(total_recordings=total_recordings, cur_podcast=cur_podcast)
-
         prev_selection_mask, last_kv_set = None, None # selection mask from previous chunk
         ################################
  
@@ -326,9 +299,7 @@ def train(
                             'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
                         })
                     
-                    cur_tokens_in_loss = 0
-                    cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
-
+                    cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
                 prev_selection_mask = selection_mask.clone()
 
         except RuntimeError as e: 
