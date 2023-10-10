@@ -191,6 +191,8 @@ def train(
         chunks = []
         culm_lengths_audio = torch.zeros_like(audio_lengths)
 
+        nans_in_a_row = 0
+
         ################################
         for ix, el in enumerate(audio_chunks_):
 
@@ -272,7 +274,15 @@ def train(
                 if torch.isnan(loss):
                     print('OH NO! NAN IN LOSS, SKIPPING') # TODO: set kv cache to None here
                     wandb.log({'nan':True}) if wandb_config['use'] else None
+                    optimizer.zero_grad() # clear gradients
+                    nans_in_a_row += 1
+                    if nans_in_a_row > 100:
+                        print('100 NANS in a row, exiting......')
+                        exit()
                     continue
+                else:
+                    nans_in_a_row = 0
+
 
                 cur_loss += loss
 
