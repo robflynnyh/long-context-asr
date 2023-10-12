@@ -72,7 +72,6 @@ def processing_chain(path_in:str):
     return spectrogram
 
 
-
         
 def delete_all_spectograms(pairs:str = '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'):
     pairs = load_json(pairs)

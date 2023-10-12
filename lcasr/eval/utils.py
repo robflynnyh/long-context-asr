@@ -4,8 +4,7 @@ from typing import List, Dict, Tuple
 from tqdm import tqdm
 from lcasr.models.sconformer_xl import SCConformerXL
 
-def zero_out_spectogram(spec:torch.Tensor, remove_timings:List[Dict[str, int]]):
-    buffer = -0.5
+def zero_out_spectogram(spec:torch.Tensor, remove_timings:List[Dict[str, int]], buffer:float=-0.5):
     for timing in remove_timings:
         start, end = timing['start'] - buffer, timing['end'] + buffer
         start_frame, end_frame = map(total_frames, [start, end])
@@ -43,7 +42,7 @@ def decode_beams_lm(
 
     return decoded_data, beams[0]
 
-@torch.no_grad()
+@torch.no_grad() # TODO: write batched version of this!!
 def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer, use_tqdm=True):
     spec_n = spec.shape[-1]
     downsampling_factor = args.config['model']['subsampling_factor']

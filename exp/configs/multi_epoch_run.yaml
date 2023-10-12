@@ -44,7 +44,7 @@ sequence_scheduler:
   increase_every: 5000
   stop_after: 90000
   start_after: 0
-  max_sequence_length: 65536
+  max_sequence_length: 32768
   increase_by_multiplier: 2
   batch_size_multiplier: 0.5
 
@@ -88,7 +88,7 @@ spec_augment:
 
 training:
   start_spec_augment_after_n_epochs: 1 # -1 to disable
-  max_epochs: 3
+  max_epochs: 6
   batch_size: 704
   backprop_every: 1
   backwards_every: 1

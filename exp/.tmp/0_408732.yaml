@@ -37,10 +37,10 @@ audio_chunking:
 wandb:
   use: true
   project_name: spotify_long_context
-  name: 65536_rotbase_1p5M_spec_freq_mask_repeat_2
-  id: 'k3wulp05'
+  name: 65536_rotbase_1p5M_spec_freq_mask_repeat_3
+  id: ''
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/65536_rotbase_1p5M_spec_freq_mask_repeat_2
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/65536_rotbase_1p5M_spec_freq_mask_repeat_3
   save_every_n_steps: 2000
 data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
@@ -52,7 +52,7 @@ training:
   max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
-  random_seed: 12344
+  random_seed: 75849
 sequence_scheduler:
   increase_every: 5000
   stop_after: 90000

@@ -122,7 +122,7 @@ def main(args):
             stm_path = paired[audio_files[rec]]
             gold_text, timings, remove_timings = proc_stm_and_timings(stm_path=stm_path)
 
-            audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
+            audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings, buffer=-0.5)
             import time
             stime = time.time()
             logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)

@@ -89,7 +89,7 @@ def main(args):
         gold_text, timings, remove_timings = proc_stm_and_timings(stm_path=stm_path)
 
         audio_spec = processing_chain(audio_files[rec])
-        audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
+        audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings, buffer=-0.5)
         
         print('\n\n'+paired[audio_files[rec]]+'\n\n')
         
