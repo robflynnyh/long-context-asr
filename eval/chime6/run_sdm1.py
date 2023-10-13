@@ -44,16 +44,20 @@ def combine_and_load_audio(audio_files:list, stime:float, etime:float) -> torch.
         print(audio.shape)
     max_len = max([audio.shape[-1] for audio in audios])
     # pad from the right
-    audios = [torch.nn.functional.pad(audio, (0, max_len - audio.shape[-1])) for audio in audios]
+    audios = [torch.nn.functional.pad(audio, (0, max_len - audio.shape[-1]))[None] for audio in audios]
    
-    audio = torch.stack(audios, dim=0).mean(dim=0)[None]
-    spec = audio_tools.to_spectogram(waveform=audio, global_normalisation=True)
+    #audio = torch.stack(audios, dim=0).mean(dim=0)[None]
+    
+    specs = [audio_tools.to_spectogram(waveform=audio, global_normalisation=False) for audio in audios]
     # get duration in seconds
-    spec_duration = audio_tools.total_seconds(spec.shape[-1])
+    spec_duration = audio_tools.total_seconds(specs[0].shape[-1])
  
     remove_start, remove_end = {'start':0.0, 'end':stime}, {'start':etime, 'end':spec_duration+10}
     remove_timings = [remove_start, remove_end]
-    spec = zero_out_spectogram(spec, remove_timings, buffer=0.0)
+    specs = [zero_out_spectogram(spec, remove_timings, buffer=0.0) for spec in specs]
+    spec = torch.stack(specs, dim=0).mean(dim=0)
+    # renormalize
+    spec = (spec - spec.mean(-1, keepdim=True)) / spec.std(-1, keepdim=True)
 
     return spec
 
@@ -79,7 +83,8 @@ def fetch_data(data:dict = DATA['test']) -> Tuple[list, list]:
     
     # get audio
     audio_file_names = [el for el in os.listdir(data['audio']) if el.endswith('.wav')]
-    audio_file_names = [el for el in audio_file_names if re.match('S\d+_P\d+.wav', el)]
+    audio_file_names = [el for el in audio_file_names if re.match('S\d+_U01.CH\d+.wav', el)]
+    print(audio_file_names)
     # get unique scene names
     scene_names = list(set([el.split('_')[0] for el in audio_file_names]))
     audio_files = {k:[] for k in scene_names}
