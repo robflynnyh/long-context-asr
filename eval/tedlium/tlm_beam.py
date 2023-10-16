@@ -7,7 +7,7 @@ from lming.utils import general
 from wer import word_error_rate_detail 
 from functools import partial
 from whisper.normalizers import EnglishTextNormalizer
-
+from lcasr.eval.wer import word_error_rate_detail 
 normalize = EnglishTextNormalizer()
 
 #train_path = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/train/stm/EllenGustafson_2010X.stm'
@@ -196,7 +196,7 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--checkpoint', type=str, default='/mnt/parscratch/users/acp21rjf/language_modelling/spotipile/512_1280/step_540012.pt', help='path to checkpoint')
     parser.add_argument('-gpu', '--use_gpu', action='store_true', help='use gpu')
     parser.add_argument('-beams', '--beam_width', type=int, default=25, help='beam width for decoding')
-    parser.add_argument('-logits', '--logits_path', type=str, default='/mnt/parscratch/users/acp21rjf/spotify/logits/tedlium/epoch_2_n_seq_sched_8192_rp_1_dev.pt', help='path to logits')
+    parser.add_argument('-logits', '--logits_path', type=str, default='/mnt/parscratch/users/acp21rjf/spotify/logits/tedlium/multi_epoch_run_16k_dev.pt', help='path to logits')
     #parser.add_argument('-logits', '--logits_path', type=str, default='/mnt/parscratch/users/acp21rjf/spotify/logits/tedlium/n_512_rp_1_dev.pt', help='path to logits')
     
     parser.add_argument('-log', '--log_path', type=str, default='', help='path to log file')
