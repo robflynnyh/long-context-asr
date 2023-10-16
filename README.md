@@ -17,6 +17,12 @@ TODO: setup code to work without flash-attention and fused layers installed for 
 ## Checkpoints
 Config files for all pretrained models are provided within the checkpoint file
 ### Acoustic Model
+- Only Greedy WERs are reported here, results when decoding using shallow fusion with transformer will be added to language modelling section.
+Below is the best performing model that I have trained so far, which will be continually updated. This is trained for more epochs than the models in the paper, and specaugment is used.
+| Context | Epochs | Seq Warmup | SpecAugment |  Tedlium (WER) | Earnings-22 (WER) | Download |
+| --------|-------:|:----------:|:----------:|--------------:|------------------:|----------|
+|  160s    |    9   |  Yes       |  Yes       |       5.3     |   14.3           | [here](https://huggingface.co/rjflynn2/lcasr) |
+
 Below are model checkpoints for Acoustic models discussed in the paper. The <b>greedy</b> WERs (no LM) are also provided using overlapping inferernce (87.5% overlap). For checkpoints with multiple repeats the average WERs are provided. Models can be loaded from pretrained checkpoints using the load_pretrained.py script.
 | Context | Epochs | Seq Warmup | Tedlium (WER) | Earnings-22 (WER) | Download |
 | --------|-------:|:----------:|--------------:|------------------:|----------|
