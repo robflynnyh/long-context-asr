@@ -15,9 +15,13 @@ from flash_attn.modules.mha import FlashCrossAttention
 from flash_attn.bert_padding import unpad_input, pad_input
 
 
+# TODO: 
+# -. remove caching stuff as it is not used anymore
+# -. change name of class to just conforer or something
+# -. remove intermediate losses stuff as it is not used anymore
+# -. fuse self-conditioning layers
 
-
-class SCConformerXL(nn.Module):
+class SCConformerXL(nn.Module): 
     def __init__(
         self,
         vocab_size = 128,
@@ -174,7 +178,7 @@ class SCConformerXL(nn.Module):
 
 
 
-    def forward_for_export(self, audio_signal, decoder, length = None, cached_kvs = None, cached_kv_lengths = None):
+    def forward_for_export(self, audio_signal, decoder, length = None, cached_kvs = None, cached_kv_lengths = None, return_logits = False):
         max_audio_length: int = audio_signal.size(-1)
 
         if cached_kvs is not None:
@@ -267,7 +271,7 @@ class SCConformerXL(nn.Module):
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
-        final_posts = decoder(x=decoder.norm(audio_signal), logits=False)
+        final_posts = decoder(x = decoder.norm(audio_signal), logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
 
         if self.training and self.rotary_pos_emb is not None:
             self.rotary_pos_emb.reset_if_needed()
@@ -358,7 +362,6 @@ class ConformerLayer(nn.Module):
             self.do_conv = nn.Dropout(dropout_conv)
 
         self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
-
         self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
         self.do_ff = nn.Dropout(dropout_ff)
 
@@ -515,7 +518,6 @@ class Attention(nn.Module):
                     b, qs, qh, qd = q.shape
                     b, kvs, kvn, kh, kd = kv.shape
                     q_up, q_indices, cu_seq_lens, max_seqlen = unpad_input(q, q_attn_mask)
-             
                     kv_up, kv_indices, k_cu_seq_lens, max_k_seq_len = unpad_input(kv, kv_attn_mask)
                     
                     out = self.flash_attn_c_fn(
@@ -528,22 +530,13 @@ class Attention(nn.Module):
                     )
                     out = pad_input(out, indices = q_indices, batch = b, seqlen = qs)
             out = out.to(x.dtype) 
-           
             out = rearrange(out, "b n h d -> b n (h d)")
         else:
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
-            # print(self.layer_idx, 'h')
-            # out, weight = self.sdpa(q, k, v, attn_mask)
-            # if self.layer_idx == 3:
-            #     torch.save(weight.detach().cpu().half(), 'weight.pt')
-            #     exit()
-            #print('here')
             out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
-
             out = rearrange(out, "b h n d -> b n (h d)")
       
-
         if pad_mask != None:
             out = out.masked_fill(pad_mask.unsqueeze(-1), 0)
 
