@@ -9,7 +9,6 @@ from pyctcdecode import build_ctcdecoder
 from lcasr.eval.wer import word_error_rate_detail 
 from whisper.normalizers import EnglishTextNormalizer
 import torchaudio
-import soundfile as sf
 normalize = EnglishTextNormalizer()
 import re
 

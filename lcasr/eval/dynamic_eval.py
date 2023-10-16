@@ -19,6 +19,14 @@ def dynamic_eval_ctc_loss(
         optim:optim.Optimizer=madgrad.MADGRAD,
         num_negatives:int=2,
         lr_args:dict={'lr':8e-5},
+        spec_augment_config={
+            'n_time_masks': 2,
+            'n_freq_masks': 3,
+            'freq_mask_param': 42,
+            'time_mask_param': -1,
+            'min_p': 0.05,
+            'zero_masking': False,
+        }
     ):
 
     spec_n = spec.shape[-1]
@@ -33,14 +41,7 @@ def dynamic_eval_ctc_loss(
     
     optimizer = optim(model.parameters(), **lr_args)
     decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
-    augmentation = SpecAugment(
-        n_time_masks = 2,
-        n_freq_masks = 3,
-        freq_mask_param = 42,
-        time_mask_param = -1,
-        min_p = 0.05,
-        zero_masking = False,
-    )
+    augmentation = SpecAugment(**spec_augment_config)
 
     if seq_len > spec_n:
         seq_len, overlap = spec_n, 0
