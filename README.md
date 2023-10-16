@@ -15,6 +15,7 @@ TODO: setup code to work without flash-attention and fused layers installed for 
 - Alternatively the full datasets can be found via the following links: [Earnings-22](https://github.com/revdotcom/speech-datasets/tree/main/earnings22) [Tedlium](https://www.openslr.org/51/) 
 
 ## Checkpoints
+Config files for all pretrained models are provided within the checkpoint file
 ### Acoustic Model
 Below are model checkpoints for Acoustic models discussed in the paper. The <b>greedy</b> WERs (no LM) are also provided using overlapping inferernce (87.5% overlap). For checkpoints with multiple repeats the average WERs are provided. Models can be loaded from pretrained checkpoints using the load_pretrained.py script.
 | Context | Epochs | Seq Warmup | Tedlium (WER) | Earnings-22 (WER) | Download |
