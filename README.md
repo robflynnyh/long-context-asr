@@ -48,6 +48,15 @@ Below is the results for the [best performing model](https://huggingface.co/rjfl
 |------------------:|----------|
 |       4.2     |   11.9       |
 
+## Comparison to Whisper
+For comparison to the whisper model here is an evaluation conducted using whispers long form evaluation setting. As shown our system can be competitive with whisper in some settings/model sizes!
+
+Model |  Tedlium (WER) | Earnings-22 (WER) |
+|------------------:|:------------------:|----------|
+| Base.en |       4.6*     |    12.4      |
+| Small.en |       4.6*     |   10.2       |
+
+*taken from paper
 
 ## All Results
 
