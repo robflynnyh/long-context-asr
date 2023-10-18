@@ -4,7 +4,7 @@ from typing import List
 from omegaconf.omegaconf import OmegaConf
 from lming.decoding import beam_search
 from lming.utils import general
-from wer import word_error_rate_detail 
+ 
 from functools import partial
 from whisper.normalizers import EnglishTextNormalizer
 from lcasr.eval.wer import word_error_rate_detail 
