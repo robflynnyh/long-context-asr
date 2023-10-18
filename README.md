@@ -1,5 +1,6 @@
 # Code for the paper: How Much Context Does My Attention-Based ASR System Need?
-Repository is continually being updated with more intstructions, eventually I hope to have a colab that can be used to run the evaluations in the paper using the pretrained checkpoints provided. Link to pre-print to be added shortly 
+- Repository is continually being updated with more intstructions, eventually I hope to have a colab that can be used to run the evaluations in the paper using the pretrained checkpoints provided. Link to pre-print to be added shortly!
+- As repo is w.i.p if you cannot figure out how to use anything please feel free to contact me by creating an issue!
 
 ## Installation
 For lanaguage model decoding the following repo must also be installed: https://github.com/robflynnyh/language_modelling
@@ -37,10 +38,16 @@ Below are model checkpoints for Acoustic models discussed in the paper. The <b>g
 |  40s    |    1   | No         |       6.5     |      19.4         | [here](https://huggingface.co/rjflynn2/lcasr-40s) |
 |  20s    |    1   | No         |       6.6     |      19.4         | [here](https://huggingface.co/rjflynn2/lcasr-20s)  |
 |  10s    |    1   | No         |       6.8     |      20.5         | [here](https://huggingface.co/rjflynn2/lcasr-10s)  |
-|  5s    |    1   | No         |       7.4     |      21.9         | [here](https://huggingface.co/rjflynn2/lcasr-5s)  |
+|  5s     |    1   | No         |       7.4     |      21.9         | [here](https://huggingface.co/rjflynn2/lcasr-5s)  |
 
 ### Language Model
-Language Model checkpoint added soon!
+- Language Model checkpoint added soon!
+Below is the results for the [best performing model](https://huggingface.co/rjflynn2/lcasr) when decoding using the transformer LM (decoding config: \alpha 0.45; \beta 1.53; p cutoff 3.17; top_am_threshold -6; beam width 25; LM context 1024 tokens)
+
+|  Tedlium (WER) | Earnings-22 (WER) |
+|------------------:|----------|
+|       4.2     |   11.9       |
+
 
 ## All Results
 
