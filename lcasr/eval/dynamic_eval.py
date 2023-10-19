@@ -131,7 +131,7 @@ def dynamic_eval_ctc_loss(
     return logits.squeeze(0).numpy()
 
 
-def dynamic_eval_mse_loss(
+def dynamic_eval_mae_loss(
         args, 
         model:nn.Module, 
         spec:torch.Tensor, 
@@ -141,7 +141,7 @@ def dynamic_eval_mse_loss(
         use_tqdm=True,
         optim:optim.Optimizer=madgrad.MADGRAD,
         num_negatives:int=2,
-        lr_args:dict={'lr':1e-6},
+        lr_args:dict={'lr':1e-4},
         spec_augment_config={
             'n_time_masks': 2,
             'n_freq_masks': 3,
@@ -160,7 +160,7 @@ def dynamic_eval_mse_loss(
     original_model_params = list(model.parameters())
     original_model_params = [p.clone().detach() for p in original_model_params]
 
-    mse_loss_fn = torch.nn.MSELoss(reduction='sum')
+    mse_loss_fn = torch.nn.L1Loss(reduction='sum')
     optimizer = optim(model.parameters(), **lr_args)
     decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
     augmentation = SpecAugment(**spec_augment_config)
@@ -203,12 +203,12 @@ def dynamic_eval_mse_loss(
 
             u_len = audio_chunk.shape[-1]
             audio_chunk = audio_chunk.to(model.device)
-            out = model(audio_signal = audio_chunk)
-
+            out = model(audio_signal = audio_chunk, return_logits=True)
+            out['final_posteriors'] = out['final_posteriors'].softmax(dim=-1)
             pseudo_targets = out['final_posteriors'][-1].detach()[None].repeat(num_negatives, 1, 1)
             augmented_outs = out['final_posteriors'][:num_negatives]            
             
-            fn = torch.nn.AvgPool1d(kernel_size=16, stride=1, padding=8, count_include_pad=False)
+            fn = torch.nn.AvgPool1d(kernel_size=32, stride=1, padding=0)
         
             augmented_outs = fn(augmented_outs.transpose(1,2)).transpose(1,2)
             N, B, D = augmented_outs.shape[1], augmented_outs.shape[0], augmented_outs.shape[-1]
@@ -216,7 +216,7 @@ def dynamic_eval_mse_loss(
             pseudo_targets = fn(pseudo_targets.transpose(1,2)).transpose(1,2)
             print(augmented_outs.shape, pseudo_targets.shape)
             # we want to take a moving average over the sequence dimension
-            loss = mse_loss_fn(augmented_outs, pseudo_targets) / (total_tokens_in_loss * D)
+            loss = mse_loss_fn(augmented_outs, pseudo_targets) / (total_tokens_in_loss)
             print(loss)
     
             optimizer.zero_grad()
@@ -257,4 +257,4 @@ def dynamic_eval_mse_loss(
 
     return logits.squeeze(0).numpy()
 
-dynamic_eval = dynamic_eval_mse_loss
+dynamic_eval = dynamic_eval_ctc_loss

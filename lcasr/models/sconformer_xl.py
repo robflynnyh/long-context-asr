@@ -167,14 +167,15 @@ class SCConformerXL(nn.Module):
             audio_signal, 
             length = None,
             cached_kvs = None,
-            cached_kv_lengths = None
+            cached_kv_lengths = None,
+            return_logits = False
         ):
         '''
         audio_signal: (batch_size, time, feat)
         length: (batch_size,)
         cached_kvs: (kv i.e 2, batch_size, layers, heads, time, head_dim)
         '''
-        return self.forward_for_export(audio_signal=audio_signal, decoder=self.decoder, length=length, cached_kvs=cached_kvs, cached_kv_lengths=cached_kv_lengths)
+        return self.forward_for_export(audio_signal=audio_signal, decoder=self.decoder, length=length, cached_kvs=cached_kvs, cached_kv_lengths=cached_kv_lengths, return_logits=return_logits)
 
 
 
