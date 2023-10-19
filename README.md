@@ -57,7 +57,7 @@ Model |  Tedlium (WER) | Earnings-22 (WER) |
 | Base.en |       4.6*     |    12.4      |
 | Small.en |       4.6*     |   10.2       |
 
-*taken from paper
+*taken from [paper](https://arxiv.org/abs/2212.04356) (Table 16)
 
 ## All Results
 
