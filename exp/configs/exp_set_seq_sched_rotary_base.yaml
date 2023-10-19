@@ -1,5 +1,5 @@
 template_info:
-  create: 1 # number of experiments to create
+  create: 9 # number of experiments to create
   include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training', 'sequence_scheduler', 'spec_augment'] # keys to include in experiments config
   template_keys: [
     'checkpointing.dir', 
@@ -53,22 +53,15 @@ sequence_scheduler:
   stop_after: 90000
   start_after: 0
   max_sequence_length: [
-    # 4096,
-    # 4096,
-    # 4096, #1
-    # 8192,
-    # 8192,
-    # 8192, #2
-    # 16384,
-    # 16384,
-    # 16384, #3
-    # 32768,
-    # 32768,
-    # 32768, #4
-    # 65536,
-    # 65536,
-    65536, #5
-
+    131072,
+    131072,
+    131072,
+    262144,
+    262144,
+    262144,
+    360000,
+    360000,
+    360000,
   ]
   increase_by_multiplier: 2
   batch_size_multiplier: 0.5
@@ -78,41 +71,29 @@ wandb:
   use: true
   project_name: "spotify_long_context"
   name: [ 
-    # '4096_rotbase_1p5M_spec_freq_mask_repeat_1', #0
-    # '4096_rotbase_1p5M_spec_freq_mask_repeat_2', #1
-    # '4096_rotbase_1p5M_spec_freq_mask_repeat_3', #2
-    # '8192_rotbase_1p5M_spec_freq_mask_repeat_1', #3
-    # '8192_rotbase_1p5M_spec_freq_mask_repeat_2', #4
-    # '8192_rotbase_1p5M_spec_freq_mask_repeat_3', #5
-    # '16384_rotbase_1p5M_spec_freq_mask_repeat_1', #6
-    # '16384_rotbase_1p5M_spec_freq_mask_repeat_2', #7
-    # '16384_rotbase_1p5M_spec_freq_mask_repeat_3', #8
-    # '32768_rotbase_1p5M_spec_freq_mask_repeat_1', #9
-    # '32768_rotbase_1p5M_spec_freq_mask_repeat_2', #10
-    # '32768_rotbase_1p5M_spec_freq_mask_repeat_3', #11
-    # '65536_rotbase_1p5M_spec_freq_mask_repeat_1', #12
-    # '65536_rotbase_1p5M_spec_freq_mask_repeat_2', #13
-    '65536_rotbase_1p5M_spec_freq_mask_repeat_3', #14
+    '131072_rotbase_1p5M_spec_freq_mask_repeat_1', #0
+    '131072_rotbase_1p5M_spec_freq_mask_repeat_2', #1
+    '131072_rotbase_1p5M_spec_freq_mask_repeat_3', #2
+    '262144_rotbase_1p5M_spec_freq_mask_repeat_1', #3
+    '262144_rotbase_1p5M_spec_freq_mask_repeat_2', #4
+    '262144_rotbase_1p5M_spec_freq_mask_repeat_3', #5
+    '360000_rotbase_1p5M_spec_freq_mask_repeat_1', #6
+    '360000_rotbase_1p5M_spec_freq_mask_repeat_2', #7
+    '360000_rotbase_1p5M_spec_freq_mask_repeat_3', #8
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/4096_rotbase_1p5M_spec_freq_mask_repeat_1', #0
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/4096_rotbase_1p5M_spec_freq_mask_repeat_2', #1
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/4096_rotbase_1p5M_spec_freq_mask_repeat_3', #2
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/8192_rotbase_1p5M_spec_freq_mask_repeat_1', #3
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/8192_rotbase_1p5M_spec_freq_mask_repeat_2', #4
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/8192_rotbase_1p5M_spec_freq_mask_repeat_3', #5
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/16384_rotbase_1p5M_spec_freq_mask_repeat_1', #6
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/16384_rotbase_1p5M_spec_freq_mask_repeat_2', #7
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/16384_rotbase_1p5M_spec_freq_mask_repeat_3', #8
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/32768_rotbase_1p5M_spec_freq_mask_repeat_1', #9
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/32768_rotbase_1p5M_spec_freq_mask_repeat_2', #10
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/32768_rotbase_1p5M_spec_freq_mask_repeat_3', #11
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/65536_rotbase_1p5M_spec_freq_mask_repeat_1', #12
-    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/65536_rotbase_1p5M_spec_freq_mask_repeat_2', #13
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/65536_rotbase_1p5M_spec_freq_mask_repeat_3', #14
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/131072_rotbase_1p5M_spec_freq_mask_repeat_1', #0
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/131072_rotbase_1p5M_spec_freq_mask_repeat_2', #1
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/131072_rotbase_1p5M_spec_freq_mask_repeat_3', #2
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/262144_rotbase_1p5M_spec_freq_mask_repeat_1', #3
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/262144_rotbase_1p5M_spec_freq_mask_repeat_2', #4
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/262144_rotbase_1p5M_spec_freq_mask_repeat_3', #5
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/360000_rotbase_1p5M_spec_freq_mask_repeat_1', #6
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/360000_rotbase_1p5M_spec_freq_mask_repeat_2', #7
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_spec/360000_rotbase_1p5M_spec_freq_mask_repeat_3', #8
   ]
   save_every_n_steps: 2000
 
@@ -143,21 +124,15 @@ training:
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
   random_seed: [
-    # 33412, # 0
-    # 12345, # 1
-    # 75849, # 2
-    # 33412, # 3
-    # 12345, # 4
-    # 75849, # 5
-    # 33412, # 6
-    # 12345, # 7
-    # 75849, # 8
-    # 33412, # 9
-    # 12345, # 10
-    # 75849, # 11
-    # 33412, # 12
-    # 12345, # 13
-    75849, # 14
+    93412, # 0
+    82345, # 1
+    25849, # 2
+    93412, # 3
+    82345, # 4
+    25849, # 5
+    93412, # 6
+    82345, # 7
+    25849, # 8
   ]
 
 # size: 512 = batch size 704

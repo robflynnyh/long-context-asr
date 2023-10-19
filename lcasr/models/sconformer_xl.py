@@ -332,7 +332,7 @@ class ConformerLayer(nn.Module):
         bias_in_ff = True,
         transformer = False,
         conv_expansion_factor = 1,
-        conv_type = 'standard', # 'standard' or 'longcov' (https://arxiv.org/abs/2302.06646)
+        conv_type = 'standard', # 'standard' or 'longconv' (https://arxiv.org/abs/2302.06646) (will probably remove this)
         **kwargs
     ):
         super().__init__()
