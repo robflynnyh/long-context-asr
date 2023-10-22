@@ -37,6 +37,13 @@ def dynamic_eval_ctc_loss(
     original_model_params = list(model.parameters())
     original_model_params = [p.clone().detach() for p in original_model_params]
 
+    # for name, param in model.named_parameters():
+    #     if 'layers.2' not in name:
+    #         param.requires_grad = False
+    #         print(f'Freezing {name}')
+    #     else:
+    #         print(f'Updating {name}')
+
     ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
     optimizer = optim(model.parameters(), **lr_args)
     decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
@@ -92,6 +99,13 @@ def dynamic_eval_ctc_loss(
             # print(f'Augmented output difference: {augmented_outs_diff[-1]}, Augmented output CTC loss: {augmented_ctc_loss}')
             loss = ctc_loss_fn(augmented_outs.transpose(0, 1), pseudo_targets, torch.LongTensor([N] * augmented_outs.shape[0]).to(model.device), torch.LongTensor([pseudo_targets.shape[1]] * pseudo_targets.shape[0]).to(model.device)) / total_tokens_in_loss
     
+            # l2_pretrained_loss = 0
+            # num_params = 0
+            # for param, original_param in zip(model.parameters(), original_model_params):
+            #     l2_pretrained_loss += torch.sum((param - original_param) ** 2)
+            #     num_params += torch.numel(param)
+            # loss = loss + (l2_pretrained_loss / num_params) * 1.0
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -102,6 +116,8 @@ def dynamic_eval_ctc_loss(
             ratio = u_len / ds_len
             overlap_ds = int(overlap / ratio)
             model_outputs[i] = {'logits': logits, 'ds_len': ds_len, 'overlap_ds': overlap_ds}
+
+           
     
     for i in sorted(list(model_outputs.keys())):
         logits, ds_len, overlap_ds = model_outputs[i]['logits'], model_outputs[i]['ds_len'], model_outputs[i]['overlap_ds']
@@ -122,16 +138,11 @@ def dynamic_eval_ctc_loss(
     for p, p_orig in zip(model.parameters(), original_model_params):
         p.data = p_orig.data
 
-    # save augmented out diff
-    # import pickle as pkl
-    # with open('augmented_outs_diff.pkl', 'wb') as f:
-    #     pkl.dump((augmented_outs_diff, augmented_outs_ctc), f)
-        
 
     return logits.squeeze(0).numpy()
 
 
-def dynamic_eval_mae_loss(
+def dynamic_eval_mae_loss( # doesn't work
         args, 
         model:nn.Module, 
         spec:torch.Tensor, 
@@ -141,7 +152,7 @@ def dynamic_eval_mae_loss(
         use_tqdm=True,
         optim:optim.Optimizer=madgrad.MADGRAD,
         num_negatives:int=2,
-        lr_args:dict={'lr':1e-4},
+        lr_args:dict={'lr':8e-5},
         spec_augment_config={
             'n_time_masks': 2,
             'n_freq_masks': 3,
@@ -208,13 +219,13 @@ def dynamic_eval_mae_loss(
             pseudo_targets = out['final_posteriors'][-1].detach()[None].repeat(num_negatives, 1, 1)
             augmented_outs = out['final_posteriors'][:num_negatives]            
             
-            fn = torch.nn.AvgPool1d(kernel_size=32, stride=1, padding=0)
-        
+            fn = torch.nn.AvgPool1d(kernel_size=1, stride=1, padding=0)
             augmented_outs = fn(augmented_outs.transpose(1,2)).transpose(1,2)
+            
             N, B, D = augmented_outs.shape[1], augmented_outs.shape[0], augmented_outs.shape[-1]
             total_tokens_in_loss = N * B
             pseudo_targets = fn(pseudo_targets.transpose(1,2)).transpose(1,2)
-            print(augmented_outs.shape, pseudo_targets.shape)
+            #print(augmented_outs.shape, pseudo_targets.shape)
             # we want to take a moving average over the sequence dimension
             loss = mse_loss_fn(augmented_outs, pseudo_targets) / (total_tokens_in_loss)
             print(loss)
@@ -224,7 +235,7 @@ def dynamic_eval_mae_loss(
             optimizer.step()
         
             logits = out['final_posteriors'][-1].detach().cpu()
-            logits = torch.exp(logits) # convert to prob
+            #logits = torch.exp(logits) # convert to prob
             ds_len = logits.shape[-2]
             ratio = u_len / ds_len
             overlap_ds = int(overlap / ratio)

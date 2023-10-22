@@ -54,6 +54,7 @@ class SCConformerXL(nn.Module):
         sandwich_norm = False,
         bias_in_ff = False,
         transformer=False, # disable convolutions
+        legasee_double_norm = True, # norm is applied twice before final output projection, was orignally a bug, kept got compatibility with older checkpoints
         **kwargs
     ):
         super().__init__()
@@ -73,6 +74,7 @@ class SCConformerXL(nn.Module):
         self.bias_in_ff = bias_in_ff
         self.transformer = transformer
         self.self_condition_subsampling = self_condition_subsampling
+        self.legasee_double_norm = legasee_double_norm
 
         self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
 
@@ -272,7 +274,8 @@ class SCConformerXL(nn.Module):
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
-        final_posts = decoder(x = decoder.norm(audio_signal), logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
+        audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
+        final_posts = decoder(x = audio_signal, logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
 
         if self.training and self.rotary_pos_emb is not None:
             self.rotary_pos_emb.reset_if_needed()

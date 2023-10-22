@@ -9,9 +9,9 @@
 module load Anaconda3/2022.10 binutils/2.31.1-GCCcore-8.2.0 cuDNN/8.4.1.50-CUDA-11.7.0 GCCcore/8.2.0
 source activate a100
 
-SEQ_LENS=(4096 8192 16384 32768 65536)
+SEQ_LENS=(262144)
 OVERLAP_Ps=(0.875)
-SPLITS=(dev test)
+SPLITS=(test)
 REPEATS=(1 2 3)
 #CHECKPOINTS=($(ls /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rotarybase/ | grep freq_spec))
 
