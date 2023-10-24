@@ -4,5 +4,5 @@
 *.log
 .fuse*
 *.pkl
-
+.tmp/
 wandb/
