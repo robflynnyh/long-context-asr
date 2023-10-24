@@ -1,10 +1,11 @@
 template_info:
-  create: 3 # number of experiments to create
+  create: 8 # number of experiments to create
   include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training', 'sequence_scheduler', 'spec_augment'] # keys to include in experiments config
   template_keys: [
     'checkpointing.dir', 
     'wandb.name', 
     'training.random_seed',
+    'sequence_scheduler.max_sequence_length',
   ] # keys to use to create experiments
 
 model:
@@ -29,11 +30,12 @@ model:
   gated_sc: false
   decoder_norm: true
   use_rotary: true
-  default_norm: 'layer_norm'
+  default_norm: 'rms_norm'
   sandwich_norm: false
   bias_in_ff: false
   checkpoint_every_n_layers: 0
   rotary_base_freq: 1500000 # https://arxiv.org/pdf/2309.16039.pdf
+  legasee_double_norm: false
 
 optimizer:
   name: 'madgrad'
@@ -51,7 +53,16 @@ sequence_scheduler:
   increase_every: 5000
   stop_after: 90000
   start_after: 0
-  max_sequence_length: 360000
+  max_sequence_length: [
+    4096, #1
+    8192, #2
+    16384, #3
+    32768, #4
+    65536, #5
+    131072, #6
+    262144, #7
+    360000, #8
+  ]
   increase_by_multiplier: 2
   batch_size_multiplier: 0.5
   interpolate_rotary: false
@@ -60,17 +71,27 @@ wandb:
   use: true
   project_name: "spotify_long_context"
   name: [ 
-    '360000_aug_freq_1_repeat_1', #1
-    '360000_aug_freq_1_repeat_2', #2
-    '360000_aug_freq_1_repeat_3', #3
+    '4096_dntest_rmsnorm', #1
+    '8192_dntest_rmsnorm', #2
+    '16384_dntest_rmsnorm', #3
+    '32768_dntest_rmsnorm', #4
+    '65536_dntest_rmsnorm', #5
+    '131072_dntest_rmsnorm', #6
+    '262144_dntest_rmsnorm', #7
+    '360000_dntest_rmsnorm', #8
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_1hour_aug/360000_aug_freq_1_repeat_1', #1
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_1hour_aug/360000_aug_freq_1_repeat_2', #2
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_1hour_aug/360000_aug_freq_1_repeat_3', #3
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_double_norm_test/4096_dntest_rmsnorm', #1
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_double_norm_test/8192_dntest_rmsnorm', #2
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_double_norm_test/16384_dntest_rmsnorm', #3
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_double_norm_test/32768_dntest_rmsnorm', #4
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_double_norm_test/65536_dntest_rmsnorm', #5
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_double_norm_test/131072_dntest_rmsnorm', #6
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_double_norm_test/262144_dntest_rmsnorm', #7
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_double_norm_test/360000_dntest_rmsnorm', #8
   ]
   save_every_n_steps: 2000
 
@@ -81,7 +102,7 @@ data:
   
 
 spec_augment:
-  n_time_masks: 0 # Number of time masks. If its value is zero, no time masking will be applied 
+  n_time_masks: 1 # Number of time masks. If its value is zero, no time masking will be applied 
   time_mask_param: -1 # Maximum possible length of the time mask if it is set to -1, min_p is used
   n_freq_masks: 3 # Number of frequency masks. If its value is zero, no frequency masking will be applied
   freq_mask_param: 32 # Maximum possible length of the frequency mask
@@ -104,6 +125,11 @@ training:
     93412, # 0
     82345, # 1
     25849, # 2
+    23456, # 3
+    12342, # 4
+    34567, # 5
+    45678, # 6
+    56789, # 7
   ]
 
 # size: 512 = batch size 704

@@ -34,16 +34,12 @@ random.seed(1234)
 
 def blank_p(logits, tokenizer):
     lset = logits.detach().cpu()
-    # print 20 percent of the time
-    if torch.rand(1) < 0.05:
+    if torch.rand(1) < 0.05: # print 5 percent of the time
         print(tokenizer.decode([el for el in lset[0].argmax(dim=-1).tolist() if el != lset.shape[-1]-1]))
     lset = rearrange(lset, 'b n v -> (b n) v')
     lset_max = lset.argmax(dim=-1)
     lset_max = lset_max[lset_max == (lset.shape[-1]-1)]
-    
     blank_p = lset_max.shape[0] / lset.shape[0]
-    # lset = torch.exp(lset)
-    # blank_p = lset[:, -1].mean().item()
     return blank_p
 
 
@@ -365,11 +361,11 @@ def main(args):
     if wandb_config['use']:
         project_name, w_id = wandb_config['project_name'], wandb_config['id']
         run_name = None if 'name' not in wandb_config else wandb_config['name']
-
         wandb.init(project=project_name, config=args.config, name=run_name) if w_id == '' else wandb.init(project=project_name, id=w_id, resume="must", config=args.config, allow_val_change=True)
         wandb.watch(model, log="all") # sometimes this causes a crash ):
         wandb.config.update({'total_params': tparams}, allow_val_change=True)
         print(f'\nLoggging with Wandb id: {wandb.run.id}\n')
+        args.config['wandb']['id'] = wandb.run.id # add wandb config to args.config
 
     model = model.to(device)
     optimizer, scheduler = load_optimizer(args.config, model)
