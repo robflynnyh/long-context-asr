@@ -49,7 +49,7 @@ Below is the results for the [best performing model](https://huggingface.co/rjfl
 |       4.2     |   11.9       |
 
 ## Comparison to Whisper
-- For comparison to the whisper model here is an evaluation conducted using whispers long form evaluation setting. As shown our system can be competitive with whisper in some settings/model sizes!
+- For comparison to the whisper model here is an evaluation conducted using whispers long form evaluation setting (greedy decoding i.e defailt settings using the whisper library). As shown our system can be competitive with whisper in some settings/model sizes - although using beam search with whisper would improve results.
 - We use the test/dev splits specified in [ESB](https://arxiv.org/abs/2210.13352) for earnings-22 whereas the entire dataset is used in the Whisper paper hence results are different from paper here
 
 Model |  Tedlium (WER) | Earnings-22 (WER) |
