@@ -44,7 +44,6 @@ class SCConformerXL(nn.Module):
         conv_kernel_size = 9,
         conv_expansion_factor = 1,
         conv_type = 'standard', # 'standard' or 'longconv' (https://arxiv.org/abs/2302.06646)
-        gated_sc = False,
         decoder_norm = False,
         use_rotary = False,
         rotary_interpolation_factor = 1.0, # https://arxiv.org/abs//2306.15595 Extending Context Window of Large Language Models via Positional Interpolation
@@ -104,7 +103,6 @@ class SCConformerXL(nn.Module):
         self.subsampling_factor = subsampling_factor
         self.subsampling_conv_channels = subsampling_conv_channels if subsampling_conv_channels != -1 else d_model
 
-        self.gated_sc = gated_sc
         self.decoder_norm = decoder_norm
 
         self.use_rotary = use_rotary
@@ -122,7 +120,6 @@ class SCConformerXL(nn.Module):
             d_model = d_model,
             vocab_size = vocab_size,
             norm = decoder_norm,
-            gated_sc = gated_sc,
             norm_fn = default_norm,
         )
 
@@ -201,7 +198,6 @@ class SCConformerXL(nn.Module):
         rotary_emb_fn = None
    
         full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
-        #print(full_kv_lengths, '333333333')
         if self.use_rotary:
             max_seq_len = full_kv_lengths.max()
             q_offset = 0 if cached_kvs is None else cached_kvs.shape[1]
@@ -227,11 +223,11 @@ class SCConformerXL(nn.Module):
         kvs_to_cache = []
 
         if self.self_condition_subsampling:
-            iterim_logits, x_norm = decoder(x=audio_signal, logits=True, return_norm=True)
+            iterim_logits = decoder(x=audio_signal, logits=True)
             iterim_post = torch.nn.functional.softmax(iterim_logits, dim=-1)
             iterim_logposteriors = torch.log(iterim_post)
             iterim_posteriors.append(iterim_logposteriors)
-            audio_signal = decoder.integrate_projections(audio_signal, x_norm, decoder.project_back(iterim_post)) 
+            audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post)) 
 
         for lth, layer in enumerate(self.layers):
             current_layer_kvs = cached_kvs[:,:,lth] if cached_kvs is not None else None
@@ -258,16 +254,14 @@ class SCConformerXL(nn.Module):
                     flash_attn = self.flash_attn,
                     rotary_emb_fn = rotary_emb_fn
                 )
-
-            
-            kvs_to_cache.append(kv_to_cache) # possibly detach and move to cpu ?    
+            kvs_to_cache.append(kv_to_cache)
             
             if lth != len(self.layers) - 1 and self.self_conditioning:
-                iterim_logits, x_norm = decoder(x=audio_signal, logits=True, return_norm=True)
+                iterim_logits = decoder(x=audio_signal, logits=True)
                 iterim_post = torch.nn.functional.softmax(iterim_logits, dim=-1)
                 iterim_logposteriors = torch.log(iterim_post)
                 iterim_posteriors.append(iterim_logposteriors)
-                audio_signal = decoder.integrate_projections(audio_signal, x_norm, decoder.project_back(iterim_post))        
+                audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))        
 
         # stack the posteriors along the first dimension (height, batch, seq_len, dim)
         iterim_posteriors = torch.stack(iterim_posteriors, dim=0) if len(iterim_posteriors) > 0 else None
@@ -550,31 +544,24 @@ class Attention(nn.Module):
 
 
 class ASRLinearSCDecoder(nn.Module):
-    def __init__(self, d_model, vocab_size, norm=False, gated_sc=False, norm_fn=DEFAULT_NORM):
+    def __init__(self, d_model, vocab_size, norm=False, norm_fn=DEFAULT_NORM):
         super().__init__()
         # Add 1 for blank char
         self.num_classes = vocab_size + 1
         self.ff = nn.Linear(d_model, self.num_classes)
         self.reprojection = nn.Linear(self.num_classes, d_model)
         self.norm = norm_fn(d_model) if norm else nn.Identity()
-        self.gated_sc = gated_sc
-        if self.gated_sc:
-            self.gate = nn.Linear(d_model, 1)
+ 
 
-    def forward(self, x, logits=False, return_norm=False):
+    def forward(self, x, logits=False):
         x_norm = self.norm(x)
         x = self.ff(x_norm)
         x = F.log_softmax(x, dim=-1) if not logits else x
-        return x if not return_norm else (x, x_norm)
+        return x 
 
     def project_back(self, x):
         return self.reprojection(x)
 
-    def integrate_projections(self, x, x_norm, proj1):
-        if self.gated_sc:
-            gate = torch.sigmoid(self.gate(x_norm))
-            
-            return x + gate * proj1
-        else:
-            return x + proj1
+    def integrate_projections(self, x, proj1):
+        return x + proj1
 
