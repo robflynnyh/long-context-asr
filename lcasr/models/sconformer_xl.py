@@ -219,14 +219,10 @@ class SCConformerXL(nn.Module):
 
         pad_mask = mask 
         
-        iterim_posteriors = []
         kvs_to_cache = []
 
         if self.self_condition_subsampling:
-            iterim_logits = decoder(x=audio_signal, logits=True)
-            iterim_post = torch.nn.functional.softmax(iterim_logits, dim=-1)
-            iterim_logposteriors = torch.log(iterim_post)
-            iterim_posteriors.append(iterim_logposteriors)
+            iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
             audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post)) 
 
         for lth, layer in enumerate(self.layers):
@@ -257,14 +253,10 @@ class SCConformerXL(nn.Module):
             kvs_to_cache.append(kv_to_cache)
             
             if lth != len(self.layers) - 1 and self.self_conditioning:
-                iterim_logits = decoder(x=audio_signal, logits=True)
-                iterim_post = torch.nn.functional.softmax(iterim_logits, dim=-1)
-                iterim_logposteriors = torch.log(iterim_post)
-                iterim_posteriors.append(iterim_logposteriors)
+                iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
                 audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))        
 
         # stack the posteriors along the first dimension (height, batch, seq_len, dim)
-        iterim_posteriors = torch.stack(iterim_posteriors, dim=0) if len(iterim_posteriors) > 0 else None
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
@@ -276,7 +268,6 @@ class SCConformerXL(nn.Module):
 
         return {
             'final_posteriors': final_posts,
-            'iterim_posteriors': iterim_posteriors,
             'kvs_to_cache': kvs_to_cache,
             'length': length,
             'full_kv_lengths': full_kv_lengths, # kv cache is returned, however we don't use this and is left over from prior experiments
