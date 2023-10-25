@@ -1,5 +1,6 @@
 # Code for the paper: How Much Context Does My Attention-Based ASR System Need?
-- Repository is continually being updated with more intstructions, eventually I hope to have a colab that can be used to run the evaluations in the paper using the pretrained checkpoints provided. Link to pre-print to be added shortly!
+- Pre-Print Available on [arXiv](https://arxiv.org/abs/2310.15672)
+- Repository is continually being updated with more intstructions, eventually I hope to have a colab that can be used to run the evaluations in the paper using the pretrained checkpoints provided. 
 - As repo is w.i.p if you cannot figure out how to use anything please feel free to contact me by creating an issue!
 
 ## Installation
