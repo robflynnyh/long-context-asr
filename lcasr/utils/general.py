@@ -1,6 +1,7 @@
 import torch
 from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
+from lcasr.models.metaconformer import MetaConformer
 from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler
 import os
 
@@ -8,8 +9,8 @@ from apex.optimizers import FusedAdam
 from torch.optim import Adam
 import madgrad
 
-def load_model(config:Dict, vocab_size):
-    model = SCConformerXL(**config.model, vocab_size=vocab_size)
+def load_model(config:Dict, vocab_size, model_class=SCConformerXL):
+    model = model_class(**config.model, vocab_size=vocab_size)
     return model
 
 def load_optimizer(config:Dict, model:torch.nn.Module):
