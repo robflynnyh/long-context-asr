@@ -588,18 +588,20 @@ class LearntLoss(nn.Module):
         super().__init__()
         self.in_dim = d_model // 8
         self.in_ff = nn.Linear(d_model, self.in_dim*2)
-        self.a_ff = swiglu(self.in_dim, exp_f=4)
-        self.b_ff = nn.Identity()
+        self.a_ff = swiglu(self.in_dim)
+        self.b_ff = swiglu(self.in_dim)
 
-    def forward(self, x, mask=None): 
-        assert x.ndim == 2, 'use vmap for batched inputs'
+    def forward(self, x, mask=None): # x: (n,d) for use with vmap
+        assert x.ndim == 2, 'batch dim not supported use vmap!'
         a, b = self.in_ff(x).chunk(2, dim=-1)
         a, b = self.a_ff(a), self.b_ff(b)  
-        a = F.normalize(a, dim=-1, p=2)
-        b = F.normalize(b, dim=-1, p=2)
-        csim = 2 - 2 * (a * b).sum(-1)
+        a = a / a.norm(dim=-1, keepdim=True)
+        b = b / b.norm(dim=-1, keepdim=True)
+        csim = (torch.einsum('nd,nd->n', a, b) * 2) + 2
+        print(csim.sum())
         if mask is not None: csim = csim.masked_fill(mask, 0)
         return csim.sum()
+
 
 class MetaLayer(nn.Module):
     def __init__(
@@ -607,8 +609,8 @@ class MetaLayer(nn.Module):
             d_model, 
             layers, 
             norm_in_fn=DEFAULT_NORM,
-            glu_norn=nn.Identity, 
-            base_lr=0.1,
+            glu_norn=groupnorm_bnd, 
+            base_lr=1e-10
         ):
         super().__init__()
         self.in_ln = nn.ModuleList([norm_in_fn(d_model) for _ in range(layers)])
@@ -620,10 +622,10 @@ class MetaLayer(nn.Module):
         self.learnt_loss = LearntLoss(d_model)
         
         self.out_swiglu = nn.Sequential(
-            ConformerFeedForward(d_model, hidden_features = d_model*2),
             glu_norn(d_model),
+            ConformerFeedForward(d_model, hidden_features = d_model*2),
         ) 
-        self.grad_norm_scale = 1.25
+        
         self.w_delta = None
         self.lr = nn.Parameter(torch.ones(layers, 1)*base_lr)
 
@@ -631,27 +633,27 @@ class MetaLayer(nn.Module):
         weight = self.v_ff.weight - w_delta
         return F.linear(x, weight, self.in_ff.bias)
 
-    def clip_norm(self, grad):
-        total_norm = grad.norm()
-        clip_coeff = self.grad_norm_scale / (total_norm + 1e-6)
-        clip_coeff_clamped = torch.clamp(clip_coeff, max=1.0)
-        return grad * clip_coeff_clamped
+    # def element_wise_fwd_w2_delta(self, x, w_delta): # used with vmap
+    #     weight = self.in_ff.weight - w_delta
+    #     return F.linear(x, weight, self.in_ff.bias)
 
     def forward(self, x, layer, mask=None):
         if layer == 0: self.w_delta = None
         x_norm = self.in_ln[layer](x)
-        
+
         with torch.autograd.enable_grad(): 
-            x_ff = self.in_ff(x_norm) 
+            x_ff = self.in_ff(x_norm) # if self.w_delta is None else torch.func.vmap(self.element_wise_fwd_w2_delta, in_dims=0)(x_norm, self.w_delta)
             args = (x_ff, mask) if mask is not None else (x_ff,)
             batched_grad_x_ff = torch.func.vmap(torch.func.grad(self.learnt_loss), in_dims=0)(*args)
           
         grad_ff = torch.einsum('bnq,bnz->bqz', batched_grad_x_ff, x_norm)
-        grad_ff = torch.func.vmap(self.clip_norm, in_dims=0)(grad_ff)
-        #grad_ff = torch.func.vmap(lambda x: x / (x.norm() / self.grad_norm_scale))(grad_ff)
-
-        print(grad_ff.min().item(), grad_ff.max().item(), self.lr[layer].abs().item(), layer)
-        self.w_delta = grad_ff * self.lr[layer].abs() if self.w_delta is None else self.w_delta + (grad_ff * self.lr[layer].abs())
+        #grad_ff = self.grad_clamp_vals[layer](grad_ff)
+        # l2 normalize
+        grad_ff = torch.func.vmap(lambda x: x / x.norm(), in_dims=(0))(grad_ff)
+     
+        print('---', grad_ff.min().item(), grad_ff.max().item(), self.lr[layer].item(), layer)
+        self.w_delta = grad_ff * self.lr[layer].abs()*1 if self.w_delta is None else self.w_delta + (grad_ff * self.lr[layer].abs())*1
+        
         x_ff_u = torch.func.vmap(self.element_wise_fwd_w_delta, in_dims=0)(x_norm, self.w_delta)
         x_out = self.out_swiglu(x_ff_u)
         return x_out

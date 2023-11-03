@@ -92,7 +92,7 @@ def main(args):
         
         all_texts.append(out)
         all_golds.append(cur_text)
-        
+        #break
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
 
     print(f'WER: {wer}')
