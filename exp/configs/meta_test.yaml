@@ -64,11 +64,11 @@ sequence_scheduler:
 wandb:
   use: true
   project_name: spotify_long_context
-  name: 'meta_fixed_l2'
+  name: 'meta_fixed_3clip'
   id: '' #
 
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/meta_fixed_l2
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/meta_fixed_3clip
   save_every_n_steps: 2000
 
 data:
