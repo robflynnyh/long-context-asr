@@ -138,7 +138,7 @@ def main(args):
             print(all_text) if args.verbose else None
             all_texts.append(all_text)
             all_golds.append(gold_text)
-            #break
+            break
     else:
         for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
 
@@ -163,7 +163,7 @@ def main(args):
             print(all_text) if args.verbose else None
             all_texts.append(all_text)
             all_golds.append(gold_text)
-
+            
 
         
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)

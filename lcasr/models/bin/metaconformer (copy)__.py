@@ -227,7 +227,7 @@ class MetaConformer(nn.Module):
             
         audio_signal = torch.transpose(audio_signal, 1, 2)
         audio_signal, length = self.subsampling(audio_signal, lengths = length)
-        audio_signal[:o_B] = audio_signal[:o_B] + self.augment_embedding # not needed !!
+        audio_signal[:o_B] = audio_signal[:o_B] + self.augment_embedding
         
         max_audio_length = audio_signal.size(1)
         ## create masks
@@ -600,15 +600,17 @@ from vector_quantize_pytorch import VectorQuantize
 class LearntLoss(nn.Module):
     def __init__(self, d_model):
         super().__init__()
-        self.a_ff = swiglu(d_model, exp_f=2)
+        self.a_ff = swiglu(d_model, exp_f=2, dim_out=d_model*3)
         self.b_ff = nn.Identity()   
 
-    def forward(self, x, x_q, mask=None): 
+    def forward(self, x, x_t, mask=None): 
         assert x.ndim == 2, 'use vmap for batched inputs'
-        #x = pooler(x)
-        a, b = self.a_ff(x), self.b_ff(x_q)
-        sim = 2 - 2 * F.cosine_similarity(a, b, dim=-1)
-        if mask is not None: sim = sim.masked_fill(mask, 0)
+        x_q, x_k, x_v = self.a_ff(x).chunk(3, dim=-1)
+        x_k, x_v = F.normalize(x_k, dim=-1), F.normalize(x_v, dim=-1)
+        if mask is not None: x_k = x_q, x_k = x_q.masked_fill(mask.unsqueeze(-1), 0), x_k.masked_fill(mask.unsqueeze(-1), 0)
+        x_kv = ((x_k * x_v).sum(dim=-2, keepdim=True) * x_q).sum(dim=-2, keepdim=True)
+        sim = (2 - 2 * F.cosine_similarity(x_t, x_kv, dim=-1))
+        #print(sim.sum())
         return sim.sum()
 
 class MetaLayer(nn.Module):
@@ -646,22 +648,26 @@ class MetaLayer(nn.Module):
             vq = VectorQuantize(
                 dim = d_model,  
                 codebook_dim = 16,
-                codebook_size = 16,
-                decay = 0.99,
+                codebook_size = 256,
+                use_cosine_sim = True,
+                decay = 0.9,
                 commitment_weight = 0.0
             ) 
             self.vqs.append(vq)
-        
+
         self.targets = None
+        prenorm_targets = True
+        self.targets_qk = nn.Linear(d_model, d_model*3, bias=False)
+        self.targets_qk = PreNorm(d_model, self.targets_qk) if prenorm_targets else self.targets_qk
         self.updates = [None]*layers
 
     def element_wise_fwd_w_delta(self, x, grad_x_ff): # used with vmap
         w_delta = torch.einsum('nq,nz->qz', grad_x_ff, x[1])
         w_delta = self.clip_norm(w_delta)
-        #self.updates[self.layer] = w_delta if self.updates[self.layer] is None else self.updates[self.layer]
+        #self.updates[self.layer] = w_delta if self.updates[self.layer] is None else self.updates[self.layer] * 0.1 + w_delta * 0.9
         #weight = self.v_ff.weight - self.updates[self.layer]
+
         weight = self.v_ff.weight - w_delta
-        print(weight)
         return F.linear(x, weight=weight), w_delta
 
     def clip_norm(self, grad):
@@ -670,10 +676,14 @@ class MetaLayer(nn.Module):
         clip_coeff_clamped = torch.clamp(clip_coeff, max=1.0)
         return grad * clip_coeff_clamped
 
-    def get_targets(self, x, layer):
-        #x = self.pooler(x)
-        x_q, i, l_q = self.vqs[layer](x)
-        self.targets = x_q
+    def get_targets(self, x, layer, mask=None):
+        q, k, v = self.targets_qk(x).chunk(3, dim=-1)
+        k, v = F.normalize(k, dim=-1), F.normalize(v, dim=-1)
+        if mask is not None: q, k = q.masked_fill(mask.unsqueeze(-1), 0), k.masked_fill(mask.unsqueeze(-1), 0)
+        kv = ((k * v).sum(dim=-2, keepdim=True) * q).sum(dim=-2, keepdim=True)
+        x_t, i_t, l_t = self.vqs[layer](kv)
+     
+        self.targets = x_t
 
     def forward(self, x, layer, mask=None):
         assert self.targets is not None, 'must call get_targets before forward'
@@ -684,7 +694,7 @@ class MetaLayer(nn.Module):
         with torch.autograd.enable_grad(): 
             x_ff = self.in_ff(x_norm_aug) 
             x_ff_q = self.targets
-
+            #print(x_ff.shape, x_ff_q.shape)
             args = (x_ff, x_ff_q, mask[:x_ff.size(0)]) if mask is not None else (x_ff, x_ff_q)
             batched_grad_x_ff = torch.func.vmap(torch.func.grad(self.learnt_loss), in_dims=0)(*args)
        

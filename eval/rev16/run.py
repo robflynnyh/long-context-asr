@@ -69,7 +69,7 @@ def main(args):
     all_texts = []
     all_golds = []
     for rec in tqdm(range(len(meetings_keys)), total=len(audio_files)):
-
+        if rec == 0: continue
         print(f'Processing {rec+1}/{len(audio_files)}')
         cur_meetings = meetings_keys[rec]
         cur_audio = audio_files[rec]['path']
@@ -92,7 +92,7 @@ def main(args):
         
         all_texts.append(out)
         all_golds.append(cur_text)
-        #break
+        break
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
 
     print(f'WER: {wer}')

@@ -15,6 +15,7 @@ from flash_attn.modules.mha import FlashCrossAttention
 from flash_attn.bert_padding import unpad_input, pad_input
 from einops.layers.torch import Rearrange
 from lcasr.utils.augmentation import SpecAugment
+from torch.func import vmap, grad, functional_call
 
 class MetaConformer(nn.Module): 
     def __init__(
@@ -26,7 +27,6 @@ class MetaConformer(nn.Module):
         subsampling_conv_channels = 256,
         subsampling_act = 'silu',
         subsampling_norm_out = False,
-        self_condition_subsampling = False,
         n_layers = 6,
         d_model = 768,
         n_heads = 6,
@@ -49,6 +49,7 @@ class MetaConformer(nn.Module):
         bias_in_ff = False,
         transformer=False, # disable convolutions
         legasee_double_norm = True, # norm is applied twice before final output projection, was orignally a bug, kept got compatibility with older checkpoints
+        sim_kernel = -1,
         **kwargs
     ):
         super().__init__()
@@ -67,7 +68,6 @@ class MetaConformer(nn.Module):
         self.sandwich_norm = sandwich_norm
         self.bias_in_ff = bias_in_ff
         self.transformer = transformer
-        self.self_condition_subsampling = self_condition_subsampling
         self.legasee_double_norm = legasee_double_norm
 
         self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
@@ -89,6 +89,9 @@ class MetaConformer(nn.Module):
 
         self.flash_attn = kwargs.get('flash_attn', True)
         self.checkpoint_every_n_layers = checkpoint_every_n_layers
+
+        self.augment_embedding = nn.Parameter(torch.randn(1, d_model) * 1e-4)
+
 
         self.dropout_ff = dropout_ff
         self.dropout_conv = dropout_conv
@@ -118,10 +121,16 @@ class MetaConformer(nn.Module):
             norm_fn = default_norm,
         )
 
-        self.meta_learning_layers = MetaLayer(
-            d_model = d_model,
-            layers = n_layers,
-            norm_in_fn = default_norm,
+
+
+
+        self.augment_fn = SpecAugment(
+            n_time_masks = 10,
+            n_freq_masks = 2,
+            freq_mask_param = 20,
+            time_mask_param = -1,
+            min_p = 0.1,
+            zero_masking = True
         )
 
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
@@ -175,21 +184,45 @@ class MetaConformer(nn.Module):
         length: (batch_size,)
         cached_kvs: (kv i.e 2, batch_size, layers, heads, time, head_dim)
         '''
-        return self.forward_for_export(audio_signal=audio_signal, decoder=self.decoder, length=length, cached_kvs=cached_kvs, cached_kv_lengths=cached_kv_lengths, return_logits=return_logits)
+        return self.forward_for_export(
+            audio_signal=audio_signal, 
+            decoder=self.decoder, 
+            length=length, 
+            cached_kvs=cached_kvs, 
+            cached_kv_lengths=cached_kv_lengths, 
+            return_logits=return_logits
+        )
 
 
 
-    def forward_for_export(self, audio_signal, decoder, length = None, cached_kvs = None, cached_kv_lengths = None, return_logits = False):
+    def forward_for_export(
+        self, 
+        audio_signal, 
+        decoder, 
+        length = None, 
+        cached_kvs = None, 
+        cached_kv_lengths = None, 
+        return_logits = False
+    ):
+        n_augmentations = 1
         max_audio_length: int = audio_signal.size(-1)
+
+        o_B = audio_signal.size(0)
+        if n_augmentations > 0:
+            audio_signal = audio_signal.repeat(n_augmentations+1, 1, 1) # repeat for augmentation
+            audio_signal[o_B:] = self.augment_fn(audio_signal[o_B:]) 
 
         if cached_kvs is not None:
             assert cached_kv_lengths.max() == cached_kvs.shape[1], 'cached kvs must all be the same length'
 
         if length is None:
             length = torch.tensor([max_audio_length] * audio_signal.size(0), device=audio_signal.device)
+        else:
+            length = length.repeat(n_augmentations+1)
             
         audio_signal = torch.transpose(audio_signal, 1, 2)
         audio_signal, length = self.subsampling(audio_signal, lengths = length)
+        audio_signal[:o_B] = audio_signal[:o_B] + self.augment_embedding
         
         max_audio_length = audio_signal.size(1)
         ## create masks
@@ -222,9 +255,7 @@ class MetaConformer(nn.Module):
         
         kvs_to_cache = []
 
-        if self.self_condition_subsampling:
-            iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
-            audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post)) 
+
 
         for lth, layer in enumerate(self.layers):
             current_layer_kvs = cached_kvs[:,:,lth] if cached_kvs is not None else None
@@ -253,7 +284,6 @@ class MetaConformer(nn.Module):
                 )
             kvs_to_cache.append(kv_to_cache)
 
-            audio_signal = self.meta_learning_layers(x = audio_signal, layer = lth, mask = pad_mask) + audio_signal
             
             if lth != len(self.layers) - 1 and self.self_conditioning:
                 iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
@@ -263,16 +293,16 @@ class MetaConformer(nn.Module):
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
+        audio_signal = audio_signal if self.training else audio_signal[:o_B]
         audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
         final_posts = decoder(x = audio_signal, logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
 
-        if self.training and self.rotary_pos_emb is not None:
-            self.rotary_pos_emb.reset_if_needed()
+        if self.training and self.rotary_pos_emb is not None: self.rotary_pos_emb.reset_if_needed()
 
         return {
             'final_posteriors': final_posts,
             'kvs_to_cache': kvs_to_cache,
-            'length': length,
+            'length': length if self.training else length[:o_B],
             'full_kv_lengths': full_kv_lengths, # kv cache is returned, however we don't use this and is left over from prior experiments
         }
 
@@ -353,7 +383,15 @@ class ConformerLayer(nn.Module):
             )
             self.do_conv = nn.Dropout(dropout_conv)
 
-        self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
+        #self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
+        self.ff1 = Scale(0.5,
+            PreNorm(
+                d_model = d_model,
+                fn = MetaLayer(
+                    d_model = d_model,
+                )
+            )
+        )
         self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
         self.do_ff = nn.Dropout(dropout_ff)
 
@@ -385,7 +423,7 @@ class ConformerLayer(nn.Module):
         cached_kv: kvs from previous block-reccurrent time step
         '''
 
-        x = self.do_ff(self.ff1(x)) + x
+        x = self.do_ff(self.ff1(x, mask=pad_mask)) + x
 
         attn_out, kv_to_cache = self.attend(
             x = x,
@@ -543,93 +581,62 @@ def groupnorm_bnd(d, n_groups=32):
         Rearrange("b d n -> b n d")
     )
 
-class MinMaxEMATracker(nn.Module):
-    def __init__(self, alpha=0.95): #99
-        super().__init__()
-        self.alpha = alpha
-        #register min and max as buffers
-        self.register_buffer('min', torch.tensor([-0.1]))
-        self.register_buffer('max', torch.tensor([0.1]))
-        self.ceiling = 10.0
-        self.floor = -10.0 
 
-    @torch.no_grad()
-    def forward(self, x):
-        if self.training:
-            cur_min, cur_max = x.min().item(), x.max().item()
-            if self.min.numel() == 0:
-                self.min = torch.tensor([cur_min])
-                self.max = torch.tensor([cur_max])
-            else:
-                self.min = torch.tensor([self.min.item() * self.alpha + cur_min * (1-self.alpha)])
-                self.max = torch.tensor([self.max.item() * self.alpha + cur_max * (1-self.alpha)])
-            min_v, max_v = self.min.item(), self.max.item()
-            print(f'min: {min_v}, max: {max_v}')
-            min_v, max_v = max(min_v, self.floor), min(max_v, self.ceiling)
-            return x.clamp(min=min_v, max=max_v)
-        else:
-            #return x.clamp(self.floor, self.ceiling)
-            return x#.clamp(min=self.floor, max=self.ceiling)
 
 class swiglu(nn.Module):
-    def __init__(self, dim, exp_f=2):
+    def __init__(self, dim, exp_f=2, dim_out=None):
         super().__init__()
         self.dim = dim
+        self.dim_out = dim_out or dim
         self.exp_f = exp_f
         self.ff_in = nn.Linear(dim, dim*exp_f*2)
-        self.ff_out = nn.Linear(dim*exp_f, dim)
+        self.ff_out = nn.Linear(dim*exp_f, self.dim_out)
 
     def forward(self, x):
         a, b = self.ff_in(x).chunk(2, dim=-1)
         return self.ff_out(F.silu(a) * b)
 
-class LearntLoss(nn.Module):
-    def __init__(self, d_model):
-        super().__init__()
-        self.in_dim = d_model // 8
-        self.in_ff = nn.Linear(d_model, self.in_dim*2)
-        self.a_ff = swiglu(self.in_dim, exp_f=4)
-        self.b_ff = nn.Identity()
+from vector_quantize_pytorch import VectorQuantize
 
-    def forward(self, x, mask=None): 
-        assert x.ndim == 2, 'use vmap for batched inputs'
-        a, b = self.in_ff(x).chunk(2, dim=-1)
-        a, b = self.a_ff(a), self.b_ff(b)  
-        a = F.normalize(a, dim=-1, p=2)
-        b = F.normalize(b, dim=-1, p=2)
-        csim = 2 - 2 * (a * b).sum(-1)
-        if mask is not None: csim = csim.masked_fill(mask, 0)
-        return csim.sum()
+class inner_network(nn.Module):
+    def __init__(self, d_model) -> None:
+        super().__init__()
+        self.in_ff = swiglu(d_model, exp_f=2, dim_out=d_model)
+        self.predictor_ff = nn.Linear(d_model, d_model)
+        
+    def forward(self, x, targets = None, return_x = False, mask = None):
+        x = self.in_ff(x)
+        if return_x: return x
+        
+        predictions = self.predictor_ff(x)
+        if targets is None: return predictions
+
+        a = F.normalize(predictions, dim=-1)
+        b = F.normalize(targets, dim=-1)
+        sim = (2 - 2 * F.cosine_similarity(a, b, dim=-1))
+        if mask is not None: sim = sim.masked_fill(mask, 0)
+        sim = sim.mean() if mask is None else sim.sum() / (~mask).sum()
+        #print(sim)
+        return sim
+
+     
 
 class MetaLayer(nn.Module):
     def __init__(
             self, 
             d_model, 
-            layers, 
-            norm_in_fn=DEFAULT_NORM,
-            glu_norn=nn.Identity, 
-            base_lr=0.1,
         ):
         super().__init__()
-        self.in_ln = nn.ModuleList([norm_in_fn(d_model) for _ in range(layers)])
-
-        self.in_ff = nn.Linear(d_model, d_model, bias=False)
-        self.v_ff = nn.Linear(d_model, d_model, bias=False)
-
-        self.grad_clamp_vals = nn.ModuleList([MinMaxEMATracker() for _ in range(layers)])
-        self.learnt_loss = LearntLoss(d_model)
-        
-        self.out_swiglu = nn.Sequential(
-            ConformerFeedForward(d_model, hidden_features = d_model*2),
-            glu_norn(d_model),
-        ) 
-        self.grad_norm_scale = 1.25
-        self.w_delta = None
-        self.lr = nn.Parameter(torch.ones(layers, 1)*base_lr)
-
-    def element_wise_fwd_w_delta(self, x, w_delta): # used with vmap
-        weight = self.v_ff.weight - w_delta
-        return F.linear(x, weight, self.in_ff.bias)
+        self.combined_ff = ConformerFeedForward(in_features=d_model*2, hidden_features=d_model*2, out_features=d_model)
+        self.inner_network = inner_network(d_model)
+        self.vq = VectorQuantize(
+            dim = d_model,
+            codebook_size = 512,
+            decay = 0.99,
+            codebook_dim = 16,
+            commitment_weight = 0.0
+        )
+        self.norm_out = nn.LayerNorm(d_model)
 
     def clip_norm(self, grad):
         total_norm = grad.norm()
@@ -637,24 +644,26 @@ class MetaLayer(nn.Module):
         clip_coeff_clamped = torch.clamp(clip_coeff, max=1.0)
         return grad * clip_coeff_clamped
 
-    def forward(self, x, layer, mask=None):
-        if layer == 0: self.w_delta = None
-        x_norm = self.in_ln[layer](x)
-        
-        with torch.autograd.enable_grad(): 
-            x_ff = self.in_ff(x_norm) 
-            args = (x_ff, mask) if mask is not None else (x_ff,)
-            batched_grad_x_ff = torch.func.vmap(torch.func.grad(self.learnt_loss), in_dims=0)(*args)
-          
-        grad_ff = torch.einsum('bnq,bnz->bqz', batched_grad_x_ff, x_norm)
-        grad_ff = torch.func.vmap(self.clip_norm, in_dims=0)(grad_ff)
-        #grad_ff = torch.func.vmap(lambda x: x / (x.norm() / self.grad_norm_scale))(grad_ff)
+    def compute_forwards(self, x, tgts, compute_grad_fn, mask=None):
+        grad = compute_grad_fn(x, tgts)
+        #print(grad[f'in_ff.ff_in.weight'].min(), grad[f'in_ff.ff_in.weight'].max())
+        updated_params = {k: v - grad[k] if 'in_ff' in k else v for k, v in self.inner_network.named_parameters()}
+        fwd_out = functional_call(self.inner_network, updated_params, args=(x), kwargs={'return_x': True, 'mask': mask}) # new forward with updated params
+        return fwd_out
 
-        print(grad_ff.min().item(), grad_ff.max().item(), self.lr[layer].abs().item(), layer)
-        self.w_delta = grad_ff * self.lr[layer].abs() if self.w_delta is None else self.w_delta + (grad_ff * self.lr[layer].abs())
-        x_ff_u = torch.func.vmap(self.element_wise_fwd_w_delta, in_dims=0)(x_norm, self.w_delta)
-        x_out = self.out_swiglu(x_ff_u)
-        return x_out
+    def forward(self, x_norm, mask=None):
+        x_norm_gold, x_norm_aug = x_norm.chunk(2, dim=0)
+        x_norm_combined = torch.cat([x_norm_gold, x_norm_aug], dim=-1)  
+        
+        x_combined = self.combined_ff(x_norm_combined)
+        targets = self.inner_network(x_combined)
+        targets, _, _ = self.vq(targets)
+        targets = targets.repeat(2, 1, 1)
+
+        compute_loss = lambda params, x, targets: functional_call(self.inner_network, params, args=(x, targets), kwargs={'mask': mask})
+        compute_grad = lambda x, tgts: grad(compute_loss)(dict(self.inner_network.named_parameters()), x, tgts)
+        fwd_out = vmap(lambda x, tgts: self.compute_forwards(x, tgts, compute_grad, mask=mask))(x_norm, targets)
+        return self.norm_out(fwd_out)
 
 class ASRLinearSCDecoder(nn.Module):
     def __init__(self, d_model, vocab_size, norm=False, norm_fn=DEFAULT_NORM):

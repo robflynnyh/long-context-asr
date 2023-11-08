@@ -201,7 +201,7 @@ def train(
         ################################
 
         # shuffle order of chunks
-        #chunks = random.sample(chunks, len(chunks))
+        chunks = random.sample(chunks, len(chunks))
 
         try:
             for ix, chunk_json in enumerate(chunks):
@@ -239,8 +239,8 @@ def train(
                     
                     cur_probs = out['final_posteriors']
                     B,N,C = cur_probs.shape 
-                    # txt = txt.repeat(n_augmentations + 1, 1)
-                    # t_lengths = t_lengths.repeat(n_augmentations + 1)
+                    txt = txt.repeat(n_augmentations + 1, 1)
+                    t_lengths = t_lengths.repeat(n_augmentations + 1)
                     loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
                     
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
@@ -262,10 +262,10 @@ def train(
                 steps_since_backwards += 1
                 
                 # cur_tokens_in_loss += B * N
-                cur_tokens_in_loss += (sum(a_lengths))#*n_augmentations)) # total number of acoustic frames in batch
+                cur_tokens_in_loss += (sum(a_lengths))*(n_augmentations+1) # total number of acoustic frames in batch
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
-                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
+                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards*(n_augmentations+1)) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
                     last_kv_set.detach_() if last_kv_set != None else None
                     steps_since_backwards = 0
                     backwards_every_loss = 0

@@ -1,9 +1,9 @@
 model:
   feat_in: 80
-  n_layers: 5
-  d_model: 512
+  n_layers: 6
+  d_model: 768
   n_heads: 6
-  head_dim: 64
+  head_dim: 128
   dropout_ff: 0.0
   dropout_attn: 0.0
   dropout_conv: 0.0
@@ -31,7 +31,7 @@ model:
 optimizer:
   name: madgrad
   args:
-    lr: 1e-3
+    lr: 2e-3
 
 scheduler:
   warmup_steps: 3250
@@ -65,11 +65,11 @@ sequence_scheduler:
 wandb:
   use: true
   project_name: spotify_long_context
-  name: 'meta_learn_aug'
+  name: 'meta_learn_aug_emb_h100'
   id: '' #
 
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/meta_learn_aug
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/meta_learn_aug_emb_h100
   save_every_n_steps: 2000
 
 data:
@@ -89,7 +89,7 @@ spec_augment:
 training:
   start_spec_augment_after_n_epochs: -1 # -1 to disable
   max_epochs: 1
-  batch_size: 304
+  batch_size: 320
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
