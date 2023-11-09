@@ -259,7 +259,6 @@ class MetaConformer(nn.Module):
 
             # repeat -> rearrange is equivalent to a repeat_interleave type operation
             audio_signal_A, audio_signal_B = audio_signal[:o_B], audio_signal[o_B:]
-            if lth == 0: audio_signal_B *= -1 
             audio_signal_A, audio_signal_B = self.proj_A(audio_signal_A), self.proj_B(audio_signal_B)
             audio_signal = torch.cat((audio_signal_A, audio_signal_B), dim=0) + audio_signal
 
@@ -298,7 +297,7 @@ class MetaConformer(nn.Module):
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
         #audio_signal = rearrange(audio_signal, '(a b) n d -> a b n d', a = n_augmentations + 1).mean(dim=0)
-        audio_signal = audio_signal if self.training else audio_signal[:o_B]
+        audio_signal = audio_signal if self.training else audio_signal[o_B:]
         audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal # applying norm twice on output helped
         final_posts = decoder(x = audio_signal, logits = return_logits) 
        
@@ -609,32 +608,21 @@ class inner_network(nn.Module):
         super().__init__()
         self.in_ff = swiglu(d_model, exp_f=2, dim_out=d_model)
         self.predictor_ff = swiglu(d_model, exp_f=1, dim_out=d_model)
-        self.bottleneck = nn.Sequential(
-            nn.Linear(d_model, 16),
-            nn.Linear(16, d_model)
-        )
         
-    def forward(self, x, return_x = False, mask = None):
+    def forward(self, x, targets = None, return_x = False):
         x = self.in_ff(x)
         if return_x: 
             return x
-        assert x.shape[0] == 2, 'first dim should be set dimension, unbatched, use vmap over batch'
         
-        targets = self.bottleneck(x)
         predictions = self.predictor_ff(x)
+        if targets is None: 
+            return predictions
 
-        predictions = F.normalize(predictions, dim=-1)
-        targets = F.normalize(targets, dim=-1)
-        sim_fn = lambda a, b: (2 - 2 * F.cosine_similarity(a, b, dim=-1))
-        sim_1 = sim_fn(predictions[0], targets[1])
-        sim_2 = sim_fn(predictions[1], targets[0])
-        #print(sim_1, sim_2)
-        sim = sim_1 + sim_2
-        if mask is not None:
-            sim = sim.masked_fill(mask, 0)
-        sim = sim.mean() if mask is None else sim.sum() / (~mask).sum()
-        
-        return sim
+        a = F.normalize(predictions, dim=-1)
+        b = F.normalize(targets, dim=-1)
+        sim = (2 - 2 * F.cosine_similarity(a, b, dim=-1))
+        #print(sim)
+        return sim.sum()
 
 
 class MetaLayer(nn.Module):
@@ -648,8 +636,8 @@ class MetaLayer(nn.Module):
         self.inner_network = inner_network(d_model)
         self.vq = VectorQuantize(
             dim = d_model,
-            codebook_size = 64,
-            decay = 0.999,
+            codebook_size = 512,
+            decay = 0.97,
             codebook_dim = 16,
             commitment_weight = 0.0,
             use_cosine_sim=True,
@@ -661,7 +649,6 @@ class MetaLayer(nn.Module):
         self.qk = nn.Linear(d_model, d_model*2)
         self.v = nn.Linear(d_model, d_model)
         self.u_ff = swiglu(d_model, exp_f=2, dim_out=d_model)
-        #self.grad = None
 
     def clip_norm(self, grad): # shoudn't be needed
         total_norm = grad.norm()
@@ -669,28 +656,31 @@ class MetaLayer(nn.Module):
         clip_coeff_clamped = torch.clamp(clip_coeff, max=1.0)
         return grad * clip_coeff_clamped
 
-    def compute_forwards(self, x_norm, compute_grad_fn, mask=None):
-        # x_norm : 2, n, d
-        grad = compute_grad_fn(x_norm, mask)
+    def compute_forwards(self, x_g, x_norm, tgts, compute_grad_fn):
+        grad = compute_grad_fn(x_g, tgts)
         u_p = dict(self.u_ff.named_parameters())
-        #grad = grad if self.grad is None else {k: self.grad[k] * 0.99 + grad[k] * 0.01 for k in grad.keys()}
-        #print(grad[list(grad.keys())])
         updated_params = {k: u_p['.'.join(k.split('.')[1:])] - grad[k] * self.lr.abs() if 'in_ff' in k else v for k,v in self.inner_network.named_parameters()}
         fwd_out = functional_call(self.inner_network, updated_params, args=(x_norm), kwargs={'return_x': True}) # new forward with updated params
-        #self.grad = grad
         return fwd_out
 
     def forward(self, x_norm, mask=None):
-        x_norm = rearrange(x_norm, '(a b) c d -> b a c d', a=2) # split into the two sets 
-        mask = mask[:x_norm.shape[0]] if mask is not None else None
-    
-        compute_loss = lambda params, x, msk: functional_call(self.inner_network, params, args=(x), kwargs={'mask': msk})
-        compute_grad = lambda x, msk: grad(compute_loss)(dict(self.inner_network.named_parameters()), x, msk)
-        vmap_args = (x_norm, mask) if mask is not None else (x_norm,)
-        fwd_out = vmap(lambda x, msk=None: self.compute_forwards(x, compute_grad, mask=msk))(*vmap_args)
-        fwd_out = rearrange(fwd_out, 'b a c d -> (a b) c d', a=2) # merge back into batch
-        return self.norm_out(fwd_out) 
+        o_B = x_norm.shape[0] // 2
+        # create global representation
+        x_norm_q, x_norm_k = self.qk(x_norm).chunk(2, dim=-1)
+        x_norm_q = x_norm_q.sigmoid()
+        if mask is not None: x_norm_q = x_norm_q.masked_fill(mask.unsqueeze(-1), 0)
+        x_norm_qk = (x_norm_q * x_norm_k).sum(-2, keepdim=True) / (x_norm_q.sum(-2, keepdim=True) + 1e-6)
+        x_norm_v = self.v(x_norm_qk)
+        targets,_,_ = self.vq(self.inner_network(x = x_norm_v, return_x=True))
+        targets = torch.cat([targets[o_B:], targets[:o_B]], dim=0)
+        
+        compute_loss = lambda params, x, targets: functional_call(self.inner_network, params, args=(x, targets))
+        compute_grad = lambda x, tgts: grad(compute_loss)(dict(self.inner_network.named_parameters()), x, tgts)
+        fwd_out = vmap(lambda x_g, x_n, tgts: self.compute_forwards(x_g, x_n, tgts, compute_grad))(x_norm_v, x_norm, targets)
+        return self.norm_out(fwd_out)
 
+
+ 
 
 class ASRLinearSCDecoder(nn.Module):
     def __init__(self, d_model, vocab_size, norm=False, norm_fn=DEFAULT_NORM):

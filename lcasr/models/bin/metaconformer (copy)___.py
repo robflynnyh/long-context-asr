@@ -120,19 +120,10 @@ class MetaConformer(nn.Module):
             norm = decoder_norm,
             norm_fn = default_norm,
         )
-        
-        
-        self.proj_A = nn.Sequential(
-            LayerNorm(d_model),
-            nn.Linear(d_model, d_model)
-        )
 
-        self.proj_B = nn.Sequential(
-            LayerNorm(d_model),
-            nn.Linear(d_model, d_model)
-        )
+        self.embedding_a = nn.Parameter(torch.randn(1, 1, d_model) * 1e-2)
+        self.embedding_b = nn.Parameter(torch.randn(1, 1, d_model) * 1e-2)
 
-        
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
         self.subsampling = \
             ConvSubsampling(subsampling = self.subsampling_mode, conv_channels = self.subsampling_conv_channels, activation = subsampling_act, **subsampling_args) \
@@ -220,6 +211,8 @@ class MetaConformer(nn.Module):
         
         if n_augmentations > 0:
             audio_signal = audio_signal.repeat(n_augmentations+1, 1, 1) # repeat for augmentation
+            audio_signal[:o_B] = audio_signal[:o_B] + self.embedding_a
+            audio_signal[o_B:] = audio_signal[o_B:] + self.embedding_b
             length = length.repeat(n_augmentations+1)
 
         
@@ -254,14 +247,10 @@ class MetaConformer(nn.Module):
         
         kvs_to_cache = []
 
+
+
         for lth, layer in enumerate(self.layers):
             current_layer_kvs = cached_kvs[:,:,lth] if cached_kvs is not None else None
-
-            # repeat -> rearrange is equivalent to a repeat_interleave type operation
-            audio_signal_A, audio_signal_B = audio_signal[:o_B], audio_signal[o_B:]
-            if lth == 0: audio_signal_B *= -1 
-            audio_signal_A, audio_signal_B = self.proj_A(audio_signal_A), self.proj_B(audio_signal_B)
-            audio_signal = torch.cat((audio_signal_A, audio_signal_B), dim=0) + audio_signal
 
             if self.checkpoint_every_n_layers > 0 and lth % self.checkpoint_every_n_layers == 0:
                 audio_signal, kv_to_cache = checkpoint(
@@ -289,19 +278,16 @@ class MetaConformer(nn.Module):
 
             
             if lth != len(self.layers) - 1 and self.self_conditioning:
-                #x_mean = rearrange(audio_signal, '(a b) n d -> a b n d', a = n_augmentations + 1).mean(dim=0)
                 iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
-                audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))#.repeat(n_augmentations+1, 1, 1))  
+                audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))        
 
         # stack the posteriors along the first dimension (height, batch, seq_len, dim)
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
-        #audio_signal = rearrange(audio_signal, '(a b) n d -> a b n d', a = n_augmentations + 1).mean(dim=0)
         audio_signal = audio_signal if self.training else audio_signal[:o_B]
-        audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal # applying norm twice on output helped
-        final_posts = decoder(x = audio_signal, logits = return_logits) 
-       
+        audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
+        final_posts = decoder(x = audio_signal, logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
 
         if self.training and self.rotary_pos_emb is not None: self.rotary_pos_emb.reset_if_needed()
 
@@ -608,32 +594,23 @@ class inner_network(nn.Module):
     def __init__(self, d_model) -> None:
         super().__init__()
         self.in_ff = swiglu(d_model, exp_f=2, dim_out=d_model)
-        self.predictor_ff = swiglu(d_model, exp_f=1, dim_out=d_model)
-        self.bottleneck = nn.Sequential(
-            nn.Linear(d_model, 16),
-            nn.Linear(16, d_model)
-        )
+        self.predictor_ff = nn.Linear(d_model, d_model)
         
-    def forward(self, x, return_x = False, mask = None):
+    def forward(self, x, targets = None, return_x = False, mask = None):
         x = self.in_ff(x)
         if return_x: 
             return x
-        assert x.shape[0] == 2, 'first dim should be set dimension, unbatched, use vmap over batch'
         
-        targets = self.bottleneck(x)
         predictions = self.predictor_ff(x)
+        if targets is None: 
+            return predictions
 
-        predictions = F.normalize(predictions, dim=-1)
-        targets = F.normalize(targets, dim=-1)
-        sim_fn = lambda a, b: (2 - 2 * F.cosine_similarity(a, b, dim=-1))
-        sim_1 = sim_fn(predictions[0], targets[1])
-        sim_2 = sim_fn(predictions[1], targets[0])
-        #print(sim_1, sim_2)
-        sim = sim_1 + sim_2
-        if mask is not None:
-            sim = sim.masked_fill(mask, 0)
+        a = F.normalize(predictions, dim=-1)
+        b = F.normalize(targets, dim=-1)
+        sim = (2 - 2 * F.cosine_similarity(a, b, dim=-1))
+        if mask is not None: sim = sim.masked_fill(mask, 0)
         sim = sim.mean() if mask is None else sim.sum() / (~mask).sum()
-        
+
         return sim
 
 
@@ -641,27 +618,19 @@ class MetaLayer(nn.Module):
     def __init__(
             self, 
             d_model, 
-            layer=None,
         ):
         super().__init__()
-        
+        self.combined_ff = ConformerFeedForward(in_features=d_model*2, hidden_features=d_model*2, out_features=d_model)
         self.inner_network = inner_network(d_model)
         self.vq = VectorQuantize(
             dim = d_model,
-            codebook_size = 64,
-            decay = 0.999,
+            codebook_size = 512,
+            decay = 0.99,
             codebook_dim = 16,
-            commitment_weight = 0.0,
-            use_cosine_sim=True,
+            commitment_weight = 0.0
         )
         self.norm_out = nn.LayerNorm(d_model)
         self.lr = nn.Parameter(torch.tensor(1.0))
-        self.layer = layer
-
-        self.qk = nn.Linear(d_model, d_model*2)
-        self.v = nn.Linear(d_model, d_model)
-        self.u_ff = swiglu(d_model, exp_f=2, dim_out=d_model)
-        #self.grad = None
 
     def clip_norm(self, grad): # shoudn't be needed
         total_norm = grad.norm()
@@ -669,28 +638,26 @@ class MetaLayer(nn.Module):
         clip_coeff_clamped = torch.clamp(clip_coeff, max=1.0)
         return grad * clip_coeff_clamped
 
-    def compute_forwards(self, x_norm, compute_grad_fn, mask=None):
-        # x_norm : 2, n, d
-        grad = compute_grad_fn(x_norm, mask)
-        u_p = dict(self.u_ff.named_parameters())
-        #grad = grad if self.grad is None else {k: self.grad[k] * 0.99 + grad[k] * 0.01 for k in grad.keys()}
-        #print(grad[list(grad.keys())])
-        updated_params = {k: u_p['.'.join(k.split('.')[1:])] - grad[k] * self.lr.abs() if 'in_ff' in k else v for k,v in self.inner_network.named_parameters()}
-        fwd_out = functional_call(self.inner_network, updated_params, args=(x_norm), kwargs={'return_x': True}) # new forward with updated params
-        #self.grad = grad
+    def compute_forwards(self, x, tgts, compute_grad_fn, mask=None):
+        grad = compute_grad_fn(x, tgts)
+        updated_params = {k: v - grad[k] * self.lr.abs() if 'in_ff' in k else v for k, v in self.inner_network.named_parameters()}
+        fwd_out = functional_call(self.inner_network, updated_params, args=(x), kwargs={'return_x': True, 'mask': mask}) # new forward with updated params
         return fwd_out
 
     def forward(self, x_norm, mask=None):
-        x_norm = rearrange(x_norm, '(a b) c d -> b a c d', a=2) # split into the two sets 
-        mask = mask[:x_norm.shape[0]] if mask is not None else None
-    
-        compute_loss = lambda params, x, msk: functional_call(self.inner_network, params, args=(x), kwargs={'mask': msk})
-        compute_grad = lambda x, msk: grad(compute_loss)(dict(self.inner_network.named_parameters()), x, msk)
-        vmap_args = (x_norm, mask) if mask is not None else (x_norm,)
-        fwd_out = vmap(lambda x, msk=None: self.compute_forwards(x, compute_grad, mask=msk))(*vmap_args)
-        fwd_out = rearrange(fwd_out, 'b a c d -> (a b) c d', a=2) # merge back into batch
-        return self.norm_out(fwd_out) 
+        x_norm_a, x_norm_b = x_norm.chunk(2, dim=0)
+        x_norm_combined = torch.cat([x_norm_a, x_norm_b], dim=-1)  
+        
+        x_combined = self.combined_ff(x_norm_combined)
+        targets = self.inner_network(x_combined)
+        targets, _, _ = self.vq(targets)
+        targets = targets.repeat(2, 1, 1)
+        print(self.lr.abs().item())
 
+        compute_loss = lambda params, x, targets: functional_call(self.inner_network, params, args=(x, targets), kwargs={'mask': mask})
+        compute_grad = lambda x, tgts: grad(compute_loss)(dict(self.inner_network.named_parameters()), x, tgts)
+        fwd_out = vmap(lambda x, tgts: self.compute_forwards(x, tgts, compute_grad, mask=mask))(x_norm, targets)
+        return self.norm_out(fwd_out)
 
 class ASRLinearSCDecoder(nn.Module):
     def __init__(self, d_model, vocab_size, norm=False, norm_fn=DEFAULT_NORM):
