@@ -1,6 +1,6 @@
 import torch, torch.nn as nn
 from lcasr.components.batchrenorm import BatchRenorm1d
-from lcasr.components.long_conv import LongConv
+
 
 
 def get_norm(norm_type, d_model):
@@ -85,57 +85,4 @@ class ConformerConvolution(nn.Module):
 
 
 
-class ConformerLongConvolution(nn.Module):
-    """A simple convolution module for the Conformer model using long convolutions implemented via fourier transforms: https://arxiv.org/abs/2302.06646
-    Args:
-        d_model (int): hidden dimension
-        kernel_size (int): kernel size for depthwise convolution
-
-    """
-    def __init__(
-            self, 
-            d_model, 
-            kernel_size, 
-            norm_type='batch_renorm', 
-            exp_factor=1,
-            scale_grad_by=1.0, # scales the gradient of long conv by this factor
-            **kwargs
-            ):
-        super(ConformerLongConvolution, self).__init__()
-
-        self.d_model = d_model
-     
-        inner_dim = int(d_model * exp_factor)
-        self.in_projection = nn.Linear(d_model, inner_dim*2)
-        self.out_projection = nn.Linear(inner_dim, d_model)
-        self.batch_norm = get_norm(norm_type, inner_dim)
-
-        self.kernel_size = kernel_size
-
-        self.conv = LongConv(
-            d_model = inner_dim,
-            l_max = kernel_size,
-            bidirectional = True,
-            transposed = False,
-            weight_init = 'random',
-            channels = 1,
-        )
-        
-        if scale_grad_by != 1.0:
-            for param in self.conv.kernel.parameters():
-                param.register_hook(lambda grad: grad * scale_grad_by)
-        
-    def forward(self, x, length=None, **kwargs):
-        x = self.in_projection(x)
-        x = nn.functional.glu(x, dim=-1)
-        x = self.conv(u = x, lengths = length)
-        if not isinstance(self.batch_norm, nn.LayerNorm) and not isinstance(self.batch_norm, nn.Identity):
-            x = x.transpose(1, 2)
-            x = self.batch_norm(x)
-            x = x.transpose(1, 2)
-        else:
-            x = self.batch_norm(x)
-        x = self.out_projection(x)
-        return x
-        
 

@@ -3,7 +3,7 @@ import torch
 import argparse
 from tqdm import tqdm
 from typing import Dict, List, Tuple
-from lcasr.models.metaconformer import MetaConformer
+from lcasr.models.conformer_st import ConformerST, model_fwd
 from omegaconf.omegaconf import OmegaConf
 import traceback
 from lcasr.utils.dataloading import VariableBatchSimpleDataloader, chunk_spectogram, chunk_text_json, reset_seen_ids
@@ -46,7 +46,7 @@ def blank_p(logits, tokenizer):
 
 
 def backwards_pass(
-        model:MetaConformer,
+        model:ConformerST,
         clip_value:float,
         optimizer:torch.optim.Optimizer,
         scheduler:torch.optim.lr_scheduler._LRScheduler,
@@ -170,7 +170,6 @@ def train(
 
         del audio
         backwards_every_loss, steps_since_backwards = 0.0, 0
-        backwards_every_aux_loss, cur_aux_loss = 0, 0
         chunks, culm_lengths_audio, nans_in_a_row = [], torch.zeros_like(audio_lengths), 0
 
         ################################
@@ -230,8 +229,8 @@ def train(
                         cached_kvs = cached_kvs[cur_selection_mask]
                         cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
                     
-                    n_augmentations = 1 # if not scheduler.is_warmup else 0
-                    out = model(
+                    out = model_fwd(
+                        model = model,
                         audio_signal = audio, 
                         length = a_lengths, 
                     )
@@ -240,10 +239,9 @@ def train(
                         out_kvs = out['kvs_to_cache'].clone()
                         last_kv_set = out_kvs[:, -max_cache_length:].clone()
                     
-                    sim_loss = out['sim_loss']
+                    
                     cur_probs = out['final_posteriors']
                     B,N,C = cur_probs.shape 
-       
                     loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
                     
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
@@ -260,19 +258,15 @@ def train(
                 else:
                     nans_in_a_row = 0
 
-                cur_aux_loss += sim_loss #* sim_loss_weight
                 cur_loss += loss
-                backwards_every_aux_loss += sim_loss * sim_loss_weight
                 backwards_every_loss += loss
                 steps_since_backwards += 1
                 
                 # cur_tokens_in_loss += B * N
-                cur_tokens_in_loss += sum(a_lengths) # total number of acoustic frames in batch
+                cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
-                    #scaler.scale(((backwards_every_loss + backwards_every_aux_loss*(n_augmentations+1)) / (chunk_size*batch_size)*steps_since_backwards*(n_augmentations+1)) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
                     scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
-
                     last_kv_set.detach_() if last_kv_set != None else None
                     steps_since_backwards = 0
                     backwards_every_loss, backwards_every_aux_loss = 0, 0
@@ -281,7 +275,7 @@ def train(
                     full_loss = cur_loss 
                     full_loss /= cur_tokens_in_loss
                     full_loss *= 100
-                    cur_aux_loss = (cur_aux_loss / (cur_tokens_in_loss )).item() 
+                    
                     loss_to_log = full_loss.item()
                     print(f'loss: {full_loss}')
                     
@@ -299,7 +293,6 @@ def train(
                         wandb.log({
                             'loss': loss_to_log,
                             'blank_p': blank_prob,
-                            'aux_loss': cur_aux_loss,
                             'learning_rate': learning_rate,
                             'sequence_length': chunk_size,
                             'batch_size': batch_size,
@@ -307,7 +300,7 @@ def train(
                             'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
                         })
                     
-                    cur_tokens_in_loss, cur_loss, cur_aux_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device), 0
+                    cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
                 prev_selection_mask = selection_mask.clone()
 
         except RuntimeError as e: 
@@ -362,7 +355,7 @@ def main(args):
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
     # set random seed for initialization
     torch.manual_seed(12345), torch.cuda.manual_seed(12345)
-    model = load_model(args.config, tokenizer.vocab_size(), model_class = MetaConformer)
+    model = load_model(args.config, tokenizer.vocab_size(), model_class = ConformerST)
     tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
 

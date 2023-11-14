@@ -6,7 +6,7 @@ from functools import partial
 from lcasr.components import fused_dense, subsampling, convolution
 from lcasr.components.rotary_emb import RotaryPositionalEmbedding, apply_rotary
 from lcasr.utils.helpers import exists
-ConformerConvolution, ConformerLongConvolution = convolution.ConformerConvolution, convolution.ConformerLongConvolution
+ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
 DEFAULT_NORM, RMSNorm, LayerNorm = apex.normalization.FusedRMSNorm, apex.normalization.FusedRMSNorm, apex.normalization.FusedLayerNorm
@@ -43,7 +43,6 @@ class SCConformerXL(nn.Module):
         checkpoint_every_n_layers = 0,
         conv_kernel_size = 9,
         conv_expansion_factor = 1,
-        conv_type = 'standard', # 'standard' or 'longconv' (https://arxiv.org/abs/2302.06646)
         decoder_norm = False,
         use_rotary = False,
         rotary_interpolation_factor = 1.0, # https://arxiv.org/abs//2306.15595 Extending Context Window of Large Language Models via Positional Interpolation
@@ -150,7 +149,6 @@ class SCConformerXL(nn.Module):
                 bias_in_ff = bias_in_ff,
                 transformer = transformer,
                 conv_expansion_factor = conv_expansion_factor,
-                conv_type = conv_type,
                 **kwargs
             )
             self.layers.append(l)
@@ -321,7 +319,6 @@ class ConformerLayer(nn.Module):
         bias_in_ff = True,
         transformer = False,
         conv_expansion_factor = 1,
-        conv_type = 'standard', # 'standard' or 'longconv' (https://arxiv.org/abs/2302.06646) (will probably remove this)
         **kwargs
     ):
         super().__init__()
@@ -336,11 +333,10 @@ class ConformerLayer(nn.Module):
 
         
         if not self.trasformer:
-            assert conv_type in ['standard', 'longconv'], 'conv_type must be either standard or longcov'
-            conv_module = ConformerConvolution if conv_type == 'standard' else ConformerLongConvolution
+        
             self.conv = PreNorm(
                 d_model = d_model, 
-                fn = conv_module(
+                fn = ConformerConvolution(
                     d_model = d_model,
                     kernel_size = conv_kernel_size,
                     norm_type = kwargs.get('conv_norm', 'batch_renorm'),

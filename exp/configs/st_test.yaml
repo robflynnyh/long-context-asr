@@ -30,10 +30,10 @@ model:
 optimizer:
   name: madgrad
   args:
-    lr: 1.4e-3
+    lr: 2e-3
 
 scheduler:
-  warmup_steps: 3500
+  warmup_steps: 3250
 
 audio_chunking:
   size: 1024
@@ -62,13 +62,13 @@ sequence_scheduler:
 
 
 wandb:
-  use: true
+  use: false
   project_name: spotify_long_context
-  name: 'meta_l'
+  name: 'st_test'
   id: '' #
 
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/meta_l
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/st_test
   save_every_n_steps: 2000  
 
 data:
@@ -88,13 +88,13 @@ spec_augment:
 training:
   start_spec_augment_after_n_epochs: -1 # -1 to disable
   max_epochs: 1
-  batch_size: 140
+  batch_size: 20
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
-  #sim_loss_weight: 0.001
+  sim_loss_weight: 0.1
 
 
 # size: 512 = batch size 704

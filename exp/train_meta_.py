@@ -87,7 +87,7 @@ def train(
     random.seed(args.config['training'].get('random_seed', 12345))
     wandb_config = args.config['wandb']
 
-    sim_loss_weight = args.config['training'].get('sim_loss_weight', 0.05)
+    sim_loss_weight = args.config['training'].get('sim_loss_weight', 0.001)
     
     rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
     resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
@@ -242,8 +242,10 @@ def train(
                     
                     sim_loss = out['sim_loss']
                     cur_probs = out['final_posteriors']
+                    txt = txt.repeat(n_augmentations+1, 1)
+                    t_lengths = t_lengths.repeat(n_augmentations+1)
                     B,N,C = cur_probs.shape 
-       
+                   
                     loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
                     
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
@@ -260,7 +262,7 @@ def train(
                 else:
                     nans_in_a_row = 0
 
-                cur_aux_loss += sim_loss #* sim_loss_weight
+                cur_aux_loss += sim_loss * sim_loss_weight
                 cur_loss += loss
                 backwards_every_aux_loss += sim_loss * sim_loss_weight
                 backwards_every_loss += loss
@@ -270,8 +272,8 @@ def train(
                 cur_tokens_in_loss += sum(a_lengths) # total number of acoustic frames in batch
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
-                    #scaler.scale(((backwards_every_loss + backwards_every_aux_loss*(n_augmentations+1)) / (chunk_size*batch_size)*steps_since_backwards*(n_augmentations+1)) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
-                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
+                    scaler.scale(((backwards_every_loss + backwards_every_aux_loss*(n_augmentations+1)) / (chunk_size*batch_size)*steps_since_backwards*(n_augmentations+1)) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
+                    #scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
 
                     last_kv_set.detach_() if last_kv_set != None else None
                     steps_since_backwards = 0
@@ -281,7 +283,10 @@ def train(
                     full_loss = cur_loss 
                     full_loss /= cur_tokens_in_loss
                     full_loss *= 100
-                    cur_aux_loss = (cur_aux_loss / (cur_tokens_in_loss )).item() 
+                    rw = 1 / sim_loss_weight if sim_loss_weight != 0 else 1
+                    cur_aux_loss = ((cur_aux_loss * rw) / (cur_tokens_in_loss )).item()
+                    #cur_aux_loss = (cur_aux_loss / (cur_tokens_in_loss )).item() 
+                    
                     loss_to_log = full_loss.item()
                     print(f'loss: {full_loss}')
                     

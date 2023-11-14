@@ -9,10 +9,8 @@ from functools import partial
 from lcasr.utils.helpers import exists
 import math
 
-try:
-    from lcasr.components import fftconv_funcs 
-except ImportError:
-    fftconv_funcs = None
+
+fftconv_funcs = None
 
 
 
