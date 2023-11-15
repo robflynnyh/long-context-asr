@@ -14,9 +14,23 @@ from flash_attn.flash_attention import FlashAttention
 from flash_attn.modules.mha import FlashCrossAttention
 from flash_attn.bert_padding import unpad_input, pad_input
 from einops.layers.torch import Rearrange
+from lcasr.utils.augmentation import SpecAugment
 from torch.func import vmap, grad, functional_call
 
+class output_manager(nn.Module):
+    def __init__(self, d_model):
+        super().__init__()
+        self.d_model = d_model
+        self.kv = nn.Linear(d_model, d_model * 2)
+        self.q = nn.Parameter(torch.randn(1, 1, 1, d_model))
+        nn.init.normal_(self.q, mean=0, std=0.02)
 
+    def forward(self, x):
+        x = rearrange(x, '(a b) c d -> a b c d', a=2)
+        k, v = torch.chunk(self.kv(x), 2, dim=-1)
+        qk = torch.einsum('...i,...i->...i', self.q, k)
+        o = torch.einsum('i...,i...->...', qk.softmax(0) * (1 / (self.d_model ** 0.5)), v)
+        return o
 
 class MetaConformer(nn.Module): 
     def __init__(
@@ -121,6 +135,10 @@ class MetaConformer(nn.Module):
             norm_fn = default_norm,
         )
         
+        self.output_manager = output_manager(d_model=d_model)
+            
+        self.embedding_ab = nn.Embedding(2, d_model)
+       
     
         
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
@@ -183,6 +201,13 @@ class MetaConformer(nn.Module):
         )
 
 
+    def sim_loss(self, audio_signal, mask=None):
+        a, b = audio_signal.chunk(2, dim=0)
+        csim = 2 + 2 * F.cosine_similarity(a, b, dim=-1)
+        if mask is not None: csim = csim.masked_fill(mask[:a.size(0)], 0)
+        #print(csim)
+        return csim.sum() 
+
     def forward_for_export(
         self, 
         audio_signal, 
@@ -192,8 +217,10 @@ class MetaConformer(nn.Module):
         cached_kv_lengths = None, 
         return_logits = False
     ):
+        n_augmentations = 1
         max_audio_length: int = audio_signal.size(-1)
 
+        o_B = audio_signal.size(0)
         
         if cached_kvs is not None:
             assert cached_kv_lengths.max() == cached_kvs.shape[1], 'cached kvs must all be the same length'
@@ -203,6 +230,11 @@ class MetaConformer(nn.Module):
             
         audio_signal = torch.transpose(audio_signal, 1, 2)
         audio_signal, length = self.subsampling(audio_signal, lengths = length)
+        
+        if n_augmentations > 0:
+            audio_signal = audio_signal.repeat(n_augmentations+1, 1, 1) # repeat for augmentation
+            length = length.repeat(n_augmentations+1)
+
         
         max_audio_length = audio_signal.size(1)
         ## create masks
@@ -234,9 +266,12 @@ class MetaConformer(nn.Module):
         pad_mask = mask 
         
         kvs_to_cache = []
+        sim_losses = []
+        audio_signal += rearrange(self.embedding_ab(torch.tensor([0,1]).to(audio_signal.device)).repeat(o_B, 1), '(a b) d -> (b a) () d', a=o_B)
      
         #audio_signal[o_B:] = audio_signal[:o_B]
         for lth, layer in enumerate(self.layers):
+            sim_losses.append(self.sim_loss(audio_signal, mask=pad_mask))
             current_layer_kvs = cached_kvs[:,:,lth] if cached_kvs is not None else None
 
             if self.checkpoint_every_n_layers > 0 and lth % self.checkpoint_every_n_layers == 0:
@@ -273,19 +308,23 @@ class MetaConformer(nn.Module):
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
+        audio_signal = self.output_manager(audio_signal)
 
         #audio_signal = audio_signal if self.training else audio_signal[:o_B]
         audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal # applying norm twice on output helped
         final_posts = decoder(x = audio_signal, logits = return_logits) #.softmax(-1)
         #final_posts = rearrange(final_posts, '(a b) n d -> a b n d', a = n_augmentations + 1).mean(dim=0).log()
 
+        sim_losses = sum(sim_losses) / len(sim_losses)
+       
 
         if self.training and self.rotary_pos_emb is not None: self.rotary_pos_emb.reset_if_needed()
 
         return {
             'final_posteriors': final_posts,
             'kvs_to_cache': kvs_to_cache,
-            'length': length,
+            'length': length[:o_B], # if self.training else length[:o_B],
+            'sim_loss': sim_losses,
             'full_kv_lengths': full_kv_lengths, # kv cache is returned, however we don't use this and is left over from prior experiments
         }
 
@@ -407,8 +446,11 @@ class ConformerLayer(nn.Module):
         length: list of lengths of the input sequence
         cached_kv: kvs from previous block-reccurrent time step
         '''
-        
-        targets = self.ff2.fn.fn.fetch_targets(x)
+        x_in = x
+        x = rearrange(x, '(a b) c d -> a b c d', a = self.n_augmentations + 1)
+        x = vmap(lambda a, p: a.matmul(p_in)*self.random_proj_scale)(x, self.random_projections)
+        x = rearrange(x, 'a b c d -> (a b) c d', a = self.n_augmentations + 1)
+
         x = self.do_ff(self.ff1(x)) + x
 
         attn_out, kv_to_cache = self.attend(
@@ -425,8 +467,9 @@ class ConformerLayer(nn.Module):
         if not self.trasformer:
             x = self.do_conv(self.conv(x, pad_mask = pad_mask)) + x
     
-        x = self.do_ff(self.ff2(x, targets=targets, mask=pad_mask)) + x
-        x = self.norm_out(x) 
+        x = self.do_ff(self.ff2(x, mask=pad_mask)) + x
+
+        x = self.norm_out(x) + x_in * self.residual_scale
 
         return x, kv_to_cache
 
@@ -586,31 +629,33 @@ class inner_network(nn.Module):
     def __init__(self, d_model) -> None:
         super().__init__()
         self.in_ff = swiglu(d_model, exp_f=2, dim_out=d_model)
+        
+        self.linear_combines = nn.Parameter(torch.randn(2, d_model, d_model))
+        nn.init.kaiming_uniform_(self.linear_combines, a=(5 ** 0.5))
+
         self.predictor_ff = swiglu(d_model, exp_f=1, dim_out=d_model)
-        self.groups = 16
+        
         # #register backward hooks on parameters
         # for p in self.in_ff.parameters():
         #     p.register_hook(lambda grad: grad * 0.1)
         # for p in self.predictor_ff.parameters():
         #     p.register_hook(lambda grad: grad * 2)
-        self.temp = nn.Parameter(torch.tensor(5.0))    
-        self.loss_w = nn.Parameter(torch.tensor(0.5))        
+            
 
-    def forward(self, x, return_x = False, targets=None, mask = None):
+    def forward(self, x, return_x = False, mask = None):
         x = self.in_ff(x)
         if return_x: 
             return x
-        assert x.ndim == 2, 'input should be unbatched, use vmap over batch'
-        assert targets is not None, 'targets should be provided if return_x is False'
-
-        x = self.predictor_ff(x)
-        x = rearrange(x, 'n (c d) -> n c d', c=self.groups)
-        sim = (1 - F.cosine_similarity(x, targets, dim=-1)).sum(-1)
+        assert x.shape[0] == 2, 'first dim should be set dimension, unbatched, use vmap over batch'
+        
+        x = vmap(lambda x, y: x @ y)(x, self.linear_combines).sum(0)
+        a, b = self.predictor_ff(x).chunk(2, dim=-1)
+        sim = 2 + 2 * F.cosine_similarity(a, b, dim=-1)
         
         if mask is not None:
             sim = sim.masked_fill(mask, 0)
         sim = sim.mean() if mask is None else sim.sum() / (~mask).sum()
-
+        print(sim)
         return sim
 
 
@@ -629,8 +674,6 @@ class MetaLayer(nn.Module):
         self.layer = layer
         self.u_ff = swiglu(d_model, exp_f=2, dim_out=d_model)
         #self.grad = None
-        self.target_prediction = nn.Linear(d_model, d_model)
-        
 
     def clip_norm(self, grad): # shoudn't be needed
         total_norm = grad.norm()
@@ -638,22 +681,30 @@ class MetaLayer(nn.Module):
         clip_coeff_clamped = torch.clamp(clip_coeff, max=1.0)
         return grad * clip_coeff_clamped
 
-    def fetch_targets(self, x):
-        return rearrange(self.target_prediction(x), 'b n (c d) -> b n c d', c=self.inner_network.groups)
-
-    def compute_forwards(self, x_norm, targets, compute_grad_fn, mask=None):
-        grad = compute_grad_fn(x_norm, targets, mask)
+    def compute_forwards(self, x_norm, compute_grad_fn, mask=None):
+        # x_norm : 2, n, d
+        grad = compute_grad_fn(x_norm, mask)
         u_p = dict(self.u_ff.named_parameters())
+        #grad = grad if self.grad is None else {k: self.grad[k] * 0.1 + grad[k] * 0.9 for k in grad.keys()}
+        #print(grad[list(grad.keys())])
+        #print(print({v.max() for v in grad.values()}))
+
         updated_params = {k: u_p['.'.join(k.split('.')[1:])] - grad[k] * self.lr.abs() if 'in_ff' in k else v for k,v in self.inner_network.named_parameters()}
+        #updated_params = {k: v - grad[k] * self.lr.abs() if 'in_ff' in k else v for k,v in self.inner_network.named_parameters()}
         fwd_out = functional_call(self.inner_network, updated_params, args=(x_norm), kwargs={'return_x': True}) # new forward with updated params
+        #self.grad = grad
         return fwd_out
 
-    def forward(self, x_norm, targets, mask=None):
-        compute_loss = lambda params, x, tgts, msk: functional_call(self.inner_network, params, args=(x), kwargs={'targets':tgts, 'mask': msk})
-        compute_grad = lambda x, tgts, msk: grad(compute_loss)(dict(self.inner_network.named_parameters()), x, tgts, msk)
-        vmap_args = (x_norm, targets, mask) if mask is not None else (x_norm, targets)
-        fwd_out = vmap(lambda x, targets, msk=None: self.compute_forwards(x, targets, compute_grad, mask=msk))(*vmap_args)
-        return self.norm_out(fwd_out)
+    def forward(self, x_norm, mask=None):
+        x_norm = rearrange(x_norm, '(a b) c d -> b a c d', a=2) # split into the two sets 
+        mask = mask[:x_norm.shape[0]] if mask is not None else None
+        #print(self.lr.item())
+        compute_loss = lambda params, x, msk: functional_call(self.inner_network, params, args=(x), kwargs={'mask': msk})
+        compute_grad = lambda x, msk: grad(compute_loss)(dict(self.inner_network.named_parameters()), x, msk)
+        vmap_args = (x_norm, mask) if mask is not None else (x_norm,)
+        fwd_out = vmap(lambda x, msk=None: self.compute_forwards(x, compute_grad, mask=msk))(*vmap_args)
+        fwd_out = rearrange(fwd_out, 'b a c d -> (a b) c d', a=2) # merge back into batch
+        return self.norm_out(fwd_out) 
 
 
 class ASRLinearSCDecoder(nn.Module):

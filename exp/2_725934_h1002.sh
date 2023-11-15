@@ -1,7 +1,7 @@
 #!/bin/bash
 
-#SBATCH --time=96:00:00
-#SBATCH --mem=140GB
+#SBATCH --time=50:00:00
+#SBATCH --mem=60GB
 #SBATCH --partition=gpu-h100
 #SBATCH --gres=gpu:h100:1
 #SBATCH --qos=gpu
@@ -13,4 +13,4 @@ module load Anaconda3/2022.10 binutils/2.31.1-GCCcore-8.2.0 CUDA/11.8.0 cuDNN/8.
 source activate a100
 
 
-python train_meta.py -config ./configs/meta_test.yaml
+python train_meta.py -config ./configs/meta_test2.yaml
