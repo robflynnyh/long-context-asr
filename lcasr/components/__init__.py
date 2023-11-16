@@ -4,4 +4,6 @@ from . import (
     subsampling,
     batchrenorm,
     rotary_emb,
+    decoder,
+    feedforward
 )

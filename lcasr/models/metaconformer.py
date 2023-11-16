@@ -3,7 +3,7 @@ import apex
 from torch.utils.checkpoint import checkpoint # # gradient/activation checkpointing
 from einops import rearrange
 from functools import partial
-from lcasr.components import fused_dense, subsampling, convolution
+from lcasr.components import fused_dense, subsampling, convolution, decoder, feedforward
 from lcasr.components.rotary_emb import RotaryPositionalEmbedding, apply_rotary
 from lcasr.utils.helpers import exists
 ConformerConvolution = convolution.ConformerConvolution
@@ -49,7 +49,6 @@ class MetaConformer(nn.Module):
         bias_in_ff = False,
         transformer=False, # disable convolutions
         legasee_double_norm = True, # norm is applied twice before final output projection, was orignally a bug, kept got compatibility with older checkpoints
-        sim_kernel = -1,
         **kwargs
     ):
         super().__init__()
@@ -114,7 +113,7 @@ class MetaConformer(nn.Module):
                 rotary_interpolation_factor = rotary_interpolation_factor
             )
 
-        self.decoder = ASRLinearSCDecoder(
+        self.decoder = decoder.ASRLinearSCDecoder(
             d_model = d_model,
             vocab_size = vocab_size,
             norm = decoder_norm,
@@ -375,6 +374,8 @@ class ConformerLayer(nn.Module):
                 d_model = d_model,
                 fn = MetaLayer(
                     d_model = d_model,
+                    layer = layer_idx,
+                    **kwargs
                 )
             )
         )
@@ -410,7 +411,8 @@ class ConformerLayer(nn.Module):
         
         targets = self.ff2.fn.fn.fetch_targets(x)
         x = self.do_ff(self.ff1(x)) + x
-
+        
+        
         attn_out, kv_to_cache = self.attend(
             x = x,
             length = length,
@@ -424,7 +426,7 @@ class ConformerLayer(nn.Module):
         
         if not self.trasformer:
             x = self.do_conv(self.conv(x, pad_mask = pad_mask)) + x
-    
+        
         x = self.do_ff(self.ff2(x, targets=targets, mask=pad_mask)) + x
         x = self.norm_out(x) 
 
@@ -568,33 +570,14 @@ def groupnorm_bnd(d, n_groups=32):
 
 
 
-class swiglu(nn.Module):
-    def __init__(self, dim, exp_f=2, dim_out=None):
-        super().__init__()
-        self.dim = dim
-        self.dim_out = dim_out or dim
-        self.exp_f = exp_f
-        self.ff_in = nn.Linear(dim, dim*exp_f*2)
-        self.ff_out = nn.Linear(dim*exp_f, self.dim_out)
-
-    def forward(self, x):
-        a, b = self.ff_in(x).chunk(2, dim=-1)
-        return self.ff_out(F.silu(a) * b)
-
 
 class inner_network(nn.Module):
-    def __init__(self, d_model) -> None:
+    def __init__(self, d_model, layer) -> None:
         super().__init__()
-        self.in_ff = swiglu(d_model, exp_f=2, dim_out=d_model)
-        self.predictor_ff = swiglu(d_model, exp_f=1, dim_out=d_model)
-        self.groups = 16
-        # #register backward hooks on parameters
-        # for p in self.in_ff.parameters():
-        #     p.register_hook(lambda grad: grad * 0.1)
-        # for p in self.predictor_ff.parameters():
-        #     p.register_hook(lambda grad: grad * 2)
-        self.temp = nn.Parameter(torch.tensor(5.0))    
-        self.loss_w = nn.Parameter(torch.tensor(0.5))        
+        self.in_ff = feedforward.swiglu(d_model, exp_f=2, dim_out=d_model)
+        self.predictor_ff = feedforward.swiglu(d_model, exp_f=1, dim_out=d_model)
+        self.layer = layer
+        self.groups = 16    
 
     def forward(self, x, return_x = False, targets=None, mask = None):
         x = self.in_ff(x)
@@ -605,7 +588,9 @@ class inner_network(nn.Module):
 
         x = self.predictor_ff(x)
         x = rearrange(x, 'n (c d) -> n c d', c=self.groups)
-        sim = (1 - F.cosine_similarity(x, targets, dim=-1)).sum(-1)
+        sim = (1 - F.cosine_similarity(x, targets, dim=-1))
+        #print(self.layer, sim.mean(0))
+        sim = sim.sum(-1)
         
         if mask is not None:
             sim = sim.masked_fill(mask, 0)
@@ -619,32 +604,48 @@ class MetaLayer(nn.Module):
             self, 
             d_model, 
             layer=None,
+            **kwargs
         ):
         super().__init__()
         
-        self.inner_network = inner_network(d_model)
+        self.inner_network = inner_network(d_model, layer) # we keep track of layer_idx for debugging
 
-        self.norm_out = nn.LayerNorm(d_model)
+        norm_out_type = kwargs.get('meta_layer_norm_out_type', 'layer_norm')
+        self.toclip = kwargs.get('meta_layer_gradclip', False)
+        
+        if norm_out_type == 'layer_norm':
+            self.norm_out = nn.LayerNorm(d_model)
+        elif norm_out_type == 'none':
+            self.norm_out = nn.Identity()
+        else:
+            raise NotImplementedError(f'norm_out_type {norm_out_type} not implemented')
+
+        self.grad_norm_scale = 10.0
         self.lr = nn.Parameter(torch.tensor(1.0))
         self.layer = layer
-        self.u_ff = swiglu(d_model, exp_f=2, dim_out=d_model)
+        self.u_ff = feedforward.swiglu(d_model, exp_f=2, dim_out=d_model)
         #self.grad = None
         self.target_prediction = nn.Linear(d_model, d_model)
         
 
-    def clip_norm(self, grad): # shoudn't be needed
-        total_norm = grad.norm()
+    def clip_norm(self, grad:dict):
+        concat_grad = torch.cat([grad[k].flatten() for k in grad.keys()])
+        total_norm = torch.norm(concat_grad)
         clip_coeff = self.grad_norm_scale / (total_norm + 1e-6)
         clip_coeff_clamped = torch.clamp(clip_coeff, max=1.0)
-        return grad * clip_coeff_clamped
+        return {k: grad[k] * clip_coeff_clamped for k in grad.keys()}
 
     def fetch_targets(self, x):
         return rearrange(self.target_prediction(x), 'b n (c d) -> b n c d', c=self.inner_network.groups)
 
     def compute_forwards(self, x_norm, targets, compute_grad_fn, mask=None):
         grad = compute_grad_fn(x_norm, targets, mask)
+        grad = grad if not self.toclip else self.clip_norm(grad)
         u_p = dict(self.u_ff.named_parameters())
-        updated_params = {k: u_p['.'.join(k.split('.')[1:])] - grad[k] * self.lr.abs() if 'in_ff' in k else v for k,v in self.inner_network.named_parameters()}
+        # self.grad = grad if self.grad is None else {k: self.grad[k] * 1.0 + grad[k] * 0.0 for k in grad.keys()}
+        # grad = self.grad 
+        # print('//')
+        updated_params = {k: u_p['.'.join(k.split('.')[1:])] - grad[k] * self.lr.abs()  if 'in_ff' in k else v for k,v in self.inner_network.named_parameters()}
         fwd_out = functional_call(self.inner_network, updated_params, args=(x_norm), kwargs={'return_x': True}) # new forward with updated params
         return fwd_out
 
@@ -653,27 +654,6 @@ class MetaLayer(nn.Module):
         compute_grad = lambda x, tgts, msk: grad(compute_loss)(dict(self.inner_network.named_parameters()), x, tgts, msk)
         vmap_args = (x_norm, targets, mask) if mask is not None else (x_norm, targets)
         fwd_out = vmap(lambda x, targets, msk=None: self.compute_forwards(x, targets, compute_grad, mask=msk))(*vmap_args)
+        #print(self.norm_out.weight.mean(), self.layer, self.lr.abs())
         return self.norm_out(fwd_out)
 
-
-class ASRLinearSCDecoder(nn.Module):
-    def __init__(self, d_model, vocab_size, norm=False, norm_fn=DEFAULT_NORM):
-        super().__init__()
-        # Add 1 for blank char
-        self.num_classes = vocab_size + 1
-        self.ff = nn.Linear(d_model, self.num_classes)
-        self.reprojection = nn.Linear(self.num_classes, d_model)
-        self.norm = norm_fn(d_model) if norm else nn.Identity()
- 
-
-    def forward(self, x, logits=False):
-        x_norm = self.norm(x)
-        x = self.ff(x_norm)
-        x = F.log_softmax(x, dim=-1) if not logits else x
-        return x 
-
-    def project_back(self, x):
-        return self.reprojection(x)
-
-    def integrate_projections(self, x, proj1):
-        return x + proj1
