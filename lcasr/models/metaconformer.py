@@ -348,10 +348,7 @@ class ConformerLayer(nn.Module):
         self.bias_in_ff = bias_in_ff
         self.trasformer = transformer
 
-        self.n_augmentations = 1
 
-        # self.random_proj_norm = nn.LayerNorm(d_model)
-        self.register_buffer('random_projections', torch.randn(self.n_augmentations + 1, d_model, d_model)*0.5)
         self.random_proj_scale = nn.Parameter(torch.tensor(1.))
         self.residual_scale = nn.Parameter(torch.tensor(1.))
 
@@ -408,8 +405,9 @@ class ConformerLayer(nn.Module):
         length: list of lengths of the input sequence
         cached_kv: kvs from previous block-reccurrent time step
         '''
-        
+
         targets = self.ff2.fn.fn.fetch_targets(x)
+        
         x = self.do_ff(self.ff1(x)) + x
         
         
@@ -426,7 +424,8 @@ class ConformerLayer(nn.Module):
         
         if not self.trasformer:
             x = self.do_conv(self.conv(x, pad_mask = pad_mask)) + x
-        
+
+       
         x = self.do_ff(self.ff2(x, targets=targets, mask=pad_mask)) + x
         x = self.norm_out(x) 
 
@@ -569,22 +568,30 @@ def groupnorm_bnd(d, n_groups=32):
     )
 
 
-
-
 class inner_network(nn.Module):
-    def __init__(self, d_model, layer) -> None:
+    def __init__(self, d_model, layer, exp_mode=1) -> None:
         super().__init__()
         self.in_ff = feedforward.swiglu(d_model, exp_f=2, dim_out=d_model)
         self.predictor_ff = feedforward.swiglu(d_model, exp_f=1, dim_out=d_model)
         self.layer = layer
         self.groups = 16    
+        self.exp_mode = exp_mode
+        #print('exp_mode!!', exp_mode)
+        if exp_mode == 2:
+            self.emb_ff = nn.Linear(d_model, d_model)
+    
+    def forward(self, x_in, return_x = False, targets=None, mask = None):
+        if self.exp_mode == 2 and not return_x:
+            x_in = self.emb_ff(x_in)
+            
+        x = self.in_ff(x_in)
 
-    def forward(self, x, return_x = False, targets=None, mask = None):
-        x = self.in_ff(x)
         if return_x: 
             return x
+
         assert x.ndim == 2, 'input should be unbatched, use vmap over batch'
         assert targets is not None, 'targets should be provided if return_x is False'
+
 
         x = self.predictor_ff(x)
         x = rearrange(x, 'n (c d) -> n c d', c=self.groups)
@@ -607,12 +614,14 @@ class MetaLayer(nn.Module):
             **kwargs
         ):
         super().__init__()
-        
-        self.inner_network = inner_network(d_model, layer) # we keep track of layer_idx for debugging
 
         norm_out_type = kwargs.get('meta_layer_norm_out_type', 'layer_norm')
         self.toclip = kwargs.get('meta_layer_gradclip', False)
-        
+        self.grad_norm_scale = kwargs.get('meta_layer_grad_norm', 10.0)
+        exp_mode = kwargs.get('meta_layer_exp_mode', 1)
+
+        self.inner_network = inner_network(d_model, layer, exp_mode=exp_mode) # we keep track of layer_idx for debugging
+
         if norm_out_type == 'layer_norm':
             self.norm_out = nn.LayerNorm(d_model)
         elif norm_out_type == 'none':
@@ -620,7 +629,6 @@ class MetaLayer(nn.Module):
         else:
             raise NotImplementedError(f'norm_out_type {norm_out_type} not implemented')
 
-        self.grad_norm_scale = 10.0
         self.lr = nn.Parameter(torch.tensor(1.0))
         self.layer = layer
         self.u_ff = feedforward.swiglu(d_model, exp_f=2, dim_out=d_model)
@@ -636,7 +644,8 @@ class MetaLayer(nn.Module):
         return {k: grad[k] * clip_coeff_clamped for k in grad.keys()}
 
     def fetch_targets(self, x):
-        return rearrange(self.target_prediction(x), 'b n (c d) -> b n c d', c=self.inner_network.groups)
+        targets = rearrange(self.target_prediction(x), 'b n (c d) -> b n c d', c=self.inner_network.groups)
+        return targets
 
     def compute_forwards(self, x_norm, targets, compute_grad_fn, mask=None):
         grad = compute_grad_fn(x_norm, targets, mask)
@@ -644,7 +653,7 @@ class MetaLayer(nn.Module):
         u_p = dict(self.u_ff.named_parameters())
         # self.grad = grad if self.grad is None else {k: self.grad[k] * 1.0 + grad[k] * 0.0 for k in grad.keys()}
         # grad = self.grad 
-        # print('//')
+        #print('d',grad)
         updated_params = {k: u_p['.'.join(k.split('.')[1:])] - grad[k] * self.lr.abs()  if 'in_ff' in k else v for k,v in self.inner_network.named_parameters()}
         fwd_out = functional_call(self.inner_network, updated_params, args=(x_norm), kwargs={'return_x': True}) # new forward with updated params
         return fwd_out

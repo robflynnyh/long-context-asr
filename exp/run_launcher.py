@@ -25,7 +25,7 @@ source activate a100
 #SBATCH --time=96:00:00
 #SBATCH --mem=190GB
 #SBATCH --partition=gpu-h100
-#SBATCH --gres=gpu:h100:1
+#SBATCH --gres=gpu:h100:1   
 #SBATCH --qos=gpu
 #SBATCH --cpus-per-task=16
 
@@ -64,16 +64,17 @@ def main(args):
 
     for i in range(len(copies)):
         OmegaConf.save(copies[i], os.path.join(SAVE_DIR, f'{names[i]}.yaml'))
-        run_string = f"\npython train.py -config {os.path.join(SAVE_DIR, f'{names[i]}.yaml')} -num_workers 0" # -debug_hooks
-        run_string = run_strings[args.mode] + run_string
+        run_string_cmd = f"\npython {args.launch} -config {os.path.join(SAVE_DIR, f'{names[i]}.yaml')} -num_workers 0" # -debug_hooks
+        run_string = run_strings[args.mode] + run_string_cmd
         with open(os.path.join(SAVE_DIR, f'{names[i]}.sh'), 'w') as f:
             f.write(run_string)
         subprocess.run(['sbatch', os.path.join(SAVE_DIR, f'{names[i]}.sh')])
-        print(f'Launched {names[i]}')
+        print(f'Launched {names[i]} - {run_string_cmd}')
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-template','--template', type=str, required=True, help='Path to the template config file')
     parser.add_argument('-mode','--mode', type=str, default='a100', help='denotes launch string to use to start slurm script')
+    parser.add_argument('-l', '--launch', default='train.py', help='Path to the training script')
     args = parser.parse_args()
     main(args)
