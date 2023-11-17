@@ -3,13 +3,14 @@ import apex
 from torch.utils.checkpoint import checkpoint # # gradient/activation checkpointing
 from einops import rearrange
 from functools import partial
-from lcasr.components import fused_dense, subsampling, convolution, decoder
+from lcasr.components import fused_dense, subsampling, convolution, decoder, wrappers
 from lcasr.components.rotary_emb import RotaryPositionalEmbedding, apply_rotary
 from lcasr.utils.helpers import exists
 ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
 DEFAULT_NORM, RMSNorm, LayerNorm = apex.normalization.FusedRMSNorm, apex.normalization.FusedRMSNorm, apex.normalization.FusedLayerNorm
+PreNorm, Scale = wrappers.PreNorm, wrappers.Scale
 from flash_attn.flash_attention import FlashAttention
 from flash_attn.modules.mha import FlashCrossAttention
 from flash_attn.bert_padding import unpad_input, pad_input
@@ -277,30 +278,7 @@ class SCConformerXL(nn.Module):
         print(f'{pstr}: ', total/1e6, 'M')
         return total
 
-class PreNorm(nn.Module): # applies normalization before fn
-    def __init__(self, d_model, fn, norm = DEFAULT_NORM, sandwich_norm = False):
-        super().__init__()
-        self.norm = norm(d_model)
-        self.fn = fn
-        self.sandwich_norm = sandwich_norm
-        if self.sandwich_norm:
-            self.norm_out = norm(d_model)
 
-    def forward(self, x, **kwargs):
-        x = self.norm(x)
-        x = self.fn(x, **kwargs)
-        if self.sandwich_norm:
-            x = self.norm_out(x)
-        return x
-
-class Scale(nn.Module): # scales output of fn by scale
-    def __init__(self, scale, fn):
-        super().__init__()
-        self.scale = scale
-        self.fn = fn
-    
-    def forward(self, x, **kwargs):
-        return self.fn(x, **kwargs) * self.scale
 
 class ConformerLayer(nn.Module):
     def __init__(

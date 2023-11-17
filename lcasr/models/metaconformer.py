@@ -366,6 +366,8 @@ class ConformerLayer(nn.Module):
             self.do_conv = nn.Dropout(dropout_conv)
 
         #self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
+        exp_mode = kwargs.get('meta_layer_exp_mode', 1)
+        MetaLayer = MetaLayer2 if exp_mode == 3 else MetaLayer
         self.ff2 = Scale(0.5,
             PreNorm(
                 d_model = d_model,
@@ -666,3 +668,96 @@ class MetaLayer(nn.Module):
         #print(self.norm_out.weight.mean(), self.layer, self.lr.abs())
         return self.norm_out(fwd_out)
 
+
+
+
+class inner_network2(nn.Module):
+    def __init__(self, d_model, layer, exp_mode=1) -> None:
+        super().__init__()
+        self.predictor_ff = feedforward.swiglu(d_model, exp_f=1, dim_out=d_model)
+        self.layer = layer
+        self.groups = 16    
+        self.exp_mode = exp_mode
+     
+    def forward(self, x, targets=None, mask = None):
+        assert x.ndim == 2, 'input should be unbatched, use vmap over batch'
+        assert targets is not None, 'targets should be provided if return_x is False'
+
+        x = self.predictor_ff(x)
+        x = rearrange(x, 'n (c d) -> n c d', c=self.groups)
+        sim = (1 - F.cosine_similarity(x, targets, dim=-1))
+        #print(self.layer, sim.mean(0))
+        sim = sim.sum(-1)
+        
+        if mask is not None:
+            sim = sim.masked_fill(mask, 0)
+        sim = sim.mean() if mask is None else sim.sum() / (~mask).sum()
+
+        return sim
+
+
+
+class MetaLayer2(nn.Module):
+    def __init__(
+            self, 
+            d_model, 
+            layer=None,
+            **kwargs
+        ):
+        super().__init__()
+
+        norm_out_type = kwargs.get('meta_layer_norm_out_type', 'layer_norm')
+        self.toclip = kwargs.get('meta_layer_gradclip', False)
+        self.grad_norm_scale = kwargs.get('meta_layer_grad_norm', 10.0)
+        exp_mode = kwargs.get('meta_layer_exp_mode', 1)
+
+        self.inner_network = inner_network2(d_model, layer, exp_mode=exp_mode) # we keep track of layer_idx for debugging
+
+        if norm_out_type == 'layer_norm':
+            self.norm_out = nn.LayerNorm(d_model)
+        elif norm_out_type == 'none':
+            self.norm_out = nn.Identity()
+        else:
+            raise NotImplementedError(f'norm_out_type {norm_out_type} not implemented')
+
+        self.lr = nn.Parameter(torch.tensor(1.0))
+        self.layer = layer
+        self.u_ff = feedforward.swiglu(d_model, exp_f=2, dim_out=d_model)
+        self.w_p = nn.Linear(d_model, d_model*(4+2))
+        #self.grad = None
+        self.target_prediction = nn.Linear(d_model, d_model)
+        
+
+    def clip_norm(self, grad:dict):
+        concat_grad = torch.cat([grad[k].flatten() for k in grad.keys()])
+        total_norm = torch.norm(concat_grad)
+        clip_coeff = self.grad_norm_scale / (total_norm + 1e-6)
+        clip_coeff_clamped = torch.clamp(clip_coeff, max=1.0)
+        return {k: grad[k] * clip_coeff_clamped for k in grad.keys()}
+
+    def fetch_targets(self, x):
+        targets = rearrange(self.target_prediction(x), 'b n (c d) -> b n c d', c=self.inner_network.groups)
+        return targets
+
+    def compute_forwards(self, x_norm, targets, compute_grad_fn, mask=None):
+        grad = compute_grad_fn(x_norm, targets, mask)
+        w_p = self.w_p(x_norm)
+        d = x_norm.shape[-1]
+        ws = rearrange(w_p, 'n (s d) -> s n d', s=6)
+        wm = vmap(lambda w: torch.matmul(grad.transpose(-1, -2), w))(ws)
+        wa, wb = torch.cat(wm[:4].unbind(), dim=0), torch.cat(wm[4:].unbind(), dim=1)
+        grad = {'ff_in.weight': wa, 'ff_out.weight': wb}
+     
+        grad = grad if not self.toclip else self.clip_norm(u_p)
+        u_p = dict(self.u_ff.named_parameters())
+        updated_params = {k: u_p[k] - grad[k] * self.lr.abs()  if 'in_ff' in k else v for k,v in grad.items()}
+        fwd_out = functional_call(self.u_ff, updated_params, x_norm)
+        return fwd_out
+
+    def forward(self, x_norm, targets, mask=None):
+        compute_loss = lambda x, tgts, msk: self.inner_network(x = x, targets=targets, mask=msk)
+        compute_grad = lambda x, tgts, msk: grad(compute_loss)(x, tgts, msk)
+        vmap_args = (x_norm, targets, mask) if mask is not None else (x_norm, targets)
+        fwd_out = vmap(lambda x, targets, msk=None: self.compute_forwards(x, targets, compute_grad, mask=msk))(*vmap_args)
+        #print(self.norm_out.weight.mean(), self.layer, self.lr.abs())
+        return self.norm_out(fwd_out)

@@ -5,5 +5,7 @@ from . import (
     batchrenorm,
     rotary_emb,
     decoder,
-    feedforward
+    feedforward,
+    helpers,
+    wrappers
 )
