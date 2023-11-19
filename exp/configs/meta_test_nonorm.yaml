@@ -19,14 +19,15 @@ model:
   decoder_norm: true
   use_rotary: true
   encoder_mode: conformer 
-  default_norm: layer_norm
+  default_norm: rms_norm
   sandwich_norm: false
   bias_in_ff: false
   checkpoint_subsampling: false
   checkpoint_every_n_layers: 0
   flash_attn: true
-  meta_layer_exp_mode: 3
-  #meta_layer_norm_out_type: 'layer_norm'
+  meta_layer_norm_out_type: 'rms_norm'
+  meta_layer_zg: false
+  meta_layer_random_proj: true
   #meta_layer_gradclip: True
   #meta_layer_grad_norm: 10.0
   #rotary_base_freq: 1500000 # https://arxiv.org/pdf/2309.16039.pdf
@@ -68,11 +69,11 @@ sequence_scheduler:
 wandb:
   use: true
   project_name: spotify_long_context
-  name: 'meta_l_exp3'
+  name: 'meta_l_rndproj'
   id: '' #
 
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/meta_l_exp3
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/meta_l_rndproj
   save_every_n_steps: 2000  
 
 data:

@@ -39,11 +39,9 @@ class STConformer(nn.Module):
         dropout_ff = 0.0,
         dropout_conv = 0.0,
         dropout_attn = 0.0,
-        checkpoint_every_n_layers = 0,
         conv_kernel_size = 9,
         conv_expansion_factor = 1,
         decoder_norm = False,
-        use_rotary = False,
         rotary_interpolation_factor = 1.0, # https://arxiv.org/abs//2306.15595 Extending Context Window of Large Language Models via Positional Interpolation
         learned_rotary = False,
         self_conditioning = True,
@@ -52,6 +50,7 @@ class STConformer(nn.Module):
         bias_in_ff = False,
         **kwargs
     ):
+        super().__init__()
         self.feat_in = feat_in
         self.n_layers = n_layers
         self.d_model = d_model
@@ -67,13 +66,10 @@ class STConformer(nn.Module):
         self.bias_in_ff = bias_in_ff
 
         accepted_norms = ['rms_norm', 'layer_norm']
-        accepted_subsampling_acts = ['silu', 'relu', 'gelu', 'none']
-        assert subsampling_act in accepted_subsampling_acts, f'subsampling_act must be one of {accepted_subsampling_acts} (got {subsampling_act})'
         assert default_norm in accepted_norms, f'default_norm must be one of {accepted_norms} (got {default_norm})'
         default_norm = RMSNorm if default_norm == 'rms_norm' else LayerNorm
 
         subsampling_act = components.helpers.get_act(subsampling_act)
-
 
         self.dropout_ff = dropout_ff
         self.dropout_conv = dropout_conv
@@ -86,12 +82,12 @@ class STConformer(nn.Module):
         self.decoder_norm = decoder_norm
 
 
-        self.rotary_pos_emb = RotaryPositionalEmbedding(
-            dim = head_dim,
-            base = kwargs.get('rotary_base_freq', 10000),
-            learned_freq = learned_rotary,
-            rotary_interpolation_factor = rotary_interpolation_factor
-        )
+        # self.rotary_pos_emb = RotaryPositionalEmbedding(
+        #     dim = head_dim,
+        #     base = kwargs.get('rotary_base_freq', 10000),
+        #     learned_freq = learned_rotary,
+        #     rotary_interpolation_factor = rotary_interpolation_factor
+        # )
 
         self.decoder = decoder.ASRLinearSCDecoder(
             d_model = d_model,
@@ -138,18 +134,19 @@ class STConformer(nn.Module):
     def forward(
             self, 
             audio_signal, 
-            rotary_cos_sin,
-            length = None,
+            length,
+            rotary_cos_sin=None,
             return_logits = False,
             attn_mask = None,
             pad_mask = None,
         ):
         decoder = self.decoder
+        audio_signal = audio_signal.unsqueeze(0)
         max_audio_length: int = audio_signal.size(-1)
 
   
         audio_signal = torch.transpose(audio_signal, 1, 2)
-        audio_signal, length = self.subsampling(audio_signal, lengths = length) if not self.checkpoint_subsampling else checkpoint(self.create_custom_forward(self.subsampling), audio_signal, length)
+        audio_signal, length = self.subsampling(audio_signal, lengths = length) 
         
         rotary_emb_fn = None
         for lth, layer in enumerate(self.layers):
@@ -165,7 +162,7 @@ class STConformer(nn.Module):
                 iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
                 audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))        
 
-        audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
+        audio_signal = decoder.norm(audio_signal)
         final_posts = decoder(x = audio_signal, logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
 
         return {
@@ -263,9 +260,7 @@ class ConformerLayer(nn.Module):
 
         x = self.do_attn_out(self.attend(
             x = x,
-            length = length,
             attn_mask = attn_mask,
-            pad_mask = pad_mask,
             rotary_emb_fn = rotary_emb_fn
         )) + x
         
@@ -304,19 +299,14 @@ class Attention(nn.Module):
         a_weight = a_weight.softmax(dim=-1)
         return torch.einsum("b h i j, b h j d -> b h i d", a_weight, v), a_weight
         
-    def forward(self, x, length, attn_mask=None, pad_mask=None, rotary_emb_fn = None):
-        if pad_mask is not None:
-            x = x.masked_fill(pad_mask.unsqueeze(-1), 0)
+    def forward(self, x, attn_mask=None, rotary_emb_fn = None):
 
         q, k, v = self.qkv(x)
-        q, k = rotary_emb_fn.apply(q, k)
+        q, k = rotary_emb_fn.apply(q, k) if rotary_emb_fn is not None else (q, k)
         q, k, v = q.transpose(1, 2).contiguous(), k.transpose(1, 2).contiguous(), v.transpose(1, 2).contiguous()
+        #q,k,v = q.squeeze(0), k.squeeze(0), v.squeeze(0)
         out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
         out = rearrange(out, "b h n d -> b n (h d)")
-    
-        if pad_mask != None:
-            out = out.masked_fill(pad_mask.unsqueeze(-1), 0)
-
         out = self.out_proj(out)
         
         return out
