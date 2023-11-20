@@ -1,0 +1,107 @@
+model:
+  feat_in: 80
+  n_layers: 3
+  teacher_layers: 2
+  d_model: 512
+  n_heads: 6
+  head_dim: 64
+  dropout_ff: 0.0
+  dropout_attn: 0.0
+  dropout_conv: 0.0
+  subsampling_factor: 8
+  subsampling: dw_striding
+  subsampling_act: silu
+  subsampling_conv_channels: 256
+  subsampling_norm_out: false
+  conv_kernel_size: 9
+  qk_rms_norm: false
+  self_conditioning: true
+  gated_sc: false
+  decoder_norm: true
+  use_rotary: true
+  default_norm: rms_norm
+  sandwich_norm: false
+  bias_in_ff: false
+  #meta_layer_gradclip: True
+  #meta_layer_grad_norm: 10.0
+  #rotary_base_freq: 1500000 # https://arxiv.org/pdf/2309.16039.pdf
+
+optimizer:
+  name: madgrad
+  args:
+    lr: 7e-4
+
+scheduler:
+  warmup_steps: 9000
+
+audio_chunking:
+  size: 1024
+  overlap: 0
+
+sequence_scheduler:
+  increase_every: 5000
+  stop_after: 90000
+  start_after: 0
+  max_sequence_length: 8192
+  increase_by_multiplier: 2
+  batch_size_multiplier: 0.75
+
+# 512:0
+# 1024:4000
+# 2048: 14000
+# 4096: 24000
+# 8192: 34000
+# 16384: 44000
+# 32768: 54000
+# 65536: 64000
+# 131072: 74000
+# 262144: 84000
+# 360000: 90000
+
+
+
+wandb:
+  use: true
+  project_name: spotify_long_context
+  name: 'st_test'
+  id: '' #
+
+checkpointing:
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/st_test
+  save_every_n_steps: 2000  
+
+data:
+  path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
+
+spec_augment:
+  n_time_masks: 1 # Number of time masks. If its value is zero, no time masking will be applied 
+  time_mask_param: -1 # Maximum possible length of the time mask if it is set to -1, min_p is used
+  n_freq_masks: 3 # Number of frequency masks. If its value is zero, no frequency masking will be applied
+  freq_mask_param: 40 # Maximum possible length of the frequency mask
+  iid_masks: true # Applies iid masks to each of the examples in the batch dimension.
+  min_p: 0.01 # minimum proportion of time steps that can be masked. Must be within range [0.0, 1.0]. (Default: -1 which means use fixed number of masks)
+  max_p: 0.5 # maximum proportion of time steps that can be masked. Must be within range [0.0, 1.0]. (Default: 1.0)
+  zero_masking: true # If true, masked values will be set to zero, otherwise they will be set to the mean value of the input spectrogram
+
+
+training:
+  start_spec_augment_after_n_epochs: -1 # -1 to disable
+  max_epochs: 1
+  batch_size: 96
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
+  clip_value: 0.8
+  intermediate_loss_weighting: 0.0
+  #sim_loss_weight: 0.001
+
+
+# size: 512 = batch size 704
+# size: 1024 = batch size 352
+# size: 2048 = batch size 176
+# size: 4096 = batch size 88
+# size: 8192 = batch size 44
+# size: 16384 = batch size 22
+# size: 65536 = batch size 5 
+# size: 131072 = batch size 2
+# size: 360000 (1 hour) =  batch size 1

@@ -592,7 +592,7 @@ class inner_network(nn.Module):
         x = self.predictor_ff(x)
         x = rearrange(x, 'n (c d) -> n c d', c=self.groups)
         sim = (1 - F.cosine_similarity(x, targets, dim=-1))
-        #print(self.layer, sim.mean(0))
+        
         sim = sim.sum(-1)
         
         if mask is not None:
@@ -655,9 +655,10 @@ class MetaLayer(nn.Module):
         grad = grad if not self.toclip else self.clip_norm(grad)
         u_p = dict(self.u_ff.named_parameters())
         
-        #self.grad = grad if self.grad is None else {k: self.grad[k] * 0.1 + grad[k] * 0.9 for k in grad.keys()}
-        #grad = self.grad 
-        #print('d',self.lr.abs(),self.layer)
+        #print({k:v.max() for k,v in grad.items()})
+        # self.grad = grad if self.grad is None else {k: self.grad[k] * 0.2 + grad[k] * 0.8 for k in grad.keys()}
+        # grad = self.grad 
+        #print('/',self.lr.abs(),self.layer)
         updated_params = {k: u_p['.'.join(k.split('.')[1:])] - grad[k] * self.lr.abs()  if 'in_ff' in k else v for k,v in self.inner_network.named_parameters()}
         fwd_out = functional_call(self.inner_network, updated_params, args=(x_norm), kwargs={'return_x': True}) # new forward with updated params
         return fwd_out

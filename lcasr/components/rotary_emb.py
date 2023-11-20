@@ -22,6 +22,7 @@ class RotaryPositionalEmbedding(torch.nn.Module): # TODO: incl fused kernel vers
         super().__init__()
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
         self.learned_freq = learned_freq
+        self.dim = dim
 
         if self.learned_freq:
             self.inv_freq = torch.nn.Parameter(inv_freq, requires_grad=True)
