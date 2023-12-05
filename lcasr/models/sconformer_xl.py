@@ -121,7 +121,6 @@ class SCConformerXL(nn.Module):
             vocab_size = vocab_size,
             norm = decoder_norm,
             norm_fn = default_norm,
-            expansion = kwargs.get('decoder_expansion', 1),
         )
 
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
@@ -269,7 +268,7 @@ class SCConformerXL(nn.Module):
         return {
             'final_posteriors': final_posts,
             'kvs_to_cache': kvs_to_cache,
-            'length': length * decoder.expansion,
+            'length': length,
             'full_kv_lengths': full_kv_lengths, # kv cache is returned, however we don't use this and is left over from prior experiments
         }
 

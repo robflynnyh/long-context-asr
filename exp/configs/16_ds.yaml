@@ -13,7 +13,7 @@ model:
   subsampling_conv_channels: 512
   self_condition_subsampling: false
   subsampling_norm_out: false
-  conv_kernel_size: 4
+  conv_kernel_size: 5
   self_conditioning: true
   gated_sc: false
   decoder_norm: true
