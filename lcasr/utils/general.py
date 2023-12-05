@@ -10,7 +10,7 @@ from apex.optimizers import FusedAdam
 from torch.optim import Adam
 import madgrad
 
-def load_model(config:Dict, vocab_size, model_class=MetaConformer):
+def load_model(config:Dict, vocab_size, model_class=SCConformerXL):
     model = model_class(**config.model, vocab_size=vocab_size)
     return model
 

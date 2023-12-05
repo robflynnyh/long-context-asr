@@ -2,7 +2,7 @@ import torch, argparse, lcasr, wandb, re, pickle as pkl, ray, random
 from tqdm import tqdm
 from typing import List 
 from omegaconf.omegaconf import OmegaConf
-from lming.decoding import beam_search
+from lcasr.decoding import ctc_beam_search as beam_search
 from lming.utils import general
 from lcasr.eval.wer import word_error_rate_detail 
 from functools import partial

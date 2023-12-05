@@ -121,6 +121,7 @@ class SCConformerXL(nn.Module):
             vocab_size = vocab_size,
             norm = decoder_norm,
             norm_fn = default_norm,
+            expansion = kwargs.get('decoder_expansion', 1),
         )
 
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
@@ -268,7 +269,7 @@ class SCConformerXL(nn.Module):
         return {
             'final_posteriors': final_posts,
             'kvs_to_cache': kvs_to_cache,
-            'length': length,
+            'length': length * decoder.expansion,
             'full_kv_lengths': full_kv_lengths, # kv cache is returned, however we don't use this and is left over from prior experiments
         }
 
@@ -324,7 +325,9 @@ class ConformerLayer(nn.Module):
             )
             self.do_conv = nn.Dropout(dropout_conv)
 
-        self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
+        if not self.trasformer:
+            self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
+        
         self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
         self.do_ff = nn.Dropout(dropout_ff)
 
@@ -356,7 +359,8 @@ class ConformerLayer(nn.Module):
         cached_kv: kvs from previous block-reccurrent time step
         '''
 
-        x = self.do_ff(self.ff1(x)) + x
+        if not self.trasformer:
+            x = self.do_ff(self.ff1(x)) + x
 
         attn_out, kv_to_cache = self.attend(
             x = x,

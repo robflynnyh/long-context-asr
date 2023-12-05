@@ -29,7 +29,7 @@ model:
 optimizer:
   name: madgrad
   args:
-    lr: 7e-4
+    lr: 3e-4
 
 scheduler:
   warmup_steps: 9000
@@ -44,7 +44,7 @@ sequence_scheduler:
   start_after: 0
   max_sequence_length: 8192
   increase_by_multiplier: 2
-  batch_size_multiplier: 0.75
+  batch_size_multiplier: 0.7
 
 # 512:0
 # 1024:4000
@@ -64,7 +64,7 @@ wandb:
   use: true
   project_name: spotify_long_context
   name: 'st_test'
-  id: '' #
+  id: 'uw0bwgdt' #
 
 checkpointing:
   dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/st_test
@@ -87,12 +87,13 @@ spec_augment:
 training:
   start_spec_augment_after_n_epochs: -1 # -1 to disable
   max_epochs: 1
-  batch_size: 96
+  batch_size: 64
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
+  random_seed: 34421
   #sim_loss_weight: 0.001
 
 

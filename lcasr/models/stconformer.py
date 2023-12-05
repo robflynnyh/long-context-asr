@@ -438,3 +438,4 @@ def stconformer_fwd(instance:STConformer, x, lengths=None):
         'length': lengths       
     }
     
+STConformer.fwd = stconformer_fwd
