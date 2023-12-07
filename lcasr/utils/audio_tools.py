@@ -47,7 +47,7 @@ def to_spectogram(waveform:torch.Tensor, global_normalisation=True):
     spec = torchaudio.transforms.MelSpectrogram(
         win_length = WIN_LENGTH,
         hop_length = HOP_LENGTH,
-        n_fft = 2 ** math.ceil(math.log2(400)), # 512
+        n_fft = 2 ** math.ceil(math.log2(WIN_LENGTH)), # 512
         n_mels = 80,
         normalized = False
     )(waveform)
@@ -64,11 +64,11 @@ def total_frames(seconds:float) -> int:
     '''inverse of total_seconds'''
     return int((seconds * 16000) / HOP_LENGTH) 
 
-def processing_chain(path_in:str):
+def processing_chain(path_in:str, normalise:bool = True):
     waveform, sample_rate = load(path_in)
     waveform = grab_left_channel(waveform)
     waveform = resample(waveform, sample_rate, SR)
-    spectrogram = to_spectogram(waveform, global_normalisation=True)
+    spectrogram = to_spectogram(waveform, global_normalisation=normalise)
     return spectrogram
 
 
