@@ -34,7 +34,7 @@ def decode_beams_lm(
         )
         decoded_data.append({
                 'text': beams[0].text,
-                'frames': [proc_text_frame(el) for el in beams[0].text_frames],
+                'frames': [proc_text_frame(el) for el in beams[0].text_frames] if ds_factor != None else None,
                 'ngram_score': beams[0].lm_score - beams[0].logit_score,
                 'am_score': beams[0].logit_score,
                 'score': beams[0].lm_score # # score = ngram_score + am_score
