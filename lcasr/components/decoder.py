@@ -12,7 +12,7 @@ class ASRLinearSCDecoder(nn.Module):
         ):
         super().__init__()
         # Add 1 for blank char
-        
+        self.num_classes = vocab_size + 1
         self.ff = nn.Linear(d_model, self.num_classes)
         self.reprojection = nn.Linear(self.num_classes, d_model)
         self.norm = norm_fn(d_model) if norm else nn.Identity()

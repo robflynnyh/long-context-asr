@@ -9,4 +9,4 @@
 module load Anaconda3/2022.10
 source activate a100
 
-python train.py -config ./configs/16_ds.yaml
+python train.py -config ./configs/no_ds.yaml

@@ -97,7 +97,7 @@ def load_checkpoint(
         print('SETTING OPTIMIZER TO NONE DUE TO NON-STRICT LOAD')
         optimizer = None
     print(f'loaded model from {path}')
-    if optimizer != None and 'optimizer' in checkpoint:
+    if optimizer != None and 'optimizer' in checkpoint and checkpoint['optimizer'] != None:
         optimizer.load_state_dict(checkpoint['optimizer'])
 
     if scheduler != None and 'scheduler' in checkpoint and checkpoint['scheduler'] != None:

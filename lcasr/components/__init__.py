@@ -7,5 +7,6 @@ from . import (
     decoder,
     feedforward,
     helpers,
-    wrappers
+    wrappers, 
+    dynamicpos
 )
