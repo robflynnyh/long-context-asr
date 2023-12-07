@@ -20,6 +20,7 @@ from lcasr.components.subsampling import StackingSubsampling
 from abc import ABC, abstractmethod
 from typing import List
 import sentencepiece
+import os
 
 
 import torch
