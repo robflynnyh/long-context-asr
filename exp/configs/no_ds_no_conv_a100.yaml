@@ -1,3 +1,12 @@
+template_info:
+  create: 6 # number of experiments to create
+  include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training'] # keys to include in experiments config
+  template_keys: [
+    'checkpointing.dir', 
+    'wandb.name', 
+    'optimizer.args.momentum',
+  ] # keys to use to create experiments
+
 model:
   feat_in: 80
   n_layers: 6
@@ -7,7 +16,7 @@ model:
   dropout_ff: 0.0
   dropout_attn: 0.0
   dropout_conv: 0.0
-  subsampling_factor: 2
+  subsampling_factor: 4
   transformer: true
   subsampling: dw_striding
   subsampling_act: silu
@@ -28,13 +37,14 @@ model:
 optimizer:
   name: madgrad
   args:
-    lr: 1e-4
+    lr: 3e-4
+    momentum: [0.7, 0.8, 0.85, 0.88, 0.9, 0.95]
 
 scheduler:
-  warmup_steps: 6000
+  warmup_steps: 2500
 
 audio_chunking:
-  size: 1024
+  size: 2048
   overlap: 0
 
 # sequence_scheduler:
@@ -62,11 +72,26 @@ audio_chunking:
 wandb:
   use: true
   project_name: spotify_long_context
-  name: 'transformer_2ds_sandwichnorm'
+  name: [
+    'no_ds_no_conv_momentum_0p7',
+    'no_ds_no_conv_momentum_0p8',
+    'no_ds_no_conv_momentum_0p85',
+    'no_ds_no_conv_momentum_0p88',
+    'no_ds_no_conv_momentum_0p9',
+    'no_ds_no_conv_momentum_0p95',
+  ]
   id: '' #zhmi8ijr
 
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/transformer_2ds_sandwichnorm
+  dir: [
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_ds_no_conv_momentum_0p7',
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_ds_no_conv_momentum_0p8',
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_ds_no_conv_momentum_0p85',
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_ds_no_conv_momentum_0p88',
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_ds_no_conv_momentum_0p9',
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_ds_no_conv_momentum_0p95',
+
+    ]
   save_every_n_steps: 2000
 
 data:
@@ -81,7 +106,7 @@ training:
   max_seq_len: 0
   clip_value: 1.0
   intermediate_loss_weighting: 0.0
-  random_seed: 12341
+  random_seed: 14349
 
 
 # size: 512 = batch size 704
