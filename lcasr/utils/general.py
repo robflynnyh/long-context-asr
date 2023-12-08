@@ -1,8 +1,8 @@
 import torch
 from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
-from lcasr.models.metaconformer import MetaConformer
-from lcasr.models.stconformer import STConformer
+# from lcasr.models.metaconformer import MetaConformer
+# from lcasr.models.stconformer import STConformer
 from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler
 import os
 
