@@ -22,10 +22,10 @@ from flash_attn.bert_padding import unpad_input, pad_input
 # -. remove intermediate losses stuff as it is not used anymore
 # -. fuse self-conditioning layers
 
-class SCConformerXL(nn.Module): 
+class EncDecSconformer(nn.Module): 
     def __init__(
         self,
-        vocab_size = 128,
+        vocab_size = 4096,
         feat_in = 80,
         subsampling = 'dw_striding',
         subsampling_factor = 8,
@@ -33,7 +33,7 @@ class SCConformerXL(nn.Module):
         subsampling_act = 'silu',
         subsampling_norm_out = False,
         self_condition_subsampling = False,
-        n_layers = 6,
+        n_layers = 3,
         d_model = 768,
         n_heads = 6,
         head_dim = 128,
@@ -391,6 +391,7 @@ class Attention(nn.Module):
         n_heads,
         bias=False,
         dropout=0.0,
+        causal=False,
         **kwargs
     ):
         super().__init__()
@@ -407,10 +408,10 @@ class Attention(nn.Module):
         self.activation = nn.Softmax(dim=-1)
 
         self.dropout_p = dropout
-
+        self.causal = causal
         # softmax_scale is set to None but will default to 1/sqrt(d_k) in FlashAttention
         self.flash_attn_fn = FlashAttention(softmax_scale = None, attention_dropout = dropout)
-        self.flash_attn_c_fn = FlashCrossAttention(softmax_scale = None, attention_dropout = dropout)
+        self.flash_attn_c_fn = FlashCrossAttention(softmax_scale = None, attention_dropout = dropout, causal = causal)
 
         self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=bias)
 
@@ -472,7 +473,7 @@ class Attention(nn.Module):
 
             if kv.shape[1] == q.shape[1]: # if kv_seq_len == q_seq_len use self attention else use cross attention
                 qkv = torch.cat([q[:,:,None], kv], dim=2)
-                out = self.flash_attn_fn(qkv, attn_mask)[0] #!!! !!!!!!
+                out = self.flash_attn_fn(qkv, attn_mask, causal=self.causal)[0] #!!! !!!!!!
             else:
                 out = self.flash_attn_c_fn(q, kv)
                 if attn_mask is None:
@@ -512,3 +513,74 @@ class Attention(nn.Module):
 
 
 
+class CrossAttnDecoder(nn.Module):
+    def __init__(
+        self,
+        vocab_size = 4096,
+        feat_in = 80,
+        n_layers = 3,
+        d_model = 768,
+        n_heads = 6,
+        head_dim = 128,
+        expansion_factor = 4,
+        dropout_ff = 0.0,
+        dropout_attn = 0.0,
+        decoder_norm = True,
+        use_rotary = True,
+        rotary_interpolation_factor = 1.0, # https://arxiv.org/abs//2306.15595 Extending Context Window of Large Language Models via Positional Interpolation
+        default_norm = 'rms_norm',
+        bias_in_ff = False,
+        **kwargs
+    ):
+        super().__init__()
+
+        self.feat_in = feat_in
+        self.d_model = d_model
+        self.n_layers = n_layers
+        self.n_heads = n_heads
+        self.head_dim = head_dim
+        self.expansion_factor = expansion_factor
+        self.dropout_ff = dropout_ff
+        self.dropout_attn = dropout_attn
+        self.decoder_norm = decoder_norm
+        self.use_rotary = use_rotary
+        self.rotary_interpolation_factor = rotary_interpolation_factor
+        self.bias_in_ff = bias_in_ff
+        self.default_norm = default_norm
+
+        self.embed = nn.Embedding(vocab_size, d_model)
+        self.embed_dropout = nn.Dropout(dropout_attn)
+
+        accepted_norms = ['rms_norm', 'layer_norm']
+        assert default_norm in accepted_norms, f'default_norm must be one of {accepted_norms} (got {default_norm})'
+        default_norm = RMSNorm if default_norm == 'rms_norm' else LayerNorm
+
+        self.layers = nn.ModuleList([])
+        for _ in range(n_layers):
+            self.layers.append(
+                PreNorm(d_model, Attention(
+                    n_feats = d_model,
+                    n_heads = n_heads,
+                    head_dim = head_dim,
+                    bias = bias_in_ff,
+                    causal = True,
+                    dropout = dropout_attn,
+                )),
+                PreNorm(d_model, Attention(
+                    n_feats = d_model,
+                    n_heads = n_heads,
+                    head_dim = head_dim,
+                    bias = bias_in_ff,
+                    causal = False,
+                    dropout = dropout_attn,
+                )),
+                PreNorm(d_model, ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff))
+            )
+
+        self.out_proj = nn.Sequential(
+            nn
+        )
+    
+
+
+                    
