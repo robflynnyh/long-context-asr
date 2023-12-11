@@ -11,25 +11,25 @@ SAVE_DIR = './.tmp'
 run_strings = {
     'a100':f"""#!/bin/bash\n
 #SBATCH --time=90:00:00
-#SBATCH --mem=180GB
+#SBATCH --mem=150GB
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --qos=gpu
 #SBATCH --cpus-per-task=8
 
-module load Anaconda3/2022.10 binutils/2.35-GCCcore-10.2.0 CUDA/11.8.0 cuDNN/8.6.0.163-CUDA-11.8.0 GCCcore/10.2.0
+module load Anaconda3/2022.10
 source activate a100
 
 """,
     'h100':f"""#!/bin/bash\n
 #SBATCH --time=96:00:00
-#SBATCH --mem=190GB
+#SBATCH --mem=150GB
 #SBATCH --partition=gpu-h100
 #SBATCH --gres=gpu:h100:1   
 #SBATCH --qos=gpu
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=8
 
-module load Anaconda3/2022.10 binutils/2.35-GCCcore-10.2.0 CUDA/11.8.0 cuDNN/8.6.0.163-CUDA-11.8.0 GCCcore/10.2.0
+module load Anaconda3/2022.10
 source activate a100
 
 """

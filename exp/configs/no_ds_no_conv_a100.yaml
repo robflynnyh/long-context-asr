@@ -1,24 +1,24 @@
 template_info:
-  create: 6 # number of experiments to create
-  include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training'] # keys to include in experiments config
+  create: 7 # number of experiments to create
+  include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training', 'sequence_scheduler'] # keys to include in experiments config
   template_keys: [
     'checkpointing.dir', 
     'wandb.name', 
-    'optimizer.args.momentum',
+    'training.random_seed',
   ] # keys to use to create experiments
 
 model:
   feat_in: 80
   n_layers: 6
   d_model: 768
-  n_heads: 12
-  head_dim: 64
+  n_heads: 6
+  head_dim: 128
   dropout_ff: 0.0
   dropout_attn: 0.0
   dropout_conv: 0.0
   subsampling_factor: 4
   transformer: true
-  subsampling: dw_striding
+  subsampling: striding
   subsampling_act: silu
   subsampling_conv_channels: -1
   self_condition_subsampling: false
@@ -37,23 +37,22 @@ model:
 optimizer:
   name: madgrad
   args:
-    lr: 3e-4
-    momentum: [0.7, 0.8, 0.85, 0.88, 0.9, 0.95]
+    lr: 1e-4
 
 scheduler:
-  warmup_steps: 2500
+  warmup_steps: 40000
 
 audio_chunking:
-  size: 2048
+  size: 512
   overlap: 0
 
-# sequence_scheduler:
-#   increase_every: 5000
-#   stop_after: 90000
-#   start_after: 0
-#   max_sequence_length: 16384
-#   increase_by_multiplier: 2
-#   batch_size_multiplier: 0.5
+sequence_scheduler:
+  increase_every: 4000
+  stop_after: 90000
+  start_after: 0
+  max_sequence_length: 2048
+  increase_by_multiplier: 2
+  batch_size_multiplier: 1
 
 # 512:0
 # 1024:4000
@@ -72,24 +71,26 @@ audio_chunking:
 wandb:
   use: true
   project_name: spotify_long_context
-  name: [
-    'no_ds_no_conv_momentum_0p7',
-    'no_ds_no_conv_momentum_0p8',
-    'no_ds_no_conv_momentum_0p85',
-    'no_ds_no_conv_momentum_0p88',
-    'no_ds_no_conv_momentum_0p9',
-    'no_ds_no_conv_momentum_0p95',
+  name: [ # 7 repetitions
+    'transformer_rp_1',
+    'transformer_rp_2',
+    'transformer_rp_3',
+    'transformer_rp_4',
+    'transformer_rp_5',
+    'transformer_rp_6',
+    'transformer_rp_7',
   ]
   id: '' #zhmi8ijr
 
 checkpointing:
   dir: [
-      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_ds_no_conv_momentum_0p7',
-      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_ds_no_conv_momentum_0p8',
-      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_ds_no_conv_momentum_0p85',
-      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_ds_no_conv_momentum_0p88',
-      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_ds_no_conv_momentum_0p9',
-      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_ds_no_conv_momentum_0p95',
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/transformer_rp_1',
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/transformer_rp_2',
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/transformer_rp_3',
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/transformer_rp_4',
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/transformer_rp_5',
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/transformer_rp_6',
+      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/transformer_rp_7',
 
     ]
   save_every_n_steps: 2000
@@ -100,13 +101,21 @@ data:
 training:
   start_spec_augment_after_n_epochs: -1 # -1 to disable
   max_epochs: 1
-  batch_size: 132
+  batch_size: 88
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
-  clip_value: 1.0
+  clip_value: 0.1
   intermediate_loss_weighting: 0.0
-  random_seed: 14349
+  random_seed: [
+    17492,
+    19924,
+    43531,
+    9001184,
+    1212140,
+    1421,
+    14290,
+  ]
 
 
 # size: 512 = batch size 704
