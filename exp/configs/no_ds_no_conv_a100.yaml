@@ -1,5 +1,5 @@
 template_info:
-  create: 7 # number of experiments to create
+  create: 3 # number of experiments to create
   include_keys: ['model', 'optimizer', 'scheduler', 'audio_chunking', 'wandb', 'checkpointing', 'data', 'training', 'sequence_scheduler'] # keys to include in experiments config
   template_keys: [
     'checkpointing.dir', 
@@ -37,7 +37,10 @@ model:
 optimizer:
   name: madgrad
   args:
-    lr: 1e-4
+    lr: 3e-4
+    weight_decay: 0.1
+    decouple_decay: true
+    
 
 scheduler:
   warmup_steps: 40000
@@ -105,7 +108,7 @@ training:
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
-  clip_value: 0.1
+  clip_value: 1.0
   intermediate_loss_weighting: 0.0
   random_seed: [
     17492,
