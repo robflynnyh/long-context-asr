@@ -9,7 +9,7 @@ template_info:
 
 model:
   feat_in: 80
-  n_layers: 6
+  n_layers: 3
   d_model: 768
   n_heads: 6
   head_dim: 128
@@ -37,7 +37,7 @@ model:
 optimizer:
   name: madgrad
   args:
-    lr: 3e-4
+    lr: 4e-4
     weight_decay: 0.1
     decouple_decay: true
     
@@ -75,7 +75,6 @@ wandb:
   use: true
   project_name: spotify_long_context
   name: [ # 7 repetitions
-    'transformer_rp_1',
     'transformer_rp_2',
     'transformer_rp_3',
     'transformer_rp_4',
@@ -87,7 +86,6 @@ wandb:
 
 checkpointing:
   dir: [
-      '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/transformer_rp_1',
       '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/transformer_rp_2',
       '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/transformer_rp_3',
       '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/transformer_rp_4',

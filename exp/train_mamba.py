@@ -304,8 +304,6 @@ def train(
                     batch_size = batch_size,
                     seen_ids = seen_ids,
                 )
-                if args.config['model']['use_rotary'] and args.config['sequence_scheduler'].get('interpolate_rotary', False):
-                    model.rotary_pos_emb.rotary_interpolation_factor = model.rotary_pos_emb.rotary_interpolation_factor * sequence_scheduler.increase_by_multiplier
                 dataloader_iter = iter(dataloader)
                 pbar.total = len(dataloader) # update total of tqdm
                 

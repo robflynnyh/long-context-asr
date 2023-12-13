@@ -6,24 +6,22 @@ model:
 optimizer:
   name: madgrad
   args:
-    lr: 1e-3
-    weight_decay: 0.1
-    decouple_decay: true
+    lr: 3e-3
 
 scheduler:
-  warmup_steps: 5000
+  warmup_steps: 1500
 
 audio_chunking:
-  size: 1024
+  size: 2048
   overlap: 0
 
-sequence_scheduler:
-  increase_every: 5000
-  stop_after: 90000
-  start_after: 0
-  max_sequence_length: 8192
-  increase_by_multiplier: 2
-  batch_size_multiplier: 1.0
+# sequence_scheduler:
+#   increase_every: 5000
+#   stop_after: 90000
+#   start_after: 0
+#   max_sequence_length: 16384
+#   increase_by_multiplier: 2
+#   batch_size_multiplier: 0.5
 
 # 512:0
 # 1024:4000
@@ -42,11 +40,11 @@ sequence_scheduler:
 wandb:
   use: true
   project_name: spotify_long_context
-  name: 'mamba_test'
+  name: 'mamba_test_nwd'
   id: '' #zhmi8ijr
 
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/mamba_test_1
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/mamba_test_nwd
   save_every_n_steps: 2000
 
 data:
@@ -55,7 +53,7 @@ data:
 training:
   start_spec_augment_after_n_epochs: -1 # -1 to disable
   max_epochs: 1
-  batch_size: 88
+  batch_size: 176
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
