@@ -3,7 +3,7 @@ import argparse
 from tqdm import tqdm
 from typing import List, Tuple
 from lcasr.utils.audio_tools import processing_chain, total_seconds, total_frames
-from lcasr.utils.general import load_model
+from lcasr.utils.general import load_model, get_model_class
 from lcasr.eval.utils import zero_out_spectogram, fetch_logits, decode_beams_lm
 from lcasr.eval.wer import word_error_rate_detail 
 from pyctcdecode import build_ctcdecoder
@@ -94,7 +94,8 @@ def main(args):
     
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
-    model = load_model(args.config, tokenizer.vocab_size())
+    model = load_model(args.config, tokenizer.vocab_size(), model_class=get_model_class(config=args.config, args=args))
+    print(f'Loaded model class: {model.__class__.__name__}')
     tparams = model.print_total_params()
     model.load_state_dict(checkpoint['model'], strict=False)
     print(f'Loaded model from {args.checkpoint}')
@@ -138,7 +139,6 @@ def main(args):
             print(all_text) if args.verbose else None
             all_texts.append(all_text)
             all_golds.append(gold_text)
-            break
     else:
         for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
 
@@ -182,6 +182,7 @@ if __name__ == '__main__':
     parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-cache_len', '--cache_len', type=int, default=-1, help='cache length for decoding')
+    parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
 
     parser.add_argument('-single_utt', '--single_utterance', action='store_true', help='single utterance decoding')
     parser.add_argument('-nv', '--not_verbose', action='store_true', help='verbose')

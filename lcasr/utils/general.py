@@ -1,6 +1,7 @@
 import torch
 from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
+from lcasr.models.mamba import Mamba
 # from lcasr.models.metaconformer import MetaConformer
 # from lcasr.models.stconformer import STConformer
 from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler
@@ -9,6 +10,25 @@ import os
 from apex.optimizers import FusedAdam
 from torch.optim import Adam
 from lcasr.optim import madgrad
+import argparse
+
+def get_model_class(config:Dict={}, args:argparse.Namespace={}):
+    model_classes = ['SCConformerXL', 'Mamba']
+    
+    if 'model_class' in args:
+        model_class = args.model_class
+    elif 'model_class' in config:
+        model_class = config['model_class']
+    else:
+        model_class = 'SCConformerXL'
+    assert model_class in model_classes, f'Unknown model class {model_class}, must be one of {model_classes}'
+
+    if model_class == 'SCConformerXL':
+        return SCConformerXL
+    elif model_class == 'Mamba':
+        return Mamba
+    
+
 
 def load_model(config:Dict, vocab_size, model_class=SCConformerXL):
     model = model_class(**config.model, vocab_size=vocab_size)

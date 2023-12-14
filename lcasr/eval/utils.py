@@ -45,7 +45,7 @@ def decode_beams_lm(
 @torch.no_grad() # TODO: write batched version of this!!
 def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer, use_tqdm=True):
     spec_n = spec.shape[-1]
-    downsampling_factor = args.config['model']['subsampling_factor']
+    downsampling_factor = model.subsampling.subsampling_factor
     seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
  
     if seq_len > spec_n:
@@ -66,7 +66,7 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     
     logit_position = 0
     
-    prev_cache = None
+    
     last_ulen = None
     kill_next = False
     pbar = tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))) if use_tqdm else range(0, spec_n, seq_len-overlap)
@@ -83,11 +83,8 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
         audio_chunk = audio_chunk.to(model.device)
         out = model(
             audio_signal = audio_chunk,
-            cached_kvs = prev_cache,
-            cached_kv_lengths = None if prev_cache is None else torch.LongTensor([prev_cache.shape[1]] * prev_cache.shape[0]).to(prev_cache.device)
         )
-        if cache_len != 0:
-            prev_cache = out['kvs_to_cache'][:, -cache_len:].clone()
+
 
         logits = out['final_posteriors'].detach().cpu()
         # convert to prob

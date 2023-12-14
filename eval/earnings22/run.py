@@ -3,7 +3,7 @@ from tqdm import tqdm
 from typing import Tuple
 from lcasr.utils.audio_tools import processing_chain
 from lcasr.eval.utils import fetch_logits, decode_beams_lm
-from lcasr.utils.general import load_model
+from lcasr.utils.general import load_model, get_model_class
 from pyctcdecode import build_ctcdecoder
 from lcasr.eval.wer import word_error_rate_detail 
 from whisper.normalizers import EnglishTextNormalizer
@@ -62,7 +62,7 @@ def main(args):
     
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
-    model = load_model(args.config, tokenizer.vocab_size())
+    model = load_model(args.config, tokenizer.vocab_size(), model_class=get_model_class(config=args.config, args=args))
     tparams = model.print_total_params()
     model.load_state_dict(checkpoint['model'], strict=False)
     print(f'Loaded model from {args.checkpoint}')
@@ -103,7 +103,7 @@ def main(args):
         
         all_texts.append(out)
         all_golds.append(cur_text)
-        break
+        
 
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
 
@@ -123,6 +123,7 @@ if __name__ == '__main__':
     parser.add_argument('-beams', '--beam_width', type=int, default=1, help='beam width for decoding')
     parser.add_argument('-cache_len', '--cache_len', type=int, default=-1, help='cache length for decoding')
     parser.add_argument('-log', '--log', type=str, default='')
+    parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
 
     args = parser.parse_args()
     main(args)

@@ -222,7 +222,7 @@ class Mamba(nn.Module):
             y_rvse = self.flip_with_mask(y_rvse, lengths, mask=mask)
 
         y = self.y_out(torch.cat((y_fwd, y_rvse), dim=-1)) * F.silu(z)  
-
+    
         out = self.out_proj(y)
 
         return out
