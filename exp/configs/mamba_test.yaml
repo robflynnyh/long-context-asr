@@ -43,7 +43,7 @@ wandb:
   use: true
   project_name: spotify_long_context
   name: 'mamba_test'
-  id: '' #zhmi8ijr
+  id: '2uajk14p' #zhmi8ijr
 
 checkpointing:
   dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/mamba_test_1
@@ -55,7 +55,7 @@ data:
 training:
   start_spec_augment_after_n_epochs: -1 # -1 to disable
   max_epochs: 1
-  batch_size: 88
+  batch_size: 64
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0

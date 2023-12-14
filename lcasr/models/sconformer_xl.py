@@ -14,7 +14,8 @@ PreNorm, Scale = wrappers.PreNorm, wrappers.Scale
 from flash_attn.flash_attention import FlashAttention
 from flash_attn.modules.mha import FlashCrossAttention
 from flash_attn.bert_padding import unpad_input, pad_input
-
+from lcasr.models.base import BaseModel
+import warnings
 
 # TODO: 
 # -. remove caching stuff as it is not used anymore
@@ -22,7 +23,7 @@ from flash_attn.bert_padding import unpad_input, pad_input
 # -. remove intermediate losses stuff as it is not used anymore
 # -. fuse self-conditioning layers
 
-class SCConformerXL(nn.Module): 
+class SCConformerXL(BaseModel): 
     def __init__(
         self,
         vocab_size = 128,
@@ -102,6 +103,9 @@ class SCConformerXL(nn.Module):
         self.subsampling_mode = subsampling
         self.subsampling_factor = subsampling_factor
         self.subsampling_conv_channels = subsampling_conv_channels if subsampling_conv_channels != -1 else d_model
+
+        self.whitelist_weight_decay_modules = (nn.LayerNorm, RMSNorm, LayerNorm, convolution.BatchRenorm1d, nn.GroupNorm) # don't decay
+        self.blacklist_weight_decay_modules = (nn.Linear, ConformerFeedForward, nn.Conv1d, nn.Conv2d, RotaryPositionalEmbedding)
 
         self.decoder_norm = decoder_norm
 
@@ -271,12 +275,6 @@ class SCConformerXL(nn.Module):
             'length': length,
             'full_kv_lengths': full_kv_lengths, # kv cache is returned, however we don't use this and is left over from prior experiments
         }
-
-    def print_total_params(self, only_trainable = False):
-        total = sum(p.numel() for p in self.parameters() if p.requires_grad) if only_trainable else sum(p.numel() for p in self.parameters())
-        pstr = 'Total trainable params: ' if only_trainable else 'Total params: '
-        print(f'{pstr}: ', total/1e6, 'M')
-        return total
 
 
 

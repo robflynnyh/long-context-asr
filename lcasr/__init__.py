@@ -2,5 +2,6 @@ from . import (
     models,
     utils,
     eval,
-    components
+    components,
+    optim
 )

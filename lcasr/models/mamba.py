@@ -10,7 +10,7 @@ from lcasr.components.bidirectional_mamba import MambaBlock
 DEFAULT_NORM, RMSNorm, LayerNorm = apex.normalization.FusedRMSNorm, apex.normalization.FusedRMSNorm, apex.normalization.FusedLayerNorm
 import math
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
-
+from lcasr.models.base import BaseModel
 
 
 # https://github.com/huggingface/transformers/blob/c28d04e9e252a1a099944e325685f14d242ecdcd/src/transformers/models/gpt2/modeling_gpt2.py#L454
@@ -46,7 +46,7 @@ def _init_weights(
                     p /= math.sqrt(n_residuals_per_layer * n_layer)
 
 
-class Mamba(nn.Module): 
+class Mamba(BaseModel): 
     def __init__(
         self,
         vocab_size = 128,
@@ -180,12 +180,6 @@ class Mamba(nn.Module):
             'final_posteriors': final_posts,
             'length': length,
         }
-
-    def print_total_params(self, only_trainable = False):
-        total = sum(p.numel() for p in self.parameters() if p.requires_grad) if only_trainable else sum(p.numel() for p in self.parameters())
-        pstr = 'Total trainable params: ' if only_trainable else 'Total params: '
-        print(f'{pstr}: ', total/1e6, 'M')
-        return total
 
 
 

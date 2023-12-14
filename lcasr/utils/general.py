@@ -8,7 +8,7 @@ import os
 
 from apex.optimizers import FusedAdam
 from torch.optim import Adam
-import madgrad
+from lcasr.optim import madgrad
 
 def load_model(config:Dict, vocab_size, model_class=SCConformerXL):
     model = model_class(**config.model, vocab_size=vocab_size)
@@ -25,12 +25,14 @@ def load_optimizer(config:Dict, model:torch.nn.Module):
 
     optim_args = config['optimizer']['args']
 
+    param_groups = model.get_param_groups(optim_args) if hasattr(model, 'get_param_groups') else model.parameters()
+
     if optim_type == 'adam':
-        optimizer = Adam(model.parameters(), **optim_args) if model_device == 'cpu' else FusedAdam(model.parameters(), **optim_args)
+        optimizer = Adam(param_groups, **optim_args) if model_device == 'cpu' else FusedAdam(model.parameters(), **optim_args)
     elif optim_type == 'madgrad':
-        optimizer = madgrad.MADGRAD(model.parameters(), **optim_args) # best
+        optimizer = madgrad.MADGRAD(param_groups, **optim_args) # best
     elif optim_type == 'mirrormadgrad':
-        optimizer = madgrad.MirrorMADGRAD(model.parameters(), **optim_args)
+        optimizer = madgrad.MirrorMADGRAD(param_groups, **optim_args)
 
     sheduler = CosineLRScheduler(
         optimizer = optimizer,

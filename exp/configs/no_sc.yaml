@@ -28,6 +28,8 @@ optimizer:
   name: madgrad
   args:
     lr: 3e-3
+    weight_decay: 0.1
+    decouple_decay: true
 
 scheduler:
   warmup_steps: 1500
@@ -59,13 +61,13 @@ sequence_scheduler:
 
 
 wandb:
-  use: true
+  use: false
   project_name: spotify_long_context
   name: 'no_self_conditioning_16k'
   id: '' #zhmi8ijr
 
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/no_self_conditioning_16k
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/delete_me
   save_every_n_steps: 2000
 
 data:
@@ -74,7 +76,7 @@ data:
 training:
   start_spec_augment_after_n_epochs: -1 # -1 to disable
   max_epochs: 1
-  batch_size: 704
+  batch_size: 10
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
