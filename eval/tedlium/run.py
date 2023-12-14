@@ -139,6 +139,7 @@ def main(args):
             print(all_text) if args.verbose else None
             all_texts.append(all_text)
             all_golds.append(gold_text)
+            break
     else:
         for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
 

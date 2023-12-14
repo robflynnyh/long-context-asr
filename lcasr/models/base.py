@@ -27,14 +27,20 @@ class BaseModel(torch.nn.Module):
             for mn, m in self.named_modules():
                 for pn, p in m.named_parameters():
                     fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
-                    
                     if pn.endswith('bias'):
                         no_decay.add(fpn)
                     elif isinstance(m, self.blacklist_weight_decay_modules):
                         no_decay.add(fpn)
                     elif isinstance(m, self.whitelist_weight_decay_modules):
                         decay.add(fpn)
-                        
+
+            if hasattr(self, 'blacklist_param_names'): # add specific param names to blacklist
+                for pn, p in self.named_parameters():
+                    for bpn in self.blacklist_param_names:
+                        if pn.endswith(bpn):
+                            no_decay.add(pn)
+                            break       
+
 
             param_dict = {pn: p for pn, p in self.named_parameters()}
             

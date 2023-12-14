@@ -25,3 +25,9 @@ class Scale(nn.Module): # scales output of fn by scale
     
     def forward(self, x, **kwargs):
         return self.fn(x, **kwargs) * self.scale
+    
+
+  
+
+        
+        

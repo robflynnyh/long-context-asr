@@ -85,7 +85,8 @@ class Mamba(BaseModel):
         self.subsampling_conv_channels = subsampling_conv_channels if subsampling_conv_channels != -1 else d_model
 
         self.whitelist_weight_decay_modules = (nn.LayerNorm, RMSNorm, LayerNorm) # don't decay
-        self.blacklist_weight_decay_modules = (nn.Linear, nn.Conv1d, nn.Conv2d, )
+        self.blacklist_weight_decay_modules = (nn.Linear, nn.Conv1d, nn.Conv2d)
+        self.blacklist_param_names = ('.mixer.fn.A_log', '.mixer.fn.D')
 
         self.decoder = decoder.ASRLinearSCDecoder(
             d_model = d_model,
