@@ -14,31 +14,31 @@ PreNorm, Scale = wrappers.PreNorm, wrappers.Scale
 from flash_attn.flash_attention import FlashAttention
 from flash_attn.modules.mha import FlashCrossAttention
 from flash_attn.bert_padding import unpad_input, pad_input
-
+from lcasr.components.helpers import get_act
+from lcasr.models.base import BaseModel
 
 class PosEnc(nn.Module):
     def __init__(self, dim):
         super().__init__()
         self.dim = dim
-        log_timescale_increment = torch.log(10000) / (dim // 2 - 1)
+        log_timescale_increment = torch.log(torch.tensor(10000)) / (dim // 2 - 1)
         inv_timescales = torch.exp(-log_timescale_increment * torch.arange(dim // 2))
         self.register_buffer("inv_timescales", inv_timescales)
         self.cache = None
         
-    def get_emb(self, length):
-        if self.cache is None or self.cache.shape[0] < length.max():
-            max_pos = length.max()
-            scaled_time = torch.arange(max_pos, device=length.device, dtype=length.dtype)[:, None] * self.inv_timescales[None, :]
+    def get_emb(self, max_pos:int, device: torch.device, dtype: torch.dtype = torch.float32):
+        if self.cache is None or self.cache.shape[0] < max_pos:
+            scaled_time = torch.arange(max_pos, device=device, dtype=dtype)[:, None] * self.inv_timescales[None, :]
             signal = torch.cat((scaled_time.sin(), scaled_time.cos()), dim=-1)
             self.cache = signal
-        return self.cache[:length.max()]
+        return self.cache[:max_pos]
 
-    def forward(self, x):
-        emb = self.get_emb(x.shape[1])
-        return x + emb[None].to(x.device)
+    def forward(self, x, scale = 1.0):
+        emb = self.get_emb(x.shape[1], x.device, x.dtype)
+        return x + emb[None].to(x.device) * scale
 
 
-class EncDecSconformer(nn.Module): 
+class EncDecSconformer(BaseModel): 
     def __init__(
         self,
         vocab_size = 4096,
@@ -92,6 +92,7 @@ class EncDecSconformer(nn.Module):
         self.legasee_double_norm = legasee_double_norm
 
         self.abs_pos_enc = PosEnc(d_model)
+        self.pos_enc_scale = nn.Parameter(torch.ones(1,))
 
         self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
 
@@ -101,14 +102,8 @@ class EncDecSconformer(nn.Module):
         assert default_norm in accepted_norms, f'default_norm must be one of {accepted_norms} (got {default_norm})'
         default_norm = RMSNorm if default_norm == 'rms_norm' else LayerNorm
 
-        if subsampling_act == 'silu':
-            subsampling_act = nn.SiLU()
-        elif subsampling_act == 'relu':
-            subsampling_act = nn.ReLU()
-        elif subsampling_act == 'gelu':
-            subsampling_act = nn.GELU()
-        elif subsampling_act == 'none':
-            subsampling_act = nn.Identity()
+        subsampling_act = get_act(subsampling_act)
+
 
         self.flash_attn = kwargs.get('flash_attn', True)
         self.checkpoint_every_n_layers = checkpoint_every_n_layers
@@ -134,11 +129,15 @@ class EncDecSconformer(nn.Module):
                 rotary_interpolation_factor = rotary_interpolation_factor
             )
 
-        self.decoder = decoder.ASRLinearSCDecoder(
+        self.ctc_decoder = decoder.ASRLinearSCDecoder(
             d_model = d_model,
             vocab_size = vocab_size,
             norm = decoder_norm,
             norm_fn = default_norm,
+        )
+
+        self.language_model_decoder = CrossAttnDecoder(
+            vocab_size = vocab_size,
         )
 
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
@@ -178,24 +177,16 @@ class EncDecSconformer(nn.Module):
             return module(*args, **kwargs)
         return custom_forward
 
+
     def forward(
             self, 
-            audio_signal, 
-            length = None,
-            cached_kvs = None,
-            cached_kv_lengths = None,
+            audio_signal,
+            text_sequence = None, 
+            length = None, 
+            cached_kvs = None, 
+            cached_kv_lengths = None, 
             return_logits = False
         ):
-        '''
-        audio_signal: (batch_size, time, feat)
-        length: (batch_size,)
-        cached_kvs: (kv i.e 2, batch_size, layers, heads, time, head_dim)
-        '''
-        return self.forward_for_export(audio_signal=audio_signal, decoder=self.decoder, length=length, cached_kvs=cached_kvs, cached_kv_lengths=cached_kv_lengths, return_logits=return_logits)
-
-
-
-    def forward_for_export(self, audio_signal, decoder, length = None, cached_kvs = None, cached_kv_lengths = None, return_logits = False):
         max_audio_length: int = audio_signal.size(-1)
 
         if cached_kvs is not None:
@@ -206,7 +197,7 @@ class EncDecSconformer(nn.Module):
             
         audio_signal = torch.transpose(audio_signal, 1, 2)
         audio_signal, length = self.subsampling(audio_signal, lengths = length) if not self.checkpoint_subsampling else checkpoint(self.create_custom_forward(self.subsampling), audio_signal, length)
-        audio_signal = self.abs_pos_enc(audio_signal)
+        audio_signal = self.abs_pos_enc(audio_signal, scale = self.pos_enc_scale)
         max_audio_length = audio_signal.size(1)
         ## create masks
         
@@ -270,33 +261,32 @@ class EncDecSconformer(nn.Module):
             kvs_to_cache.append(kv_to_cache)
             
             if lth != len(self.layers) - 1 and self.self_conditioning:
-                iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
-                audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))        
+                iterim_post = torch.nn.functional.softmax(self.ctc_decoder(x=audio_signal, logits=True), dim=-1)
+                audio_signal = self.ctc_decoder.integrate_projections(audio_signal, self.ctc_decoder.project_back(iterim_post))        
 
         # stack the posteriors along the first dimension (height, batch, seq_len, dim)
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
-        audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
-        final_posts = decoder(x = audio_signal, logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
+        final_posts_ctc = self.ctc_decoder(x = self.ctc_decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal, logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
 
-        if self.training and self.rotary_pos_emb is not None:
-            self.rotary_pos_emb.reset_if_needed()
+        final_posts_lm = None
+        if text_sequence is not None:
+            final_posts_lm = self.language_model_decoder(
+                tokens = text_sequence,
+                a_hidden = audio_signal,
+                a_lengths = length,
+                pos_enc_module = self.abs_pos_enc
+            )
+
 
         return {
-            'final_posteriors': final_posts,
-            'kvs_to_cache': kvs_to_cache,
+            'final_posteriors': final_posts_ctc,
+            'final_posteriors_lm': final_posts_lm,
             'length': length,
-            'full_kv_lengths': full_kv_lengths, # kv cache is returned, however we don't use this and is left over from prior experiments
         }
 
-    def print_total_params(self, only_trainable = False):
-        total = sum(p.numel() for p in self.parameters() if p.requires_grad) if only_trainable else sum(p.numel() for p in self.parameters())
-        pstr = 'Total trainable params: ' if only_trainable else 'Total params: '
-        print(f'{pstr}: ', total/1e6, 'M')
-        return total
-
-
+ 
 
 class ConformerLayer(nn.Module):
     def __init__(
@@ -549,101 +539,73 @@ class CrossAttention(nn.Module):
         self.dropout_p = dropout
         self.causal = False
         # softmax_scale is set to None but will default to 1/sqrt(d_k) in FlashAttention
-        self.flash_attn_fn = FlashAttention(softmax_scale = None, attention_dropout = dropout)
-        self.flash_attn_c_fn = FlashCrossAttention(softmax_scale = None, attention_dropout = dropout, causal = causal)
+        self.flash_attn_c_fn = FlashCrossAttention(softmax_scale = None, attention_dropout = dropout, causal = False)
 
         self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=bias)
+        self.q_proj = nn.Linear(n_feats, n_heads * head_dim, bias=bias)
+        self.kv_proj = nn.Linear(n_feats, 2 * n_heads * head_dim, bias=bias)
 
-        self.qkv = lambda x: rearrange(self.qkv_proj(x), "b n (h d qkv) -> qkv b n h d", qkv=3, h=n_heads, d=head_dim)
+        self.kv = lambda x: rearrange(self.kv_proj(x), "b n (h d kv) -> b n kv h d", kv=2, h=n_heads, d=head_dim)
+        self.q = lambda x: rearrange(self.q_proj(x), "b n (h d) -> b n h d", h=n_heads, d=head_dim)
 
         self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=bias)
 
 
-    def sdpa(self, q, k, v, mask): # use to get the attention weights for visualization/debugging
-        a_weight = torch.einsum("b h i d, b h j d -> b h i j", q, k)
-        a_weight = (a_weight / self.head_dim ** 0.5)
-        if mask is not None:
-            a_weight = a_weight.masked_fill(mask, -torch.finfo(a_weight.dtype).max)
-        a_weight = a_weight.softmax(dim=-1)
-        return torch.einsum("b h i j, b h j d -> b h i d", a_weight, v), a_weight
-
         
-    def forward(self, x, length, attn_mask=None, pad_mask=None, cached_kv=None, flash_attn = True, rotary_emb_fn = None):
-        B, N, C, H, D = *x.shape, self.n_heads, self.head_dim
+    def forward(self, xq, xkv, kv_lengths, attn_mask=None):
+        H, D = self.n_heads, self.head_dim
 
-        if pad_mask is not None:
-            x = x.masked_fill(pad_mask.unsqueeze(-1), 0)
+        flash_attn = True # not implemented otherwise
 
-        q, k, v = self.qkv(x)
-        kv, kv_to_cache = self.attatch_cache([k, v], cached_kv)
-
-        if rotary_emb_fn is not None:
-            if rotary_emb_fn.learned == False:
-                q, kv[:, :, 0] = rotary_emb_fn.apply(q, kv[:, :, 0])
-            else:
-                k, v = kv[:, :, 0], kv[:, :, 1]
-                q, k = rotary_emb_fn.apply(q, k)
-                kv = torch.stack([k, v], dim=2)
-
-        if self.num_position_embeddings > 0:
-            assert kv.shape[1] <= self.num_position_embeddings, "kv_seq_len should be less than or equal to num_position_embeddings"
-            kv[:,:,0] = kv[:,:,0] + self.position_embeddings[:, :kv.shape[1], 0]
-            offset = kv.shape[1] - q.shape[1]
-            q = q + self.position_embeddings[:, offset:offset+q.shape[1], 1]
-
+        q = self.q(xq)
+        kv = self.kv(xkv)
      
         ### Flash attention stuff 
-        if x.device.type == 'cuda' and flash_attn:
+        if xq.device.type == 'cuda' and flash_attn:
             q, kv = q.contiguous(), kv.contiguous()
             if q.dtype == torch.float32:
                 q, kv = q.half(), kv.half()
 
-            if kv.shape[1] == q.shape[1]: # if kv_seq_len == q_seq_len use self attention else use cross attention
-                qkv = torch.cat([q[:,:,None], kv], dim=2)
-                out = self.flash_attn_fn(qkv, attn_mask, causal=self.causal)[0] #!!! !!!!!!
-            else:
+            out = self.flash_attn_c_fn(q, kv)
+            if attn_mask is None:
                 out = self.flash_attn_c_fn(q, kv)
-                if attn_mask is None:
-                    out = self.flash_attn_c_fn(q, kv)
-                else:
-                    q_attn_mask = (attn_mask)[:, -length.max().item():]
-                    kv_attn_mask = attn_mask
+            else:
+                q_attn_mask = (attn_mask)[:, -length.max().item():]
+                kv_attn_mask = attn_mask
 
-                    b, qs, qh, qd = q.shape
-                    b, kvs, kvn, kh, kd = kv.shape
-                    q_up, q_indices, cu_seq_lens, max_seqlen = unpad_input(q, q_attn_mask)
-                    kv_up, kv_indices, k_cu_seq_lens, max_k_seq_len = unpad_input(kv, kv_attn_mask)
-                    
-                    out = self.flash_attn_c_fn(
-                        q_up, 
-                        kv_up, 
-                        cu_seqlens = cu_seq_lens.to(torch.int32),
-                        max_seqlen = max_seqlen,
-                        cu_seqlens_k = k_cu_seq_lens.to(torch.int32),
-                        max_seqlen_k = max_k_seq_len,
-                    )
-                    out = pad_input(out, indices = q_indices, batch = b, seqlen = qs)
-            out = out.to(x.dtype) 
+                b, qs, qh, qd = q.shape
+                b, kvs, kvn, kh, kd = kv.shape
+                q_up, q_indices, cu_seq_lens, max_seqlen = unpad_input(q, q_attn_mask)
+                kv_up, kv_indices, k_cu_seq_lens, max_k_seq_len = unpad_input(kv, kv_attn_mask)
+                
+                out = self.flash_attn_c_fn(
+                    q_up, 
+                    kv_up, 
+                    cu_seqlens = cu_seq_lens.to(torch.int32),
+                    max_seqlen = max_seqlen,
+                    cu_seqlens_k = k_cu_seq_lens.to(torch.int32),
+                    max_seqlen_k = max_k_seq_len,
+                )
+                out = pad_input(out, indices = q_indices, batch = b, seqlen = qs)
+            out = out.to(xq.dtype) 
             out = rearrange(out, "b n h d -> b n (h d)")
         else:
+            raise NotImplementedError
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
             out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
             out = rearrange(out, "b h n d -> b n (h d)")
-      
-        if pad_mask != None:
-            out = out.masked_fill(pad_mask.unsqueeze(-1), 0)
+
 
         out = self.out_proj(out)
         
-        return out, kv_to_cache
+        return out
 
 
 class CrossAttnDecoder(nn.Module):
     def __init__(
         self,
         vocab_size = 4096,
-        feat_in = 80,
         n_layers = 3,
         d_model = 768,
         n_heads = 6,
@@ -660,7 +622,7 @@ class CrossAttnDecoder(nn.Module):
     ):
         super().__init__()
 
-        self.feat_in = feat_in
+
         self.d_model = d_model
         self.n_layers = n_layers
         self.n_heads = n_heads
@@ -674,6 +636,8 @@ class CrossAttnDecoder(nn.Module):
         self.bias_in_ff = bias_in_ff
         self.default_norm = default_norm
 
+        self.pos_enc_scale = nn.Parameter(torch.ones(1,))
+
         self.embed = nn.Embedding(vocab_size, d_model)
         
         self.embed_dropout = nn.Dropout(dropout_attn)
@@ -684,7 +648,7 @@ class CrossAttnDecoder(nn.Module):
 
         self.layers = nn.ModuleList([])
         for _ in range(n_layers):
-            self.layers.append(
+            self.layers.append(nn.ModuleList([
                 PreNorm(d_model, Attention(
                     n_feats = d_model,
                     n_heads = n_heads,
@@ -701,7 +665,8 @@ class CrossAttnDecoder(nn.Module):
                     dropout = dropout_attn,
                 ), norm = default_norm),
                 PreNorm(d_model, ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff))
-            )
+            ]))
+            
 
         self.out_proj = nn.Sequential(
             default_norm(d_model) if decoder_norm else nn.Identity(),
@@ -717,26 +682,44 @@ class CrossAttnDecoder(nn.Module):
                 rotary_interpolation_factor = rotary_interpolation_factor
             )
 
-    def forward(self, tokens, a_hidden, a_lengths, pos_enc_module):
+    def forward(
+            self,
+            tokens: torch.Tensor, 
+            a_hidden: torch.Tensor, 
+            a_lengths: torch.Tensor, 
+            pos_enc_module: PosEnc
+        ):
         '''
         tokens: (batch, seq_len) - target text sequence
         a_hidden: (batch, seq_len, dim) - encoder output
         pos_enc_module: positional encoding module - instance of PosEnc
         '''
         x = self.embed(tokens)
-        x = pos_enc_module(x)
-
+        x = pos_enc_module(x, scale = self.pos_enc_scale)
+        lengths = torch.LongTensor([x.shape[1]] * x.shape[0]).to(x.device)
+    
         for lth, (self_attn, cross_attn, ff) in enumerate(self.layers):
-            x = self_attn(x) + x
-            x = cross_attn(x, a_hidden) + x
+    
+            x = self_attn(x, length=lengths)[0] + x
+            x = cross_attn(x, xkv = a_hidden, kv_lengths=a_lengths) + x
             x = ff(x) + x
 
         return self.out_proj(x)
 
 
 
+if __name__ == '__main__':
+    model = EncDecSconformer() # default model
+    model.print_total_params()
 
+    vocab_size = 4096
+    audio_seq = torch.randn(2, 80, 100, device='cuda')
+    text = torch.randint(0, vocab_size, (2, 10), device='cuda')
+    model.to('cuda')
+    print(text.shape, audio_seq.shape)
 
+    out = model(audio_seq, text)
+    print([o.shape for o in out.values()])
 
 
 
