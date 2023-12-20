@@ -17,6 +17,8 @@ from flash_attn.bert_padding import unpad_input, pad_input
 from lcasr.components.helpers import get_act
 from lcasr.models.base import BaseModel
 
+import warnings
+
 class PosEnc(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -285,6 +287,10 @@ class EncDecSconformer(BaseModel):
             'final_posteriors_lm': final_posts_lm,
             'length': length,
         }
+    
+    def get_param_groups(self, optim_args):
+        warnings.warn('get_param_groups is not implemented for EncDecSconformer (yet) returning all parameters')
+        return self.parameters()
 
  
 
