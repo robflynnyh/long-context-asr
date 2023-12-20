@@ -1,0 +1,151 @@
+template_info:
+  create: 8 # number of experiments to create
+  include_keys: [
+    'model', 
+    'optimizer', 
+    'scheduler', 
+    'audio_chunking', 
+    'wandb', 
+    'checkpointing', 
+    'data', 
+    'training', 
+    'sequence_scheduler',
+    'description',
+  ] # keys to include in experiments config
+  template_keys: [
+    'checkpointing.dir', 
+    'wandb.name',
+    'optimizer.args.lr',
+  ] # keys to use to create experiments
+
+model:
+  feat_in: 80
+  n_layers: 9
+  d_model: 768
+  n_heads: 6
+  head_dim: 128
+  dropout_ff: 0.0
+  dropout_attn: 0.0
+  dropout_conv: 0.0
+  subsampling_factor: 4
+  transformer: true
+  subsampling: striding
+  subsampling_act: silu
+  subsampling_conv_channels: -1
+  self_condition_subsampling: false
+  subsampling_norm_out: false
+  conv_kernel_size: 9
+  self_conditioning: false
+  gated_sc: false
+  decoder_norm: true
+  use_rotary: true
+  default_norm: layer_norm
+  sandwich_norm: false
+  bias_in_ff: false
+  checkpoint_every_n_layers: 0 
+  flash_attn: true
+
+optimizer:
+  name: 'madgrad'
+  args:
+    lr: [
+      5e-4,
+      6e-4,
+      7e-4,
+      8e-4,
+      9e-4,
+      1e-3,
+      2e-3,
+      3e-3,
+    ]
+    weight_decay: 0.1
+    decouple_decay: true
+
+scheduler:
+  warmup_steps: 4000
+
+audio_chunking: # 360000 (max = 1 hour)
+  size: 512
+  overlap: 0 # not using currently...
+
+sequence_scheduler:
+  increase_every: 5000
+  stop_after: 90000
+  start_after: 0
+  max_sequence_length: 2048
+  increase_by_multiplier: 2
+  batch_size_multiplier: 0.5
+  interpolate_rotary: false
+
+wandb:
+  use: true
+  project_name: "spotify_long_context_transformer_tuning"
+  name: [ 
+    'transformer_2048_lr_5e-4',
+    'transformer_2048_lr_6e-4',
+    'transformer_2048_lr_7e-4',
+    'transformer_2048_lr_8e-4',
+    'transformer_2048_lr_9e-4',
+    'transformer_2048_lr_1e-3',
+    'transformer_2048_lr_2e-3',
+    'transformer_2048_lr_3e-3',
+  ]
+  id: "" # leave empty if not resuming a previous run
+
+checkpointing:
+  dir: [
+    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/transformer_2048_lr_5e-4',
+    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/transformer_2048_lr_6e-4',
+    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/transformer_2048_lr_7e-4',
+    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/transformer_2048_lr_8e-4',
+    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/transformer_2048_lr_9e-4',
+    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/transformer_2048_lr_1e-3',
+    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/transformer_2048_lr_2e-3',
+    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/transformer_2048_lr_3e-3',
+  ]
+  save_every_n_steps: 2000
+
+# full data: #'/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
+# 25% of corpus: '/users/acp21rjf/long-context-asr/reduced_pairs.json'
+data:
+  path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
+  
+training:
+  batch_size: 256
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
+  clip_value: 0.8
+
+description: 'Set of runs to tune transformer hyperparameters with different learning rates'
+  
+  # random_seed: [
+  #   1234,
+  #   6432,
+  #   9876, #1
+  #   9643,
+  #   4321,
+  #   6789, #2
+  #   8241,
+  #   1233,
+  #   4322, #3
+  #   1235,
+  #   9877,
+  #   4323, #4
+  #   4232,
+  #   9547,
+  #   1123, #5
+  #   7472,
+  #   1236,
+  #   4324, #6
+  # ]
+
+# size: 512 = batch size 704
+# size: 1024 = batch size 352
+# size: 2048 = batch size 176
+# size: 4096 = batch size 88
+# size: 8192 = batch size 44
+# size: 16384 = batch size 22
+# size: 65536 = batch size 5 
+# size: 131072 = batch size 2
+# size: 360000 (1 hour) =  batch size 1

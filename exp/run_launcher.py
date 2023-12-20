@@ -10,8 +10,8 @@ SAVE_DIR = './.tmp'
 
 run_strings = {
     'a100':f"""#!/bin/bash\n
-#SBATCH --time=29:00:00
-#SBATCH --mem=150GB
+#SBATCH --time=90:00:00
+#SBATCH --mem=170GB
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --qos=gpu
@@ -50,7 +50,7 @@ def rgetattr(obj, attr):
 
 def main(args):
     template = OmegaConf.load(args.template)
-    copies = [OmegaConf.create({k:template[k].copy() for k in template['template_info']['include_keys']}) for i in range(template['template_info']['create'])]
+    copies = [OmegaConf.create({k:template[k].copy() if not isinstance(template[k], str) else template[k] for k in template['template_info']['include_keys']}) for i in range(template['template_info']['create'])]
 
     for i in range(len(copies)):
         for template_key in template['template_info']['template_keys']:

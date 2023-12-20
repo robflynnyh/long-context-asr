@@ -731,6 +731,8 @@ class CrossAttnDecoder(nn.Module):
             x = cross_attn(x, a_hidden) + x
             x = ff(x) + x
 
+        return self.out_proj(x)
+
 
 
 

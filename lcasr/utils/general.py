@@ -45,7 +45,12 @@ def load_optimizer(config:Dict, model:torch.nn.Module):
 
     optim_args = config['optimizer']['args']
 
-    param_groups = model.get_param_groups(optim_args) if hasattr(model, 'get_param_groups') else model.parameters()
+    if config['optimizer'].get('weight_decay_groups', 'default') == 'default':
+        param_groups = model.get_param_groups(optim_args) if hasattr(model, 'get_param_groups') else model.parameters()
+    elif config['optimizer'].get('weight_decay_groups', 'default') == 'none':
+        param_groups = model.parameters()
+    else:
+        raise NotImplementedError(f'Unknown weight_decay_groups {config["optimizer"]["weight_decay_groups"]}, must be one of [default, none]')  
 
     if optim_type == 'adam':
         optimizer = Adam(param_groups, **optim_args) if model_device == 'cpu' else FusedAdam(model.parameters(), **optim_args)

@@ -342,6 +342,7 @@ def train(
 
 
 def main(args):
+    args.config_path = args.config
     args.config = OmegaConf.load(args.config)
 
     checkpoint_dir = args.config['checkpointing']['dir']
@@ -366,6 +367,7 @@ def main(args):
         wandb.config.update({'total_params': tparams}, allow_val_change=True)
         print(f'\nLoggging with Wandb id: {wandb.run.id}\n')
         args.config['wandb']['id'] = wandb.run.id # add wandb config to args.config
+        if wandb_config.get('update_config_with_wandb_id', False): OmegaConf.save(config=args.config, f=args.config_path)
 
     model = model.to(device)
     optimizer, scheduler = load_optimizer(args.config, model)
