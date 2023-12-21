@@ -6,3 +6,4 @@
 *.pkl
 .tmp/
 wandb/
+__pycache__
