@@ -66,6 +66,16 @@ def apply_augmentation(audio, lengths, augmentation, epoch, start_augment_after_
         return audio
     else:
         return augmentation(audio, lengths)
+    
+def get_dtype(dtype:str) -> torch.dtype:
+    if dtype == 'bfloat16':
+        return torch.bfloat16
+    elif dtype == 'float16':
+        return torch.float16
+    elif dtype == 'float32':
+        return torch.float32
+    else:
+        raise ValueError(f'invalid dtype: {dtype}')
 
 def train(
         args:argparse.Namespace,
@@ -84,7 +94,7 @@ def train(
     clip_value = args.config['training'].get('clip_value', 0.8) 
     random.seed(args.config['training'].get('random_seed', 12345))
     wandb_config = args.config['wandb']
-    
+    dtype = get_dtype(args.config['training'].get('dtype', 'bfloat16'))
     rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
     resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
 
@@ -213,7 +223,7 @@ def train(
 
                 audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
 
-                with autocast(device.type, dtype=torch.bfloat16) if torch.cuda.is_available() else nullcontext():
+                with autocast(device.type, dtype=dtype) if torch.cuda.is_available() else nullcontext():
                     audio = apply_augmentation(audio=audio, lengths=a_lengths, augmentation=augmentation, start_augment_after_n_epochs=start_spec_augment_after_n_epochs, epoch=epoch, is_warmup=scheduler.is_warmup)
                     cached_kvs = last_kv_set.clone() if last_kv_set != None else None
                     cached_kv_lengths = torch.LongTensor([cached_kvs.shape[1]] * cached_kvs.shape[0]).to(device) if cached_kvs != None else None

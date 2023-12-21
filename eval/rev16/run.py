@@ -92,7 +92,7 @@ def main(args):
         
         all_texts.append(out)
         all_golds.append(cur_text)
-        break
+        
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
 
     print(f'WER: {wer}')
@@ -101,6 +101,7 @@ def main(args):
         with open(args.log, 'a') as f:
             f.write(f'{args.checkpoint}\t overlap: {args.overlap}\t seq_len: {args.seq_len}\t WER: {wer}\n')
 
+    return wer, model_config
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

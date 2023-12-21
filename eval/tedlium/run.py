@@ -7,6 +7,7 @@ from lcasr.utils.general import load_model, get_model_class
 from lcasr.eval.utils import zero_out_spectogram, fetch_logits, decode_beams_lm
 from lcasr.eval.wer import word_error_rate_detail 
 from pyctcdecode import build_ctcdecoder
+import time
 
 TEST_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/test/'
 DEV_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/dev/'
@@ -124,7 +125,7 @@ def main(args):
             gold_text, timings, remove_timings = proc_stm_and_timings(stm_path=stm_path)
 
             audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings, buffer=-0.5)
-            import time
+            
             stime = time.time()
             logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
             etime = time.time()
@@ -139,7 +140,7 @@ def main(args):
             print(all_text) if args.verbose else None
             all_texts.append(all_text)
             all_golds.append(gold_text)
-            break
+            
     else:
         for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
 
@@ -174,6 +175,8 @@ def main(args):
     if args.log != '':
         with open(args.log, 'a') as f:
             f.write(f'{args.checkpoint}\t overlap: {args.overlap}\t seq_len: {args.seq_len}\t WER: {wer}\n')
+
+    return wer, model_config
 
 
 if __name__ == '__main__':

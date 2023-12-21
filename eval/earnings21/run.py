@@ -96,7 +96,7 @@ def main(args):
         logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
 
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
-        decoded, bo = decode_beams_lm([logits], decoder, beam_width=1, ds_factor=ds_factor)
+        decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
         out = normalize(decoded[0]['text']).lower()
         
         print(cur_text, '\n', out, '\n\n')
@@ -113,7 +113,6 @@ def main(args):
         with open(args.log, 'a') as f:
             f.write(f'{args.checkpoint}\t overlap: {args.overlap}\t seq_len: {args.seq_len}\t WER: {wer}\n')
 
-    return wer, model_config
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -121,6 +120,7 @@ if __name__ == '__main__':
     parser.add_argument('-split', '--split', type=str, default='test', help='test or dev split')
     parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
+    parser.add_argument('-beams', '--beam_width', type=int, default=1, help='beam width for decoding')
     parser.add_argument('-cache_len', '--cache_len', type=int, default=-1, help='cache length for decoding')
     parser.add_argument('-log', '--log', type=str, default='')
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')

@@ -78,19 +78,19 @@ wandb:
   use: true
   project_name: "spotify_long_context_transformer_tuning"
   name: [ 
-    'transformer_2048_lr_1e-5',
-    'transformer_2048_lr_5e-5',
-    'transformer_2048_lr_1e-4',
-    'transformer_2048_lr_3e-4',
+    'f32_transformer_2048_lr_1e-5',
+    'f32_transformer_2048_lr_5e-5',
+    'f32_transformer_2048_lr_1e-4',
+    'f32_transformer_2048_lr_3e-4',
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/transformer_2048_lr_1e-5',
-    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/transformer_2048_lr_5e-5',
-    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/transformer_2048_lr_1e-4',
-    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/transformer_2048_lr_3e-4',
+    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/f32_transformer_2048_lr_1e-5',
+    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/f32_transformer_2048_lr_5e-5',
+    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/f32_transformer_2048_lr_1e-4',
+    '/mnt/parscratch/users/acp21rjf/spotify/transformer_tuning/f32_transformer_2048_lr_3e-4',
   ]
   save_every_n_steps: 2000
 
@@ -100,11 +100,12 @@ data:
   path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
   
 training:
-  batch_size: 256
+  batch_size: 200
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
   clip_value: 0.8
+  dtype: float32
 
 description: 'Set of runs to tune transformer hyperparameters with different learning rates'
   
