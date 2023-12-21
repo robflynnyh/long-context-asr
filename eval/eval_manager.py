@@ -44,12 +44,11 @@ def get_args(config, split, model):
         'single_utterance': config.args.single_utterance,
     })
 
-def get_data_to_save(wer, split, dataset, model, model_config):
+def get_data_to_save(wer, split, dataset, model):
     return {
         'dataset': dataset,
         'split': split,
         'wer': wer,
-        'model': model_config,
         'name': model.name,
         'checkpoint': model.path,
         'repeat': model.repeat,
@@ -77,7 +76,7 @@ def main(args, config):
             for model in config.models:
                 args = get_args(config, split, model)
                 wer, model_config = dataset_funcs[dataset](args)
-                data_to_save = get_data_to_save(wer, split, dataset, model, model_config)
+                data_to_save = get_data_to_save(wer, split, dataset, model)
                 df = pd.DataFrame(data_to_save)
                 df.to_csv(config.args.save_dataframe_path, mode='a', header=not os.path.exists(config.args.save_dataframe_path))
                 evals_completed += 1
