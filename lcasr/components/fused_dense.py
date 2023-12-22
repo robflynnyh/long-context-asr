@@ -191,7 +191,7 @@ class RowParallelLinear(nn.Linear):
 class FusedMLPFunc(torch.autograd.Function):
 
     @staticmethod
-    @custom_fwd
+    @custom_fwd(cast_inputs=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16)
     def forward(ctx, x, weight1, bias1, weight2, bias2, activation='gelu_approx', save_pre_act=True,
                 return_residual=False, checkpoint_lvl=0, heuristic=0, process_group=None,
                 sequence_parallel=True):

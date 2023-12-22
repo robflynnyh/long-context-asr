@@ -44,20 +44,21 @@ def get_args(config, split, model):
         'single_utterance': config.args.single_utterance,
     })
 
-def get_data_to_save(wer, split, dataset, model):
-    return {
+def get_data_to_save(config, wer, split, dataset, model):
+    data = {
         'dataset': dataset,
         'split': split,
-        'wer': wer,
+        'wer': [wer],
         'name': model.name,
         'checkpoint': model.path,
         'repeat': model.repeat,
         'single_utterance': config.args.single_utterance if dataset in singlue_utterance_datasets else False,
         'seq_len': model.seq_len,
-        'overlap': int(model.seq_len * model.overlap_ratio),
+        'overlap_ratio': [model.overlap_ratio],
         'model_class': config.args.model_class,
         'cache_len': -1,
     }   
+    return data
 
 def main(args, config):
     datasets = config.args.datasets
@@ -76,7 +77,7 @@ def main(args, config):
             for model in config.models:
                 args = get_args(config, split, model)
                 wer, model_config = dataset_funcs[dataset](args)
-                data_to_save = get_data_to_save(wer, split, dataset, model)
+                data_to_save = get_data_to_save(config, wer, split, dataset, model)
                 df = pd.DataFrame(data_to_save)
                 df.to_csv(config.args.save_dataframe_path, mode='a', header=not os.path.exists(config.args.save_dataframe_path))
                 evals_completed += 1
