@@ -42,6 +42,7 @@ def get_args(config, split, model):
         'model_class': config.args.model_class,
         'cache_len': -1,
         'single_utterance': config.args.single_utterance,
+        'verbose': False,
     })
 
 def get_data_to_save(config, wer, split, dataset, model):
@@ -61,6 +62,9 @@ def get_data_to_save(config, wer, split, dataset, model):
     return data
 
 def check_if_already_evaluated(model_save_path, cur_df):
+    '''
+    ADD CHECKS FOR DATASET ASWELL AND SPLIT AS MODEL CAN BE EVALUATED ON MULTIPLE DATASETS AND SPLITS (currently only checks model_save_path)
+    '''
     # check if a model with the same checkpoint path has already been evaluated
     if cur_df is None:
         return False
