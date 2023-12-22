@@ -60,6 +60,13 @@ def get_data_to_save(config, wer, split, dataset, model):
     }   
     return data
 
+def check_if_already_evaluated(model_save_path, cur_df):
+    # check if a model with the same checkpoint path has already been evaluated
+    if cur_df is None:
+        return False
+    if model_save_path in cur_df['checkpoint'].values:
+        return True
+
 def main(args, config):
     datasets = config.args.datasets
     checks(config)
@@ -70,14 +77,19 @@ def main(args, config):
     total_evals = len(datasets) * len(config.models) * len(config.args.splits)
     print(f'Total number of evals: {total_evals}')
 
+    cur_df = pd.read_csv(config.args.save_dataframe_path) if os.path.exists(config.args.save_dataframe_path) else None
+
     evals_completed = 0
     pbar = tqdm(total=total_evals, desc='Evaluations completed')
     for dataset in datasets:
         for split in config.args.splits:
             for model in config.models:
+                if check_if_already_evaluated(model.path, cur_df): print(f'Skipping {model.path} as it has already been evaluated'); continue
+
                 args = get_args(config, split, model)
                 wer, model_config = dataset_funcs[dataset](args)
                 data_to_save = get_data_to_save(config, wer, split, dataset, model)
+                
                 df = pd.DataFrame(data_to_save)
                 df.to_csv(config.args.save_dataframe_path, mode='a', header=not os.path.exists(config.args.save_dataframe_path))
                 evals_completed += 1
