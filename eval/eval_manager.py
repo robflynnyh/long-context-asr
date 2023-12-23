@@ -87,6 +87,7 @@ def main(args, config):
     pbar = tqdm(total=total_evals, desc='Evaluations completed')
     for dataset in datasets:
         for split in config.args.splits:
+            if dataset == 'rev16' and split == 'dev': continue # rev16 does not have a dev split
             for model in config.models:
                 if check_if_already_evaluated(model.path, cur_df): print(f'Skipping {model.path} as it has already been evaluated'); continue
 
