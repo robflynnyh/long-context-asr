@@ -1,7 +1,10 @@
 import torch
 from typing import Dict, List, Tuple
+
 from lcasr.models.sconformer_xl import SCConformerXL
 from lcasr.models.mamba import Mamba
+from lcasr.models.enc_dec_sconformer import EncDecSconformer
+
 # from lcasr.models.metaconformer import MetaConformer
 # from lcasr.models.stconformer import STConformer
 from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler
@@ -13,7 +16,7 @@ from lcasr.optim import madgrad
 import argparse
 
 def get_model_class(config:Dict={}, args:argparse.Namespace={}):
-    model_classes = ['SCConformerXL', 'Mamba']
+    model_classes = ['SCConformerXL', 'Mamba', 'EncDecSconformer']
     
     if 'model_class' in args:
         model_class = args.model_class
@@ -27,6 +30,10 @@ def get_model_class(config:Dict={}, args:argparse.Namespace={}):
         return SCConformerXL
     elif model_class == 'Mamba':
         return Mamba
+    elif model_class == 'EncDecSconformer':
+        return EncDecSconformer
+    else:
+        raise NotImplementedError(f'Unknown model class {model_class}, must be one of {model_classes}')
     
 
 
@@ -137,3 +144,21 @@ def load_checkpoint(
     epoch = checkpoint.get('epoch', 0)
     step = checkpoint.get('podcast_step', 0)
     return seen_ids, step, epoch
+
+
+class KeepCount:
+    def __getitem__(self, key):
+        if hasattr(self, key):
+            return getattr(self, key)
+        else:
+            setattr(self, key, 0)
+            return getattr(self, key)
+        
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
+
+    def __repr__(self):
+        return str(self.__dict__)
+    
+    def reset(self):
+        self.__dict__ = {}

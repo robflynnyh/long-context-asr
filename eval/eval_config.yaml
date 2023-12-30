@@ -10,13 +10,13 @@ models:
     seq_len: 2048
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_wd/n_seq_sched_2048_rp_2/step_105360.pt
-    description: "trained with weight decay and sequence length of 2048"
+    description: "trained with weight decay and sequence length of 2048"  
   - name: wd_n_seq_sched_2048
-  #   repeat: 3
-  #   seq_len: 2048
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_wd/n_seq_sched_2048_rp_3/step_105360.pt
-  #   description: "trained with weight decay and sequence length of 2048"
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_wd/n_seq_sched_2048_rp_3/step_105360.pt
+    description: "trained with weight decay and sequence length of 2048"
 
   - name: rb_wd_n_seq_sched_2048
     repeat: 1
@@ -114,7 +114,6 @@ models:
     path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_wd/n_seq_sched_4096_rp_3/step_105360.pt
     description: "trained with weight decay and sequence length of 4096 rotary base frequency increased to 1.5M from default 10k"
 
-
   - name: wd_n_seq_sched_16384
     repeat: 1
     seq_len: 16384
@@ -127,12 +126,12 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_wd/n_seq_sched_16384_rp_2/step_105360.pt
     description: "trained with weight decay and sequence length of 16384"
-  # - name: wd_n_seq_sched_16384
-  #   repeat: 3
-  #   seq_len: 16384
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_wd/n_seq_sched_16384_rp_3/step_105360.pt
-  #   description: "trained with weight decay and sequence length of 16384"
+  - name: wd_n_seq_sched_16384
+    repeat: 3
+    seq_len: 16384
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_wd/n_seq_sched_16384_rp_3/step_105360.pt
+    description: "trained with weight decay and sequence length of 16384"
   # - name: rb_wd_n_seq_sched_16384
   #   repeat: 1
   #   seq_len: 16384
@@ -190,12 +189,12 @@ models:
     description: "trained with weight decay and sequence length of 32768 rotary base frequency increased to 1.5M from default 10k"
 
 
-  # - name: wd_n_seq_sched_360000
-  #   repeat: 1
-  #   seq_len: 360000
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_wd/n_seq_sched_360000_rp_1/step_105360.pt
-  #   description: "trained with weight decay and sequence length of 360000"
+  - name: wd_n_seq_sched_360000
+    repeat: 1
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_wd/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "trained with weight decay and sequence length of 360000"
   - name: wd_n_seq_sched_360000
     repeat: 2
     seq_len: 360000
@@ -208,24 +207,24 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_wd/n_seq_sched_360000_rp_3/step_105360.pt
     description: "trained with weight decay and sequence length of 360000"
-  # - name: rb_wd_n_seq_sched_360000
-  #   repeat: 1
-  #   seq_len: 360000
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_wd/n_seq_sched_360000_rp_1/step_105360.pt
-  #   description: "trained with weight decay and sequence length of 360000 rotary base frequency increased to 1.5M from default 10k"
-  # - name: rb_wd_n_seq_sched_360000
-  #   repeat: 2
-  #   seq_len: 360000
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_wd/n_seq_sched_360000_rp_2/step_105360.pt
-  #   description: "trained with weight decay and sequence length of 360000 rotary base frequency increased to 1.5M from default 10k"
-  # - name: rb_wd_n_seq_sched_360000
-  #   repeat: 3
-  #   seq_len: 360000
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_wd/n_seq_sched_360000_rp_3/step_105360.pt
-  #   description: "trained with weight decay and sequence length of 360000 rotary base frequency increased to 1.5M from default 10k"
+  - name: rb_wd_n_seq_sched_360000
+    repeat: 1
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_wd/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "trained with weight decay and sequence length of 360000 rotary base frequency increased to 1.5M from default 10k"
+  - name: rb_wd_n_seq_sched_360000
+    repeat: 2
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_wd/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "trained with weight decay and sequence length of 360000 rotary base frequency increased to 1.5M from default 10k"
+  - name: rb_wd_n_seq_sched_360000
+    repeat: 3
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_wd/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "trained with weight decay and sequence length of 360000 rotary base frequency increased to 1.5M from default 10k"
      
 
 

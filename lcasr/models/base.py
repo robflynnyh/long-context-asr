@@ -17,7 +17,8 @@ class BaseModel(torch.nn.Module):
         had_blacklist = hasattr(self, 'blacklist_weight_decay_modules')
         had_whitelist = hasattr(self, 'whitelist_weight_decay_modules')
 
-        if not had_blacklist or not had_whitelist and optim_args.get('weight_decay', 0.0) > 0.0:
+        if (not had_blacklist or not had_whitelist) and optim_args.get('weight_decay', 0.0) > 0.0:
+            print(optim_args.get('weight_decay', 0.0), '!!')
             warnings.warn(f'Model does not specify: blacklist_weight_decay_modules or whitelist_weight_decay_modules, but weight_decay > 0.0. Weight decay will be applied to all parameters!')
             return self.parameters()
         elif optim_args.get('weight_decay', 0.0) > 0.0: # useing method from https://github.com/karpathy/minGPT/blob/master/mingpt/model.py for selecting no_decay and decay params

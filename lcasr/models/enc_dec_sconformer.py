@@ -62,8 +62,8 @@ class EncDecSconformer(BaseModel):
         checkpoint_every_n_layers = 0,
         conv_kernel_size = 9,
         conv_expansion_factor = 1,
-        decoder_norm = False,
-        use_rotary = False,
+        decoder_norm = True,
+        use_rotary = True,
         rotary_interpolation_factor = 1.0, # https://arxiv.org/abs//2306.15595 Extending Context Window of Large Language Models via Positional Interpolation
         learned_rotary = False,
         self_conditioning = True,
@@ -71,6 +71,7 @@ class EncDecSconformer(BaseModel):
         sandwich_norm = False,
         bias_in_ff = False,
         transformer=False, # disable convolutions
+        ctc_loss_weight = 0.1,
         legasee_double_norm = True, # norm is applied twice before final output projection, was orignally a bug, kept got compatibility with older checkpoints
         **kwargs
     ):
@@ -93,6 +94,8 @@ class EncDecSconformer(BaseModel):
         self.self_condition_subsampling = self_condition_subsampling
         self.legasee_double_norm = legasee_double_norm
 
+        self.ctc_loss_weight = ctc_loss_weight
+
         self.abs_pos_enc = PosEnc(d_model)
         self.pos_enc_scale = nn.Parameter(torch.ones(1,))
 
@@ -105,7 +108,6 @@ class EncDecSconformer(BaseModel):
         default_norm = RMSNorm if default_norm == 'rms_norm' else LayerNorm
 
         subsampling_act = get_act(subsampling_act)
-
 
         self.flash_attn = kwargs.get('flash_attn', True)
         self.checkpoint_every_n_layers = checkpoint_every_n_layers
@@ -140,6 +142,15 @@ class EncDecSconformer(BaseModel):
 
         self.language_model_decoder = CrossAttnDecoder(
             vocab_size = vocab_size,
+            n_layers = n_layers,
+            d_model = d_model,
+            n_heads = n_heads,
+            head_dim = head_dim,
+            expansion_factor = expansion_factor,
+            dropout_attn = dropout_attn,
+            dropout_ff = dropout_ff,
+            decoder_norm=decoder_norm,
+            bias_in_ff=bias_in_ff,
         )
 
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
@@ -178,6 +189,59 @@ class EncDecSconformer(BaseModel):
         def custom_forward(*args, **kwargs):
             return module(*args, **kwargs)
         return custom_forward
+
+
+    def calc_loss(
+            self, 
+            audio_signal,
+            text_sequence,
+            a_lengths,
+            t_lengths,
+        ):
+        out = self.forward(audio_signal, text_sequence, a_lengths)
+        ctc_out, lm_out, a_length_out = out['final_posteriors_ctc'], out['final_posteriors_lm'], out['length']
+        ctc_loss = F.ctc_loss(
+            log_probs = rearrange(ctc_out, 'b n c -> n b c'),
+            targets = text_sequence,
+            input_lengths = a_length_out,
+            target_lengths = t_lengths,
+            reduction = 'sum',
+            blank = ctc_out.shape[-1] - 1
+        )
+        a_sum = a_lengths.sum()
+        ctc_loss_to_show = (ctc_loss / a_sum).item()
+        ctc_loss_to_bwd = ctc_loss / (ctc_out.shape[1] * ctc_out.shape[0])
+
+        target_mask = torch.arange(text_sequence.shape[1], device=text_sequence.device)[None, :] >= t_lengths[:, None]
+        targets = text_sequence.masked_fill(target_mask, -100)[:, 1:]
+        predictions = lm_out[:, :-1] # we don't predict the first token
+        lm_loss = F.cross_entropy(
+            input = rearrange(predictions, 'b n c -> (b n) c'),
+            target = rearrange(targets, 'b n -> (b n)'),
+            ignore_index = -100,
+            reduction = 'sum'
+        )
+        lm_loss_to_show = (lm_loss / t_lengths.sum()).item()
+        lm_loss_to_bwd = lm_loss / (predictions.shape[0] * predictions.shape[1])
+
+        loss_to_show = ctc_loss_to_show * self.ctc_loss_weight + lm_loss_to_show * (1 - self.ctc_loss_weight)
+        loss = ctc_loss_to_bwd * self.ctc_loss_weight + lm_loss_to_bwd * (1 - self.ctc_loss_weight) 
+
+        wandb_log_data = {
+            'loss': loss_to_show,
+            'ctc_loss': ctc_loss_to_show,
+            'lm_loss': lm_loss_to_show,
+        }
+
+        return {
+            'loss': loss,
+            'display_losses': wandb_log_data,
+            'ctc_posteriors': ctc_out,
+            'lm_posteriors': lm_out,
+            'length': a_length_out,
+        }
+        
+
 
 
     def forward(
@@ -283,14 +347,11 @@ class EncDecSconformer(BaseModel):
 
 
         return {
-            'final_posteriors': final_posts_ctc,
+            'final_posteriors_ctc': final_posts_ctc,
             'final_posteriors_lm': final_posts_lm,
             'length': length,
         }
     
-    def get_param_groups(self, optim_args):
-        warnings.warn('get_param_groups is not implemented for EncDecSconformer (yet) returning all parameters')
-        return self.parameters()
 
  
 
@@ -393,6 +454,7 @@ class ConformerLayer(nn.Module):
         x = self.norm_out(x)
 
         return x, kv_to_cache
+    
 
 
 
@@ -558,7 +620,7 @@ class CrossAttention(nn.Module):
 
 
         
-    def forward(self, xq, xkv, kv_lengths, attn_mask=None):
+    def forward(self, xq, xkv, kv_mask = None):
         H, D = self.n_heads, self.head_dim
 
         flash_attn = True # not implemented otherwise
@@ -573,11 +635,11 @@ class CrossAttention(nn.Module):
                 q, kv = q.half(), kv.half()
 
             out = self.flash_attn_c_fn(q, kv)
-            if attn_mask is None:
+            if kv_mask is None:
                 out = self.flash_attn_c_fn(q, kv)
             else:
-                q_attn_mask = (attn_mask)[:, -length.max().item():]
-                kv_attn_mask = attn_mask
+                q_attn_mask = torch.ones((q.shape[0], q.shape[1]), device=q.device).bool()
+                kv_attn_mask = kv_mask
 
                 b, qs, qh, qd = q.shape
                 b, kvs, kvn, kh, kd = kv.shape
@@ -596,7 +658,7 @@ class CrossAttention(nn.Module):
             out = out.to(xq.dtype) 
             out = rearrange(out, "b n h d -> b n (h d)")
         else:
-            raise NotImplementedError
+            raise NotImplementedError # just need to implemenent masking for cross attention sdp
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
             out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
@@ -703,11 +765,14 @@ class CrossAttnDecoder(nn.Module):
         x = self.embed(tokens)
         x = pos_enc_module(x, scale = self.pos_enc_scale)
         lengths = torch.LongTensor([x.shape[1]] * x.shape[0]).to(x.device)
-    
+        
+        if a_lengths.max() == a_lengths.min(): a_mask = None # if all the same length don't bother with the mask
+        else: a_mask = ~(torch.arange(a_hidden.shape[1], device=a_hidden.device).expand(a_hidden.size(0), a_hidden.shape[1]) >= a_lengths.unsqueeze(1))
+
         for lth, (self_attn, cross_attn, ff) in enumerate(self.layers):
     
             x = self_attn(x, length=lengths)[0] + x
-            x = cross_attn(x, xkv = a_hidden, kv_lengths=a_lengths) + x
+            x = cross_attn(x, xkv = a_hidden, kv_mask=a_mask) + x
             x = ff(x) + x
 
         return self.out_proj(x)
@@ -726,6 +791,13 @@ if __name__ == '__main__':
 
     out = model(audio_seq, text)
     print([o.shape for o in out.values()])
+
+    model.calc_loss(
+        audio_signal = audio_seq,
+        text_sequence = text,
+        a_length = torch.tensor([100, 100], device='cuda'),
+        t_lengths = torch.tensor([5, 10], device='cuda')
+    )
 
 
 
