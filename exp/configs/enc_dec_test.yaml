@@ -1,3 +1,25 @@
+template_info:
+  create: 3 # number of experiments to create
+  include_keys: [
+    'model', 
+    'optimizer', 
+    'scheduler', 
+    'audio_chunking', 
+    'wandb', 
+    'checkpointing', 
+    'data', 
+    'training', 
+    'sequence_scheduler', 
+    'model_class'
+  ]  # keys to include in experiments config
+
+  template_keys: [
+    'checkpointing.dir', 
+    'wandb.name', 
+    'optimizer.args.lr',
+  ] # keys to use to create experiments
+
+
 model_class: 'EncDecSconformer'
 
 model:
@@ -8,10 +30,14 @@ model:
 optimizer:
   name: madgrad
   args:
-    lr: 1e-4
+    lr: [
+      3e-3,
+      5e-4,
+      1e-3,
+    ]
 
 scheduler:
-  warmup_steps: 5000
+  warmup_steps: 9000
 
 audio_chunking:
   size: 1024
@@ -41,11 +67,19 @@ sequence_scheduler:
 wandb:
   use: true
   project_name: spotify_enc_dec
-  name: 'enc_dec_test'
+  name: [
+    'enc_dec_test_lr_3e3',
+    'enc_dec_test_lr_5e4',
+    'enc_dec_test_lr_1e3',
+  ]
   id: '' 
 
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec_tests
+  dir: [
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec_tests_lr_3e3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec_tests_lr_5e4',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec_tests_lr_1e3',
+  ]
   save_every_n_steps: 2000
 
 data:
@@ -58,7 +92,7 @@ training:
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
-  clip_value: 1.0
+  clip_value: 0.8
   intermediate_loss_weighting: 0.0
   random_seed: 25849
 

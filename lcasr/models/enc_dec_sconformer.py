@@ -71,7 +71,7 @@ class EncDecSconformer(BaseModel):
         sandwich_norm = False,
         bias_in_ff = False,
         transformer=False, # disable convolutions
-        ctc_loss_weight = 0.1,
+        ctc_loss_weight = 0.0,
         legasee_double_norm = True, # norm is applied twice before final output projection, was orignally a bug, kept got compatibility with older checkpoints
         **kwargs
     ):
@@ -87,7 +87,7 @@ class EncDecSconformer(BaseModel):
         self.conv_expansion_factor = conv_expansion_factor
         self.rotary_interpolation_factor = rotary_interpolation_factor
         self.learned_rotary = learned_rotary
-        self.self_conditioning = self_conditioning
+        self.self_conditioning = self_conditioning if ctc_loss_weight > 0 else False # no ctc decoder
         self.sandwich_norm = sandwich_norm
         self.bias_in_ff = bias_in_ff
         self.transformer = transformer
@@ -138,7 +138,7 @@ class EncDecSconformer(BaseModel):
             vocab_size = vocab_size,
             norm = decoder_norm,
             norm_fn = default_norm,
-        )
+        ) if ctc_loss_weight > 0 else None
 
         self.language_model_decoder = CrossAttnDecoder(
             vocab_size = vocab_size,
@@ -200,17 +200,21 @@ class EncDecSconformer(BaseModel):
         ):
         out = self.forward(audio_signal, text_sequence, a_lengths)
         ctc_out, lm_out, a_length_out = out['final_posteriors_ctc'], out['final_posteriors_lm'], out['length']
-        ctc_loss = F.ctc_loss(
-            log_probs = rearrange(ctc_out, 'b n c -> n b c'),
-            targets = text_sequence,
-            input_lengths = a_length_out,
-            target_lengths = t_lengths,
-            reduction = 'sum',
-            blank = ctc_out.shape[-1] - 1
-        )
-        a_sum = a_lengths.sum()
-        ctc_loss_to_show = (ctc_loss / a_sum).item()
-        ctc_loss_to_bwd = ctc_loss / (ctc_out.shape[1] * ctc_out.shape[0])
+
+        if self.ctc_loss_weight > 0.0:
+            ctc_loss = F.ctc_loss(
+                log_probs = rearrange(ctc_out, 'b n c -> n b c'),
+                targets = text_sequence,
+                input_lengths = a_length_out,
+                target_lengths = t_lengths,
+                reduction = 'sum',
+                blank = ctc_out.shape[-1] - 1
+            )
+            a_sum = a_lengths.sum()
+            ctc_loss_to_show = (ctc_loss / a_sum).item()
+            ctc_loss_to_bwd = ctc_loss / (ctc_out.shape[1] * ctc_out.shape[0])
+        else:
+            ctc_loss_to_show, ctc_loss_to_bwd = 0, 0
 
         target_mask = torch.arange(text_sequence.shape[1], device=text_sequence.device)[None, :] >= t_lengths[:, None]
         targets = text_sequence.masked_fill(target_mask, -100)[:, 1:]
@@ -334,7 +338,9 @@ class EncDecSconformer(BaseModel):
         kvs_to_cache = torch.stack(kvs_to_cache, dim=0)
         kvs_to_cache = rearrange(kvs_to_cache, 'l kv b h n d -> kv b l h n d')
         
-        final_posts_ctc = self.ctc_decoder(x = self.ctc_decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal, logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
+        final_posts_ctc = None
+        if self.ctc_loss_weight > 0:
+            final_posts_ctc = self.ctc_decoder(x = self.ctc_decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal, logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
 
         final_posts_lm = None
         if text_sequence is not None:

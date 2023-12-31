@@ -242,11 +242,11 @@ def train(
                         t_lengths = t_lengths.to(device),
                     )
                     
-                    cur_probs = out['ctc_posteriors']
+                    cur_probs = out.get('ctc_posteriors', None)
                     loss = out['loss']
                     
                     
-                blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
+                blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer) if exists(cur_probs) else None
                 # check for nan in loss
                 if torch.isnan(loss):
                     print('OH NO! NAN IN LOSS, SKIPPING') # TODO: set kv cache to None here
@@ -324,8 +324,6 @@ def train(
                     batch_size = batch_size,
                     seen_ids = seen_ids,
                 )
-                if args.config['model']['use_rotary'] and args.config['sequence_scheduler'].get('interpolate_rotary', False):
-                    model.rotary_pos_emb.rotary_interpolation_factor = model.rotary_pos_emb.rotary_interpolation_factor * sequence_scheduler.increase_by_multiplier
                 dataloader_iter = iter(dataloader)
                 pbar.total = len(dataloader) # update total of tqdm
                 
