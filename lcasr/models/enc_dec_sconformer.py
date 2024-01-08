@@ -6,6 +6,7 @@ from functools import partial
 from lcasr.components import fused_dense, subsampling, convolution, decoder, wrappers
 from lcasr.components.rotary_emb import RotaryPositionalEmbedding, apply_rotary
 from lcasr.utils.helpers import exists
+from lcasr.components.wrappers import Scale
 ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
@@ -16,28 +17,111 @@ from flash_attn.modules.mha import FlashCrossAttention
 from flash_attn.bert_padding import unpad_input, pad_input
 from lcasr.components.helpers import get_act
 from lcasr.models.base import BaseModel
+import math
 
 import warnings
 
-class PosEnc(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
-        log_timescale_increment = torch.log(torch.tensor(10000)) / (dim // 2 - 1)
-        inv_timescales = torch.exp(-log_timescale_increment * torch.arange(dim // 2))
-        self.register_buffer("inv_timescales", inv_timescales)
-        self.cache = None
-        
-    def get_emb(self, max_pos:int, device: torch.device, dtype: torch.dtype = torch.float32):
-        if self.cache is None or self.cache.shape[0] < max_pos:
-            scaled_time = torch.arange(max_pos, device=device, dtype=dtype)[:, None] * self.inv_timescales[None, :]
-            signal = torch.cat((scaled_time.sin(), scaled_time.cos()), dim=-1)
-            self.cache = signal
-        return self.cache[:max_pos]
+def add_eos(tokens, eos_id, token_lens):
+    tokens[torch.arange(tokens.shape[0], device=tokens.device, dtype=torch.long), (token_lens - 1).to(torch.long)] = eos_id 
+    return tokens
 
-    def forward(self, x, scale = 1.0):
-        emb = self.get_emb(x.shape[1], x.device, x.dtype)
-        return x + emb[None].to(x.device) * scale
+def token_lens_to_mask(token_lens, max_len=None):
+    max_len = token_lens.max() if max_len is None else max_len
+    mask = torch.arange(max_len, device=token_lens.device)[None, :] < token_lens[:, None]
+    return mask
+
+def mark_padding(targets, mask, pad_id):
+    targets[~mask] = pad_id
+    return targets
+
+class LearnableFourierPosEnc(torch.nn.Module): # code taken from espnet: https://espnet.github.io/espnet/_modules/espnet/nets/pytorch_backend/transformer/embedding.html#LearnableFourierPosEnc
+    """Learnable Fourier Features for Positional Encoding.
+
+    See https://arxiv.org/pdf/2106.02795.pdf
+
+    Args:
+        d_model (int): Embedding dimension.
+        dropout_rate (float): Dropout rate.
+        max_len (int): Maximum input length.
+        gamma (float): init parameter for the positional kernel variance
+            see https://arxiv.org/pdf/2106.02795.pdf.
+        apply_scaling (bool): Whether to scale the input before adding the pos encoding.
+        hidden_dim (int): if not None, we modulate the pos encodings with
+            an MLP whose hidden layer has hidden_dim neurons.
+    """
+
+    def __init__(
+        self,
+        d_model,
+        dropout_rate=0.0,
+        max_len=5000,
+        gamma=1.0,
+        apply_scaling=False,
+        hidden_dim=None,
+    ):
+        """Initialize class."""
+        super(LearnableFourierPosEnc, self).__init__()
+
+        self.d_model = d_model
+
+        if apply_scaling:
+            self.xscale = math.sqrt(self.d_model)
+        else:
+            self.xscale = 1.0
+
+        self.dropout = torch.nn.Dropout(dropout_rate)
+        self.max_len = max_len
+
+        self.gamma = gamma
+        if self.gamma is None:
+            self.gamma = self.d_model // 2
+
+        assert (
+            d_model % 2 == 0
+        ), "d_model should be divisible by two in order to use this layer."
+        self.w_r = torch.nn.Parameter(torch.empty(1, d_model // 2))
+        self._reset()  # init the weights
+
+        self.hidden_dim = hidden_dim
+        if self.hidden_dim is not None:
+            self.mlp = torch.nn.Sequential(
+                torch.nn.Linear(d_model, hidden_dim),
+                torch.nn.GELU(),
+                torch.nn.Linear(hidden_dim, d_model),
+            )
+
+    def _reset(self):
+        self.w_r.data = torch.normal(
+            0, (1 / math.sqrt(self.gamma)), (1, self.d_model // 2)
+        )
+
+    def extend_pe(self, x):
+        """Reset the positional encodings."""
+        position_v = torch.arange(0, x.size(1), dtype=torch.float32).unsqueeze(1).to(x)
+
+        cosine = torch.cos(torch.matmul(position_v, self.w_r))
+        sine = torch.sin(torch.matmul(position_v, self.w_r))
+        pos_enc = torch.cat((cosine, sine), -1)
+        pos_enc /= math.sqrt(self.d_model)
+
+        if self.hidden_dim is None:
+            return pos_enc.unsqueeze(0)
+        else:
+            return self.mlp(pos_enc.unsqueeze(0))
+
+
+    def forward(self, x: torch.Tensor):
+        """Add positional encoding.
+
+        Args:
+            x (torch.Tensor): Input tensor (batch, time, `*`).
+
+        Returns:
+            torch.Tensor: Encoded tensor (batch, time, `*`).
+        """
+        pe = self.extend_pe(x)
+        x = x * self.xscale + pe
+        return self.dropout(x)
 
 
 class EncDecSconformer(BaseModel): 
@@ -71,7 +155,7 @@ class EncDecSconformer(BaseModel):
         sandwich_norm = False,
         bias_in_ff = False,
         transformer=False, # disable convolutions
-        ctc_loss_weight = 0.0,
+        ctc_loss_weight = 0.5,
         legasee_double_norm = True, # norm is applied twice before final output projection, was orignally a bug, kept got compatibility with older checkpoints
         **kwargs
     ):
@@ -96,8 +180,8 @@ class EncDecSconformer(BaseModel):
 
         self.ctc_loss_weight = ctc_loss_weight
 
-        self.abs_pos_enc = PosEnc(d_model)
-        self.pos_enc_scale = nn.Parameter(torch.ones(1,))
+        # self.abs_pos_enc = PosEnc(d_model)
+        self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=64)
 
         self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
 
@@ -198,7 +282,11 @@ class EncDecSconformer(BaseModel):
             a_lengths,
             t_lengths,
         ):
-        out = self.forward(audio_signal, text_sequence, a_lengths)
+        # add bos to text sequence
+        text_sequence_bos = F.pad(text_sequence, (1, 0), value=0)
+        target_lengths_bos = t_lengths + 1
+        
+        out = self.forward(audio_signal, text_sequence_bos, a_lengths)
         ctc_out, lm_out, a_length_out = out['final_posteriors_ctc'], out['final_posteriors_lm'], out['length']
 
         if self.ctc_loss_weight > 0.0:
@@ -211,14 +299,20 @@ class EncDecSconformer(BaseModel):
                 blank = ctc_out.shape[-1] - 1
             )
             a_sum = a_lengths.sum()
-            ctc_loss_to_show = (ctc_loss / a_sum).item()
-            ctc_loss_to_bwd = ctc_loss / (ctc_out.shape[1] * ctc_out.shape[0])
+            ctc_loss_to_show = (ctc_loss / a_sum).item() * 100
+            ctc_loss_to_bwd = ctc_loss / (ctc_out.shape[1] * ctc_out.shape[0]) * 100
         else:
             ctc_loss_to_show, ctc_loss_to_bwd = 0, 0
 
-        target_mask = torch.arange(text_sequence.shape[1], device=text_sequence.device)[None, :] >= t_lengths[:, None]
-        targets = text_sequence.masked_fill(target_mask, -100)[:, 1:]
-        predictions = lm_out[:, :-1] # we don't predict the first token
+        targets = text_sequence_bos.clone()
+        targets[:, :-1] = targets[:, 1:]
+        if target_lengths_bos.max() == target_lengths_bos.min(): targets[:, -1] = 0
+        else:
+            targets = add_eos(targets, eos_id = 0, token_lens = target_lengths_bos)
+        mask = token_lens_to_mask(target_lengths_bos)
+        targets = mark_padding(targets, mask, pad_id = -100)
+
+        predictions = lm_out
         lm_loss = F.cross_entropy(
             input = rearrange(predictions, 'b n c -> (b n) c'),
             target = rearrange(targets, 'b n -> (b n)'),
@@ -267,7 +361,7 @@ class EncDecSconformer(BaseModel):
             
         audio_signal = torch.transpose(audio_signal, 1, 2)
         audio_signal, length = self.subsampling(audio_signal, lengths = length) if not self.checkpoint_subsampling else checkpoint(self.create_custom_forward(self.subsampling), audio_signal, length)
-        audio_signal = self.abs_pos_enc(audio_signal, scale = self.pos_enc_scale)
+        #audio_signal = self.abs_pos_enc(audio_signal, scale = self.pos_enc_scale)
         max_audio_length = audio_signal.size(1)
         ## create masks
         
@@ -299,9 +393,7 @@ class EncDecSconformer(BaseModel):
         
         kvs_to_cache = []
 
-        if self.self_condition_subsampling:
-            iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
-            audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post)) 
+        audio_signal = self.pos_enc(audio_signal)
 
         for lth, layer in enumerate(self.layers):
             current_layer_kvs = cached_kvs[:,:,lth] if cached_kvs is not None else None
@@ -348,7 +440,6 @@ class EncDecSconformer(BaseModel):
                 tokens = text_sequence,
                 a_hidden = audio_signal,
                 a_lengths = length,
-                pos_enc_module = self.abs_pos_enc
             )
 
 
@@ -592,6 +683,49 @@ class Attention(nn.Module):
         
         return out, kv_to_cache
 
+class CrossAttentionPosEnc(nn.Module):
+    def __init__(
+        self,
+        heads,
+        d_head,
+        seq_len=64,
+    ):
+        super().__init__()
+        self.heads = heads
+        self.d_head = d_head
+        self.d_pos = d_head 
+        
+        
+        self.pos_emb_q = nn.Parameter(torch.randn(1, seq_len, heads, self.d_pos))
+        self.pos_emb_k = nn.Parameter(torch.randn(1, seq_len, heads, self.d_pos)) 
+        self.pos_emb_q.data.normal_(mean=0.0, std=0.05)
+        self.pos_emb_k.data.normal_(mean=0.0, std=0.05)
+
+    def extend_pos_emb(self, cur_seq_len_q:int, cur_seq_len_k:int, device: torch.device = torch.device('cuda')):
+        if cur_seq_len_q > self.pos_emb_q.shape[1]:
+            if self.training:
+                diff = cur_seq_len_q - self.pos_emb_q.shape[1]
+                pos_ext = torch.randn(1, diff, self.heads, self.d_pos)
+                pos_ext.data.normal_(mean=0.0, std=self.pos_emb_q.std().item())
+                self.pos_emb_q = nn.Parameter(torch.cat([self.pos_emb_q, pos_ext.to(device)], dim=1))
+            else:
+                warnings.warn(f'cur_seq_len_q ({cur_seq_len_q}) > self.pos_emb_q.shape[1] ({self.pos_emb_q.shape[1]}), this will cause an error at inference time')
+        if cur_seq_len_k > self.pos_emb_k.shape[1]:
+            if self.training:
+                diff = cur_seq_len_k - self.pos_emb_k.shape[1]
+                pos_ext = torch.randn(1, diff, self.heads, self.d_pos)
+                pos_ext.data.normal_(mean=0.0, std=self.pos_emb_k.std().item())
+                self.pos_emb_k = nn.Parameter(torch.cat([self.pos_emb_k, pos_ext.to(device)], dim=1))
+            else:
+                warnings.warn(f'cur_seq_len_k ({cur_seq_len_k}) > self.pos_emb_k.shape[1] ({self.pos_emb_k.shape[1]}), this will cause an error at inference time')
+
+    def forward(self, q, k):
+        # b, n, h, d = q.shape
+        cur_seq_len_q, cur_seq_len_k = q.shape[1], k.shape[1]
+        self.extend_pos_emb(cur_seq_len_q, cur_seq_len_k, device = q.device)
+      
+        return q + self.pos_emb_q[:, :cur_seq_len_q, :, :].clone(), k + self.pos_emb_k[:, :cur_seq_len_k, :, :].clone()
+
 
 class CrossAttention(nn.Module):
     def __init__(
@@ -619,7 +753,8 @@ class CrossAttention(nn.Module):
         self.q_proj = nn.Linear(n_feats, n_heads * head_dim, bias=bias)
         self.kv_proj = nn.Linear(n_feats, 2 * n_heads * head_dim, bias=bias)
 
-        self.kv = lambda x: rearrange(self.kv_proj(x), "b n (h d kv) -> b n kv h d", kv=2, h=n_heads, d=head_dim)
+        #self.kv = lambda x: rearrange(self.kv_proj(x), "b n (h d kv) -> b n kv h d", kv=2, h=n_heads, d=head_dim)
+        self.kv = lambda x: rearrange(self.kv_proj(x), "b n (h d kv) -> kv b n h d", kv=2, h=n_heads, d=head_dim)
         self.q = lambda x: rearrange(self.q_proj(x), "b n (h d) -> b n h d", h=n_heads, d=head_dim)
 
         self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=bias)
@@ -629,11 +764,12 @@ class CrossAttention(nn.Module):
     def forward(self, xq, xkv, kv_mask = None):
         H, D = self.n_heads, self.head_dim
 
-        flash_attn = True # not implemented otherwise
+        flash_attn = True # not implemented otherwise !
 
         q = self.q(xq)
-        kv = self.kv(xkv)
-     
+        k, v = self.kv(xkv)
+        kv = torch.stack([k, v], dim=2)
+
         ### Flash attention stuff 
         if xq.device.type == 'cuda' and flash_attn:
             q, kv = q.contiguous(), kv.contiguous()
@@ -710,35 +846,46 @@ class CrossAttnDecoder(nn.Module):
         self.bias_in_ff = bias_in_ff
         self.default_norm = default_norm
 
-        self.pos_enc_scale = nn.Parameter(torch.ones(1,))
-
         self.embed = nn.Embedding(vocab_size, d_model)
+        self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=64)
         
         self.embed_dropout = nn.Dropout(dropout_attn)
 
         accepted_norms = ['rms_norm', 'layer_norm']
         assert default_norm in accepted_norms, f'default_norm must be one of {accepted_norms} (got {default_norm})'
         default_norm = RMSNorm if default_norm == 'rms_norm' else LayerNorm
+        self.acoustic_norm = default_norm(d_model)
 
         self.layers = nn.ModuleList([])
         for _ in range(n_layers):
             self.layers.append(nn.ModuleList([
-                PreNorm(d_model, Attention(
-                    n_feats = d_model,
-                    n_heads = n_heads,
-                    head_dim = head_dim,
-                    bias = bias_in_ff,
-                    causal = True,
-                    dropout = dropout_attn,
-                )),
-                PreNorm(d_model, CrossAttention(
-                    n_feats = d_model,
-                    n_heads = n_heads,
-                    head_dim = head_dim,
-                    bias = bias_in_ff,
-                    dropout = dropout_attn,
-                ), norm = default_norm),
-                PreNorm(d_model, ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff))
+                PreNorm(
+                    d_model = d_model,
+                    fn = Attention(
+                        n_feats = d_model,
+                        n_heads = n_heads,
+                        head_dim = head_dim,
+                        bias = bias_in_ff,
+                        causal = True,
+                        dropout = dropout_attn,),
+                    norm = default_norm
+                ),
+                PreNorm(
+                    d_model = d_model, 
+                    fn = CrossAttention(
+                        n_feats = d_model,
+                        n_heads = n_heads,
+                        head_dim = head_dim,
+                        bias = bias_in_ff,
+                        dropout = dropout_attn,
+                    ), 
+                    norm = default_norm
+                ),
+                PreNorm(
+                    d_model = d_model, 
+                    fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff),
+                    norm = default_norm,
+                )
             ]))
             
 
@@ -760,26 +907,25 @@ class CrossAttnDecoder(nn.Module):
             self,
             tokens: torch.Tensor, 
             a_hidden: torch.Tensor, 
-            a_lengths: torch.Tensor, 
-            pos_enc_module: PosEnc
+            a_lengths: torch.Tensor,
         ):
         '''
         tokens: (batch, seq_len) - target text sequence
         a_hidden: (batch, seq_len, dim) - encoder output
         pos_enc_module: positional encoding module - instance of PosEnc
         '''
-        x = self.embed(tokens)
-        x = pos_enc_module(x, scale = self.pos_enc_scale)
+        x = self.pos_enc(self.embed(tokens))
+        a_hidden = self.acoustic_norm(a_hidden)
+        
         lengths = torch.LongTensor([x.shape[1]] * x.shape[0]).to(x.device)
         
         if a_lengths.max() == a_lengths.min(): a_mask = None # if all the same length don't bother with the mask
         else: a_mask = ~(torch.arange(a_hidden.shape[1], device=a_hidden.device).expand(a_hidden.size(0), a_hidden.shape[1]) >= a_lengths.unsqueeze(1))
 
-        for lth, (self_attn, cross_attn, ff) in enumerate(self.layers):
-    
+        for lth, (self_attn, cross_attn, ff_out) in enumerate(self.layers):
             x = self_attn(x, length=lengths)[0] + x
             x = cross_attn(x, xkv = a_hidden, kv_mask=a_mask) + x
-            x = ff(x) + x
+            x = ff_out(x) + x
 
         return self.out_proj(x)
 

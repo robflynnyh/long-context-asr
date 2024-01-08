@@ -159,7 +159,7 @@ spec_augment:
 
 training:
   start_spec_augment_after_n_epochs: 0 # -1 to disable
-  batch_size: 352
+  batch_size: 704
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0

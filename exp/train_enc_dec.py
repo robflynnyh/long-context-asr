@@ -209,7 +209,9 @@ def train(
                 scheduler.set_cosine_schedule(total_recordings=total_recordings, cur_podcast=cur_podcast)
         prev_selection_mask, last_kv_set = None, None # selection mask from previous chunk
         ################################
- 
+        # shuffle chunks
+        chunks = random.sample(chunks, len(chunks))
+        
         try:
             for ix, chunk_json in enumerate(chunks):
                 print(f'chunk {ix}/{len(chunks)}')
@@ -287,7 +289,7 @@ def train(
                         scaler = scaler
                     )
                     learning_rate = scheduler.get_last_lr()[0]
-                 
+
 
                     if wandb_config['use']:
                         wandb.log({

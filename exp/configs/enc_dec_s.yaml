@@ -1,0 +1,79 @@
+
+
+model_class: 'EncDecSconformer'
+
+model:
+  feat_in: 80
+  n_layers: 3
+  d_model: 768
+
+optimizer:
+  name: madgrad
+  args:
+    lr: 5e-4
+    decouple_decay: true
+    weight_decay: 0.125
+
+
+scheduler:
+  warmup_steps: 9000
+
+audio_chunking:
+  size: 1024
+  overlap: 0
+
+sequence_scheduler:
+  increase_every: 5000
+  stop_after: 90000
+  start_after: 0
+  max_sequence_length: 4096
+  increase_by_multiplier: 2
+  batch_size_multiplier: 1.0
+
+# 512:0
+# 1024:4000
+# 2048: 14000
+# 4096: 24000
+# 8192: 34000
+# 16384: 44000
+# 32768: 54000
+# 65536: 64000
+# 131072: 74000
+# 262144: 84000
+# 360000: 90000
+
+
+wandb:
+  use: true
+  project_name: spotify_enc_dec
+  name: 'enc_dec_test'
+  id: '' 
+
+checkpointing:
+  dir: '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec_test'
+  save_every_n_steps: 2000
+
+data:
+  path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
+
+training:
+  start_spec_augment_after_n_epochs: -1 # -1 to disable
+  max_epochs: 1
+  batch_size: 88
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
+  clip_value: 0.8
+  intermediate_loss_weighting: 0.0
+  random_seed: 25849
+
+
+# size: 512 = batch size 704
+# size: 1024 = batch size 352
+# size: 2048 = batch size 176
+# size: 4096 = batch size 88
+# size: 8192 = batch size 44
+# size: 16384 = batch size 22
+# size: 65536 = batch size 5 
+# size: 131072 = batch size 2
+# size: 360000 (1 hour) =  batch size 1
