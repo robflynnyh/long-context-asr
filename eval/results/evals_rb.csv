@@ -1,0 +1,2 @@
+,dataset,split,wer,name,checkpoint,repeat,single_utterance,seq_len,overlap_ratio,model_class,cache_len
+0,earnings22,dev,0.2551029347349978,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_4096_rp_1/step_105360.pt,1,False,4096,0.875,SCConformerXL,-1

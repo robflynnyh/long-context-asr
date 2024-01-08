@@ -305,7 +305,7 @@ class EncDecSconformer(BaseModel):
             ctc_loss_to_show, ctc_loss_to_bwd = 0, 0
 
         targets = text_sequence_bos.clone()
-        targets[:, :-1] = targets[:, 1:]
+        targets[:, :-1] = text_sequence_bos[:, 1:]
         if target_lengths_bos.max() == target_lengths_bos.min(): targets[:, -1] = 0
         else:
             targets = add_eos(targets, eos_id = 0, token_lens = target_lengths_bos)
