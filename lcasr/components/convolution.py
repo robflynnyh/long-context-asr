@@ -5,7 +5,7 @@ try:
     from flashfftconv.depthwise_1d import conv1d_forward, conv1d_backward
     class conv1dFunc(torch.autograd.Function):
         @staticmethod
-        @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
+        @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32) # backwards is only implemented for float32 or float16 so use f32 rather than bfloat16
         def forward(ctx, input, weights, bias, padding, is_bhl=True):
             outputs = conv1d_forward(input, weights, bias, padding, is_bhl)
             ctx.padding = padding
@@ -22,8 +22,6 @@ try:
             return du, dk, dbias, None, None
 except:
     conv1dFunc = None
-
-
 
 
 def get_norm(norm_type, d_model):
