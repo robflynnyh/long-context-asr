@@ -4,9 +4,10 @@ from torch.utils.checkpoint import checkpoint # # gradient/activation checkpoint
 from einops import rearrange
 from functools import partial
 from lcasr.components import fused_dense, subsampling, convolution, decoder, wrappers
-from lcasr.components.rotary_emb import RotaryPositionalEmbedding, apply_rotary
+from lcasr.components.positional_encodings import RotaryPositionalEmbedding, apply_rotary, LearnableFourierPosEnc
 from lcasr.utils.helpers import exists
 from lcasr.components.wrappers import Scale
+from lcasr.utils.lm_tools import add_eos, token_lens_to_mask, mark_padding
 ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
@@ -18,111 +19,7 @@ from flash_attn.bert_padding import unpad_input, pad_input
 from lcasr.components.helpers import get_act
 from lcasr.models.base import BaseModel
 import math
-
 import warnings
-
-def add_eos(tokens, eos_id, token_lens):
-    tokens[torch.arange(tokens.shape[0], device=tokens.device, dtype=torch.long), (token_lens - 1).to(torch.long)] = eos_id 
-    return tokens
-
-def token_lens_to_mask(token_lens, max_len=None):
-    max_len = token_lens.max() if max_len is None else max_len
-    mask = torch.arange(max_len, device=token_lens.device)[None, :] < token_lens[:, None]
-    return mask
-
-def mark_padding(targets, mask, pad_id):
-    targets[~mask] = pad_id
-    return targets
-
-class LearnableFourierPosEnc(torch.nn.Module): # code taken from espnet: https://espnet.github.io/espnet/_modules/espnet/nets/pytorch_backend/transformer/embedding.html#LearnableFourierPosEnc
-    """Learnable Fourier Features for Positional Encoding.
-
-    See https://arxiv.org/pdf/2106.02795.pdf
-
-    Args:
-        d_model (int): Embedding dimension.
-        dropout_rate (float): Dropout rate.
-        max_len (int): Maximum input length.
-        gamma (float): init parameter for the positional kernel variance
-            see https://arxiv.org/pdf/2106.02795.pdf.
-        apply_scaling (bool): Whether to scale the input before adding the pos encoding.
-        hidden_dim (int): if not None, we modulate the pos encodings with
-            an MLP whose hidden layer has hidden_dim neurons.
-    """
-
-    def __init__(
-        self,
-        d_model,
-        dropout_rate=0.0,
-        max_len=5000,
-        gamma=1.0,
-        apply_scaling=False,
-        hidden_dim=None,
-    ):
-        """Initialize class."""
-        super(LearnableFourierPosEnc, self).__init__()
-
-        self.d_model = d_model
-
-        if apply_scaling:
-            self.xscale = math.sqrt(self.d_model)
-        else:
-            self.xscale = 1.0
-
-        self.dropout = torch.nn.Dropout(dropout_rate)
-        self.max_len = max_len
-
-        self.gamma = gamma
-        if self.gamma is None:
-            self.gamma = self.d_model // 2
-
-        assert (
-            d_model % 2 == 0
-        ), "d_model should be divisible by two in order to use this layer."
-        self.w_r = torch.nn.Parameter(torch.empty(1, d_model // 2))
-        self._reset()  # init the weights
-
-        self.hidden_dim = hidden_dim
-        if self.hidden_dim is not None:
-            self.mlp = torch.nn.Sequential(
-                torch.nn.Linear(d_model, hidden_dim),
-                torch.nn.GELU(),
-                torch.nn.Linear(hidden_dim, d_model),
-            )
-
-    def _reset(self):
-        self.w_r.data = torch.normal(
-            0, (1 / math.sqrt(self.gamma)), (1, self.d_model // 2)
-        )
-
-    def extend_pe(self, x):
-        """Reset the positional encodings."""
-        position_v = torch.arange(0, x.size(1), dtype=torch.float32).unsqueeze(1).to(x)
-
-        cosine = torch.cos(torch.matmul(position_v, self.w_r))
-        sine = torch.sin(torch.matmul(position_v, self.w_r))
-        pos_enc = torch.cat((cosine, sine), -1)
-        pos_enc /= math.sqrt(self.d_model)
-
-        if self.hidden_dim is None:
-            return pos_enc.unsqueeze(0)
-        else:
-            return self.mlp(pos_enc.unsqueeze(0))
-
-
-    def forward(self, x: torch.Tensor):
-        """Add positional encoding.
-
-        Args:
-            x (torch.Tensor): Input tensor (batch, time, `*`).
-
-        Returns:
-            torch.Tensor: Encoded tensor (batch, time, `*`).
-        """
-        pe = self.extend_pe(x)
-        x = x * self.xscale + pe
-        return self.dropout(x)
-
 
 class EncDecSconformer(BaseModel): 
     def __init__(
@@ -267,12 +164,6 @@ class EncDecSconformer(BaseModel):
                 **kwargs
             )
             self.layers.append(l)
-
-    @staticmethod
-    def create_custom_forward(module): # for activation checkpointing allow passing dictionary as the argument to the module
-        def custom_forward(*args, **kwargs):
-            return module(*args, **kwargs)
-        return custom_forward
 
 
     def calc_loss(

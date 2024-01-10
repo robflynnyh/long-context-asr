@@ -12,6 +12,12 @@ class BaseModel(torch.nn.Module):
         pstr = 'Total trainable params: ' if only_trainable else 'Total params: '
         print(f'{pstr}: ', total/1e6, 'M')
         return total
+    
+    @staticmethod
+    def create_custom_forward(module): # for activation checkpointing allow passing dictionary as the argument to the module
+        def custom_forward(*args, **kwargs):
+            return module(*args, **kwargs)
+        return custom_forward
 
     def get_param_groups(self, optim_args):
         had_blacklist = hasattr(self, 'blacklist_weight_decay_modules')

@@ -5,5 +5,6 @@ from . import (
     dataloading, 
     hooks,
     scheduling,
-    augmentation
+    augmentation,
+    lm_tools,
 )

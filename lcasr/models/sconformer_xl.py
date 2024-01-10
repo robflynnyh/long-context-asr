@@ -158,11 +158,6 @@ class SCConformerXL(BaseModel):
             )
             self.layers.append(l)
 
-    @staticmethod
-    def create_custom_forward(module): # for activation checkpointing allow passing dictionary as the argument to the module
-        def custom_forward(*args, **kwargs):
-            return module(*args, **kwargs)
-        return custom_forward
 
     def forward(
             self, 
