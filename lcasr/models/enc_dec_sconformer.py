@@ -172,9 +172,11 @@ class EncDecSconformer(BaseModel):
             text_sequence,
             a_lengths,
             t_lengths,
+            bos_id=0, 
+            eos_id=0
         ):
         # add bos to text sequence
-        text_sequence_bos = F.pad(text_sequence, (1, 0), value=0)
+        text_sequence_bos = F.pad(text_sequence, (1, 0), value=bos_id)
         target_lengths_bos = t_lengths + 1
         
         out = self.forward(audio_signal, text_sequence_bos, a_lengths)
@@ -199,7 +201,7 @@ class EncDecSconformer(BaseModel):
         targets[:, :-1] = text_sequence_bos[:, 1:]
         if target_lengths_bos.max() == target_lengths_bos.min(): targets[:, -1] = 0
         else:
-            targets = add_eos(targets, eos_id = 0, token_lens = target_lengths_bos)
+            targets = add_eos(targets, eos_id = eos_id, token_lens = target_lengths_bos)
         mask = token_lens_to_mask(target_lengths_bos)
         targets = mark_padding(targets, mask, pad_id = -100)
 
@@ -230,6 +232,31 @@ class EncDecSconformer(BaseModel):
             'length': a_length_out,
         }
         
+    @torch.no_grad()
+    def generate(self, audio_signal, max_generate=256, bos_id=0, eos_id=0):
+        '''
+        greedy generation, audio_signal should be a single batch
+        '''
+        encoder_out = self.forward(audio_signal=audio_signal)
+        a_hidden, length = encoder_out['a_hidden'], encoder_out['length']
+        text_sequence = torch.LongTensor([[bos_id]]).to(a_hidden.device)
+        finished = False
+        #generated = 0
+        while not finished:
+            decoder_logits = self.language_model_decoder(
+                tokens = text_sequence,
+                a_hidden = a_hidden,
+                a_lengths = length,
+            )
+            decoder_pred = decoder_logits[0, -1, :].softmax(dim=-1).argmax(dim=-1)
+            #generated += 1
+            #print(f'Generated {generated} tokens: {decoder_pred.item()}')
+            if decoder_pred == eos_id or text_sequence.shape[1] > max_generate:
+                finished = True
+            else:
+                text_sequence = torch.cat([text_sequence, decoder_pred.unsqueeze(0).unsqueeze(0)], dim=1)
+        return text_sequence
+
 
 
 
@@ -337,6 +364,7 @@ class EncDecSconformer(BaseModel):
         return {
             'final_posteriors_ctc': final_posts_ctc,
             'final_posteriors_lm': final_posts_lm,
+            'a_hidden': audio_signal,
             'length': length,
         }
     

@@ -6,7 +6,7 @@ from functools import partial
 from lcasr.components import fused_dense, subsampling, convolution, decoder, wrappers
 from lcasr.components.rotary_emb import RotaryPositionalEmbedding, apply_rotary
 from lcasr.utils.helpers import exists
-from lcasr.utils.components.helpers import get_act
+from lcasr.components.helpers import get_act
 ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling

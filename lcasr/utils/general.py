@@ -14,6 +14,7 @@ from apex.optimizers import FusedAdam
 from torch.optim import Adam
 from lcasr.optim import madgrad
 import argparse
+import warnings
 
 def get_model_class(config:Dict={}, args:argparse.Namespace={}):
     model_classes = ['SCConformerXL', 'Mamba', 'EncDecSconformer']
@@ -23,6 +24,7 @@ def get_model_class(config:Dict={}, args:argparse.Namespace={}):
     elif 'model_class' in config:
         model_class = config['model_class']
     else:
+        warnings.warn('No model_class specified in model config or args, defaulting to SCConformerXL') 
         model_class = 'SCConformerXL'
     assert model_class in model_classes, f'Unknown model class {model_class}, must be one of {model_classes}'
 

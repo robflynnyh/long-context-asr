@@ -1,5 +1,5 @@
 import torch
-from lming.components.rotary_emb import RotaryPositionalEmbedding, apply_rotary
+from lcasr.components.rotary_emb import RotaryPositionalEmbedding, apply_rotary
 import math
 
 class LearnableFourierPosEnc(torch.nn.Module): # code taken from espnet: https://espnet.github.io/espnet/_modules/espnet/nets/pytorch_backend/transformer/embedding.html#LearnableFourierPosEnc
