@@ -6,6 +6,7 @@ from functools import partial
 from lcasr.components import fused_dense, subsampling, convolution, decoder, wrappers
 from lcasr.components.rotary_emb import RotaryPositionalEmbedding, apply_rotary
 from lcasr.utils.helpers import exists
+from lcasr.utils.components.helpers import get_act
 ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
@@ -84,14 +85,7 @@ class SCConformerXL(BaseModel):
         assert default_norm in accepted_norms, f'default_norm must be one of {accepted_norms} (got {default_norm})'
         default_norm = RMSNorm if default_norm == 'rms_norm' else LayerNorm
 
-        if subsampling_act == 'silu':
-            subsampling_act = nn.SiLU()
-        elif subsampling_act == 'relu':
-            subsampling_act = nn.ReLU()
-        elif subsampling_act == 'gelu':
-            subsampling_act = nn.GELU()
-        elif subsampling_act == 'none':
-            subsampling_act = nn.Identity()
+        subsampling_act = get_act(subsampling_act)
 
         self.flash_attn = kwargs.get('flash_attn', True)
         self.checkpoint_every_n_layers = checkpoint_every_n_layers
@@ -159,12 +153,13 @@ class SCConformerXL(BaseModel):
             self.layers.append(l)
 
 
+
     def forward(
             self, 
-            audio_signal, 
-            length = None,
-            cached_kvs = None,
-            cached_kv_lengths = None,
+            audio_signal,
+            length = None, 
+            cached_kvs = None, 
+            cached_kv_lengths = None, 
             return_logits = False
         ):
         '''
@@ -172,11 +167,8 @@ class SCConformerXL(BaseModel):
         length: (batch_size,)
         cached_kvs: (kv i.e 2, batch_size, layers, heads, time, head_dim)
         '''
-        return self.forward_for_export(audio_signal=audio_signal, decoder=self.decoder, length=length, cached_kvs=cached_kvs, cached_kv_lengths=cached_kv_lengths, return_logits=return_logits)
 
-
-
-    def forward_for_export(self, audio_signal, decoder, length = None, cached_kvs = None, cached_kv_lengths = None, return_logits = False):
+        decoder = self.decoder
         max_audio_length: int = audio_signal.size(-1)
 
         if cached_kvs is not None:

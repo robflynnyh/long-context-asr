@@ -1,4 +1,5 @@
 from torch import nn
+from lcasr.components.batchrenorm import BatchRenorm1d
 
 def get_act(act:str):
     if act == 'silu':
@@ -12,5 +13,5 @@ def get_act(act:str):
     else:
         raise ValueError(f'Activation {act} not supported.')
         
-        
+
         
