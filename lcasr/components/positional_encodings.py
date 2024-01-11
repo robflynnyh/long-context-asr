@@ -10,7 +10,6 @@ class LearnableFourierPosEnc(torch.nn.Module): # code taken from espnet: https:/
     Args:
         d_model (int): Embedding dimension.
         dropout_rate (float): Dropout rate.
-        max_len (int): Maximum input length.
         gamma (float): init parameter for the positional kernel variance
             see https://arxiv.org/pdf/2106.02795.pdf.
         apply_scaling (bool): Whether to scale the input before adding the pos encoding.
@@ -22,7 +21,6 @@ class LearnableFourierPosEnc(torch.nn.Module): # code taken from espnet: https:/
         self,
         d_model,
         dropout_rate=0.0,
-        max_len=5000,
         gamma=1.0,
         apply_scaling=False,
         hidden_dim=None,
@@ -38,7 +36,6 @@ class LearnableFourierPosEnc(torch.nn.Module): # code taken from espnet: https:/
             self.xscale = 1.0
 
         self.dropout = torch.nn.Dropout(dropout_rate)
-        self.max_len = max_len
 
         self.gamma = gamma
         if self.gamma is None:

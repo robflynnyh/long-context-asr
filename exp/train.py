@@ -377,7 +377,7 @@ def main(args):
         wandb.config.update({'total_params': tparams}, allow_val_change=True)
         print(f'\nLoggging with Wandb id: {wandb.run.id}\n')
         args.config['wandb']['id'] = wandb.run.id # add wandb config to args.config
-        if wandb_config.get('update_config_with_wandb_id', True): OmegaConf.save(config=args.config, f=args.config_path)
+        #if wandb_config.get('update_config_with_wandb_id', True): OmegaConf.save(config=args.config, f=args.config_path)
 
     model = model.to(device)
     optimizer, scheduler = load_optimizer(args.config, model)

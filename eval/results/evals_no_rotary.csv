@@ -1,0 +1,5 @@
+,dataset,split,wer,name,checkpoint,repeat,single_utterance,seq_len,overlap_ratio,model_class,cache_len
+0,earnings22,dev,0.2577529566360053,no_rotary,/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_4096_rp_1/step_105360.pt,1,False,4096,0.875,SCConformerXL,-1
+0,earnings22,dev,0.25081033727551466,no_rotary,/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_4096_rp_3/step_105360.pt,3,False,4096,0.875,SCConformerXL,-1
+0,earnings22,dev,0.2561103810775296,no_rotary,/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_8192_rp_1/step_105360.pt,1,False,8192,0.875,SCConformerXL,-1
+0,earnings22,dev,0.25074463425317567,no_rotary,/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_8192_rp_2/step_105360.pt,2,False,8192,0.875,SCConformerXL,-1

@@ -1,0 +1,123 @@
+models:
+
+  # - name: no_rotary
+  #   repeat: 1
+  #   seq_len: 2048
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_2048_rp_1/step_105360.pt
+  #   description: "here we use no position embeddings and just rely on convolutions to encode position"
+  # - name: no_rotary
+  #   repeat: 2
+  #   seq_len: 2048
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_2048_rp_2/step_105360.pt
+  #   description: "here we use no position embeddings and just rely on convolutions to encode position"
+  # - name: no_rotary
+  #   repeat: 3
+  #   seq_len: 2048
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_2048_rp_3/step_105360.pt
+  #   description: "here we use no position embeddings and just rely on convolutions to encode position"
+
+  - name: no_rotary
+    repeat: 1
+    seq_len: 4096
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_4096_rp_1/step_105360.pt
+    description: "here we use no position embeddings and just rely on convolutions to encode position"
+  # - name: no_rotary
+  #   repeat: 2
+  #   seq_len: 4096
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_4096_rp_2/step_105360.pt
+  #   description: "here we use no position embeddings and just rely on convolutions to encode position"
+  - name: no_rotary
+    repeat: 3
+    seq_len: 4096
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_4096_rp_3/step_105360.pt
+    description: "here we use no position embeddings and just rely on convolutions to encode position"
+
+  - name: no_rotary
+    repeat: 1
+    seq_len: 8192
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_8192_rp_1/step_105360.pt
+    description: "here we use no position embeddings and just rely on convolutions to encode position"
+  - name: no_rotary
+    repeat: 2
+    seq_len: 8192
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_8192_rp_2/step_105360.pt
+    description: "here we use no position embeddings and just rely on convolutions to encode position"
+  - name: no_rotary
+    repeat: 3
+    seq_len: 8192
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_8192_rp_3/step_105360.pt
+    description: "here we use no position embeddings and just rely on convolutions to encode position"
+
+  - name: no_rotary
+    repeat: 1
+    seq_len: 16384
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_16384_rp_1/step_105360.pt
+    description: "here we use no position embeddings and just rely on convolutions to encode position"
+  - name: no_rotary
+    repeat: 2
+    seq_len: 16384
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_16384_rp_2/step_105360.pt
+    description: "here we use no position embeddings and just rely on convolutions to encode position"
+  # - name: no_rotary
+  #   repeat: 3
+  #   seq_len: 16384
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_16384_rp_3/step_105360.pt
+  #   description: "here we use no position embeddings and just rely on convolutions to encode position"
+
+  # - name: no_rotary
+  #   repeat: 1
+  #   seq_len: 32768
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_32768_rp_1/step_105360.pt
+  #   description: "here we use no position embeddings and just rely on convolutions to encode position"
+  # - name: no_rotary
+  #   repeat: 2
+  #   seq_len: 32768
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_32768_rp_2/step_105360.pt
+  #   description: "here we use no position embeddings and just rely on convolutions to encode position"
+  # - name: no_rotary
+  #   repeat: 3
+  #   seq_len: 32768
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_32768_rp_3/step_105360.pt
+  #   description: "here we use no position embeddings and just rely on convolutions to encode position"
+
+  # - name: no_rotary
+  #   repeat: 1
+  #   seq_len: 360000
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
+  #   description: "here we use no position embeddings and just rely on convolutions to encode position"
+  # - name: no_rotary
+  #   repeat: 2
+  #   seq_len: 360000
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+  #   description: "here we use no position embeddings and just rely on convolutions to encode position"
+  # - name: no_rotary
+  #   repeat: 3
+  #   seq_len: 360000
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt
+  #   description: "here we use no position embeddings and just rely on convolutions to encode position"
+
+args:
+  splits: [dev, test]
+  datasets: [earnings22, tedlium, rev16]
+  single_utterance: false # only used on some datasets i.e tedlium
+  verbose: true
+  model_class: SCConformerXL
+  save_dataframe_path: './results/evals_no_rotary.csv'
