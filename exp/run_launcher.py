@@ -72,7 +72,7 @@ def main(args):
         with open(os.path.join(SAVE_DIR, f'{names[i]}.sh'), 'w') as f:
             f.write(run_string)
         subprocess.run(['sbatch', os.path.join(SAVE_DIR, f'{names[i]}.sh')])
-        print(f'Launched {names[i]} - {run_string_cmd}')
+        print(f'Launched {names[i]} - {run_string_cmd} - mode: {args.mode}')
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

@@ -6,18 +6,18 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/fourier_pos_seq_sched/n_seq_sched_2048_rp_1/step_105360.pt
     description: "here we are using fourier positinal encodings added to the input after subsampling"
-  # - name: fourier_pos
-  #   repeat: 2
-  #   seq_len: 2048
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/fourier_pos_seq_sched/n_seq_sched_2048_rp_2/step_105360.pt
-  #   description: "here we are using fourier positinal encodings added to the input after subsampling"
-  # - name: fourier_pos
-  #   repeat: 3
-  #   seq_len: 2048
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/fourier_pos_seq_sched/n_seq_sched_2048_rp_3/step_105360.pt
-  #   description: "here we are using fourier positinal encodings added to the input after subsampling"
+  - name: fourier_pos
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/fourier_pos_seq_sched/n_seq_sched_2048_rp_2/step_105360.pt
+    description: "here we are using fourier positinal encodings added to the input after subsampling"
+  - name: fourier_pos
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/fourier_pos_seq_sched/n_seq_sched_2048_rp_3/step_105360.pt
+    description: "here we are using fourier positinal encodings added to the input after subsampling"
 
   - name: fourier_pos
     repeat: 1
@@ -25,12 +25,12 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/fourier_pos_seq_sched/n_seq_sched_4096_rp_1/step_105360.pt
     description: "here we are using fourier positinal encodings added to the input after subsampling"
-  # - name: fourier_pos
-  #   repeat: 2
-  #   seq_len: 4096
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/fourier_pos_seq_sched/n_seq_sched_4096_rp_2/step_105360.pt
-  #   description: "here we are using fourier positinal encodings added to the input after subsampling"
+  - name: fourier_pos
+    repeat: 2
+    seq_len: 4096
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/fourier_pos_seq_sched/n_seq_sched_4096_rp_2/step_105360.pt
+    description: "here we are using fourier positinal encodings added to the input after subsampling"
   - name: fourier_pos
     repeat: 3
     seq_len: 4096
