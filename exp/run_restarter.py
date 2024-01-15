@@ -48,7 +48,7 @@ def main(args):
         
         if not args.keep_seed:
             config = OmegaConf.load(config_path)
-            config['training']['seed'] = random.randint(0, 100000) # set new random seed for restart
+            config['training']['random_seed'] = random.randint(0, 1000000) # set new random seed for restart
             OmegaConf.save(config, config_path) # save new config
 
         run_string_cmd = f"\npython {args.launch} -config {config_path} -num_workers 0"
