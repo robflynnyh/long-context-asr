@@ -59,3 +59,4 @@
 0,rev16,test,0.14528164555089385,fourier_pos,/mnt/parscratch/users/acp21rjf/spotify/fourier_pos_seq_sched/n_seq_sched_16384_rp_1/step_105360.pt,1,False,16384,0.875,SCConformerXL,-1
 0,rev16,test,0.14661901070483876,fourier_pos,/mnt/parscratch/users/acp21rjf/spotify/fourier_pos_seq_sched/n_seq_sched_16384_rp_2/step_105360.pt,2,False,16384,0.875,SCConformerXL,-1
 0,rev16,test,0.14769008633698053,fourier_pos,/mnt/parscratch/users/acp21rjf/spotify/fourier_pos_seq_sched/n_seq_sched_32768_rp_2/step_105360.pt,2,False,32768,0.875,SCConformerXL,-1
+0,earnings22,dev,0.24673674989049496,fourier_pos,/mnt/parscratch/users/acp21rjf/spotify/fourier_pos_seq_sched/n_seq_sched_16384_rp_3/step_105360.pt,3,False,16384,0.875,SCConformerXL,-1
