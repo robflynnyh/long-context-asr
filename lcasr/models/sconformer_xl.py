@@ -4,7 +4,7 @@ from torch.utils.checkpoint import checkpoint # # gradient/activation checkpoint
 from einops import rearrange
 from functools import partial
 from lcasr.components import fused_dense, subsampling, convolution, decoder, wrappers
-from lcasr.components.rotary_emb import RotaryPositionalEmbedding, apply_rotary
+from lcasr.components.positional_encodings import RotaryPositionalEmbedding, apply_rotary, LearnableFourierPosEnc
 from lcasr.utils.helpers import exists
 from lcasr.components.helpers import get_act
 ConformerConvolution = convolution.ConformerConvolution
@@ -34,7 +34,6 @@ class SCConformerXL(BaseModel):
         subsampling_conv_channels = 256,
         subsampling_act = 'silu',
         subsampling_norm_out = False,
-        self_condition_subsampling = False,
         n_layers = 6,
         d_model = 768,
         n_heads = 6,
@@ -50,6 +49,7 @@ class SCConformerXL(BaseModel):
         use_rotary = False,
         rotary_interpolation_factor = 1.0, # https://arxiv.org/abs//2306.15595 Extending Context Window of Large Language Models via Positional Interpolation
         learned_rotary = False,
+        fourier_pos_enc = False,
         self_conditioning = True,
         default_norm = 'layer_norm',
         sandwich_norm = False,
@@ -74,7 +74,7 @@ class SCConformerXL(BaseModel):
         self.sandwich_norm = sandwich_norm
         self.bias_in_ff = bias_in_ff
         self.transformer = transformer
-        self.self_condition_subsampling = self_condition_subsampling
+    
         self.legasee_double_norm = legasee_double_norm
 
         self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
@@ -113,6 +113,7 @@ class SCConformerXL(BaseModel):
                 learned_freq = learned_rotary,
                 rotary_interpolation_factor = rotary_interpolation_factor
             )
+        self.fourier_pos_enc = LearnableFourierPosEnc(d_model) if fourier_pos_enc else nn.Identity()
 
         self.decoder = decoder.ASRLinearSCDecoder(
             d_model = d_model,
@@ -211,10 +212,8 @@ class SCConformerXL(BaseModel):
         
         kvs_to_cache = []
 
-        if self.self_condition_subsampling:
-            iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
-            audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post)) 
-
+        audio_signal = self.fourier_pos_enc(audio_signal)
+        
         for lth, layer in enumerate(self.layers):
             current_layer_kvs = cached_kvs[:,:,lth] if cached_kvs is not None else None
 

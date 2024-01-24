@@ -57,6 +57,9 @@ def main(args):
             val_to_set = attrgetter(template_key)(copies[i])[i]
             rsetattr(copies[i], template_key, val_to_set)
 
+        if 'wandb' in copies[i]: 
+            if 'update_config_with_wandb_id' not in copies[i]['wandb']: copies[i]['wandb']['update_config_with_wandb_id'] = True
+
     names = [f'{i}_{random.randint(0,1000000)}' for i in range(len(copies))]
 
     if not os.path.exists(SAVE_DIR):
@@ -69,7 +72,7 @@ def main(args):
         with open(os.path.join(SAVE_DIR, f'{names[i]}.sh'), 'w') as f:
             f.write(run_string)
         subprocess.run(['sbatch', os.path.join(SAVE_DIR, f'{names[i]}.sh')])
-        print(f'Launched {names[i]} - {run_string_cmd}')
+        print(f'Launched {names[i]} - {run_string_cmd} - mode: {args.mode}')
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
