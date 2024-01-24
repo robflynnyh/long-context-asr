@@ -7,3 +7,4 @@
 .tmp/
 wandb/
 __pycache__
+*.pyc
