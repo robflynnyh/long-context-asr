@@ -1,6 +1,7 @@
 import json
 from typing import Dict
 import torch
+from omegaconf.omegaconf import OmegaConf
 
 def exists(item):
     return item is not None
@@ -15,6 +16,4 @@ def load_pairs(pairs:str = '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pai
 def get_config_from_checkpoint(checkpoint_path:str, out_path:str):
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
     config = checkpoint['config']
-    with open(out_path, 'w') as f:
-        json.dump(config, f, indent=2) 
-    return config
+    OmegaConf.save(config, out_path)
