@@ -86,6 +86,7 @@ def save_model(
         sequence_scheduler:SequenceWarmupManager=None,
         seen_ids:List[int]=[],
         epoch:int=0,
+        other:Dict={},
     ):
     save_path = os.path.join(config['checkpointing']['dir'], f'step_{podcast_step}.pt')
     save_dict = {
@@ -97,6 +98,7 @@ def save_model(
         'sequence_scheduler':sequence_scheduler.state_dict() if sequence_scheduler is not None else None,
         'seen_ids':seen_ids,
         'epoch':epoch,
+        **other,
     }
     torch.save(save_dict, save_path)
 
@@ -115,7 +117,8 @@ def load_checkpoint(
         scheduler:CosineLRScheduler=None,
         sequence_scheduler:SequenceWarmupManager=None,
         path='./checkpoints', 
-        device='cpu'
+        device='cpu',
+        other:List[Tuple]=[], # list of tuples (obj, checkpoint key)
     ):
     latest_checkpoint = find_latest_checkpoint(path)
     if latest_checkpoint is None:
@@ -128,9 +131,9 @@ def load_checkpoint(
     try:
         model.load_state_dict(checkpoint['model'])
     except:
-        print('loading model with strict=False')
+        warnings.warn('loading model with strict=False')
         model.load_state_dict(checkpoint['model'], strict=False)
-        print('SETTING OPTIMIZER TO NONE DUE TO NON-STRICT LOAD')
+        warnings.warn('SETTING OPTIMIZER TO NONE DUE TO NON-STRICT LOAD')
         optimizer = None
     print(f'loaded model from {path}')
     if optimizer != None and 'optimizer' in checkpoint and checkpoint['optimizer'] != None:
@@ -142,9 +145,13 @@ def load_checkpoint(
     if sequence_scheduler != None and 'sequence_scheduler' in checkpoint and checkpoint['sequence_scheduler'] != None:
         sequence_scheduler.load_state_dict(checkpoint['sequence_scheduler'])
   
-    seen_ids = checkpoint.get('seen_ids', [])
-    epoch = checkpoint.get('epoch', 0)
-    step = checkpoint.get('podcast_step', 0)
+    for obj, key in other:
+        if key in checkpoint:
+            obj.load_state_dict(checkpoint[key])
+        else:
+            warnings.warn(f'Could not find {key} in checkpoint, skipping')
+
+    seen_ids, epoch, step = checkpoint.get('seen_ids', []), checkpoint.get('epoch', 0), checkpoint.get('podcast_step', 0)
     return seen_ids, step, epoch
 
 
