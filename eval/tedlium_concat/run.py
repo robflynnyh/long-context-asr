@@ -137,9 +137,9 @@ def main(args):
         gold_text = normalize(gold_text).lower() 
         gold_texts.append(gold_text)
 
-    print(spectrograms[0].shape)
+    #print(spectrograms[0].shape)
     spectrograms_concat = torch.cat(spectrograms, dim=-1)
-    print(f'Concatenated spectrograms shape: {spectrograms_concat.shape}') 
+    #print(f'Concatenated spectrograms shape: {spectrograms_concat.shape}') 
     logits = fetch_logits(args, model, spectrograms_concat, args.seq_len, args.overlap, tokenizer)
     ds_factor = spectrograms_concat.shape[-1] / logits.shape[0]
 

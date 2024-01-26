@@ -7,10 +7,12 @@ from tqdm import tqdm
 from earnings22.run import main as run_earnings22
 from tedlium.run import main as run_tedlium
 from rev16.run import main as run_rev16
+from tedlium_concat.run import main as run_tedlium_concat
 
 dataset_funcs = {
     'earnings22': run_earnings22,
     'tedlium': run_tedlium,
+    'tedlium_concat': run_tedlium_concat, 
     'rev16': run_rev16
 }
 singlue_utterance_datasets = 'tedlium'
