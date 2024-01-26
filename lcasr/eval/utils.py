@@ -53,13 +53,13 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
         overlap = 0
     else:
         overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
-    cache_len = args.cache_len if args.cache_len != -1 else args.config['training']['max_seq_len']
+    
     #assert overlap == 0 or cache_len == 0, 'Cannot use overlap and cache_len at the same time'
 
     assert overlap / downsampling_factor == overlap // downsampling_factor, 'Overlap must be a multiple of the downsampling factor'
 
 
-    print(f'Using seq_len: {seq_len} and overlap: {overlap} and cache_len: {cache_len}')
+    print(f'Using seq_len: {seq_len} and overlap: {overlap}')
 
     all_logits = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
     logit_count = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
