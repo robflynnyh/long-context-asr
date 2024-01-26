@@ -1,0 +1,4 @@
+earnings22:
+  test: # path to test audio i.e '/mnt/parscratch/users/acp21rjf/earnings22/test_original'
+  dev: # path to dev audio i.e '/mnt/parscratch/users/acp21rjf/earnings22/dev_original'
+  text: # path to text json i.e '/mnt/parscratch/users/acp21rjf/earnings22/full_transcripts.json'

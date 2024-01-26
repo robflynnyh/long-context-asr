@@ -7,12 +7,21 @@ from lcasr.utils.general import load_model, get_model_class
 from pyctcdecode import build_ctcdecoder
 from lcasr.eval.wer import word_error_rate_detail 
 from whisper.normalizers import EnglishTextNormalizer
+import warnings
+from omegaconf import OmegaConf
 normalize = EnglishTextNormalizer()
 
-TEST_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/test_original'
-DEV_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/dev_original'
-ALL_TEXT_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/full_transcripts.json'
-
+paths_dir = os.path.join(os.path.dirname(__file__), '../paths.yaml')
+if os.path.exists(paths_dir):
+    paths = OmegaConf.load(paths_dir)
+    TEST_PATH = paths.earnings22.test
+    DEV_PATH = paths.earnings22.dev
+    ALL_TEXT_PATH = paths.earnings22.text
+else:
+    warnings.warn('paths.yaml not found, using default paths for earnings22 dataset')
+    TEST_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/test_original'
+    DEV_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/dev_original'
+    ALL_TEXT_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/full_transcripts.json'
 
 
 

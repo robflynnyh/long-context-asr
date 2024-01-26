@@ -7,8 +7,6 @@
 .tmp/
 wandb/
 __pycache__
-<<<<<<< HEAD
+
 *.pyc
-=======
-*.pyc
->>>>>>> 30f9bf88e7c273bbcd61c428d4f8932ffa122d92
+paths.yaml
