@@ -85,6 +85,7 @@ def main(args, config):
 
     evals_completed = 0
     pbar = tqdm(total=total_evals, desc='Evaluations completed')
+    results = []
     for dataset in datasets:
         for split in config.args.splits:
             if dataset == 'rev16' and split == 'dev': continue # rev16 does not have a dev split
@@ -94,13 +95,13 @@ def main(args, config):
                 args = get_args(config, split, model)
                 wer, model_config = dataset_funcs[dataset](args)
                 data_to_save = get_data_to_save(config, wer, split, dataset, model)
-                
+                results.append(data_to_save)
                 df = pd.DataFrame(data_to_save)
-                df.to_csv(config.args.save_dataframe_path, mode='a', header=not os.path.exists(config.args.save_dataframe_path))
+                df.to_csv(config.args.save_dataframe_path, mode='a', header=not os.path.exists(config.args.save_dataframe_path)) if config.args.save_dataframe_path != '' else None
                 evals_completed += 1
                 pbar.update(1)
     
-    
+    return results
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
