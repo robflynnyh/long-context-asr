@@ -94,7 +94,7 @@ def main(args, config):
         for split in config.args.splits:
             if dataset == 'rev16' and split == 'dev': continue # rev16 does not have a dev split
             for model in config.models:
-                if check_if_already_evaluated(model.path, cur_df): print(f'Skipping {model.path} as it has already been evaluated'); continue
+                if check_if_already_evaluated(model.path, cur_df, dataset=dataset, split=split): print(f'Skipping {model.path} as it has already been evaluated'); continue
 
                 args = get_args(config, split, model)
                 wer, model_config = dataset_funcs[dataset](args)
