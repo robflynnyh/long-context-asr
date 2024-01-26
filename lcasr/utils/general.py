@@ -171,3 +171,28 @@ class KeepCount:
     
     def reset(self):
         self.__dict__ = {}
+
+class argsclass:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+    def __repr__(self):
+        return str(self.__dict__)
+    
+    def __getitem__(self, key):
+        if hasattr(self, key):
+            return getattr(self, key)
+        else:
+            return None
+        
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
+
+    def __contains__(self, key):
+        return hasattr(self, key)
+    
+    def __iter__(self):
+        return self.__dict__.__iter__()
+    
+    def __len__(self):
+        return len(self.__dict__)

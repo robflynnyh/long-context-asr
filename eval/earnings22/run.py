@@ -39,7 +39,6 @@ def fetch_data(audio_path:str = TEST_PATH, txt_path:str = ALL_TEXT_PATH):
         'text': all_text_json[el['meeting']]
         } for el in audio_files]
  
-
     return audio_files, text_files
 
 
