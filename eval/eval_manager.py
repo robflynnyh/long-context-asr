@@ -63,16 +63,18 @@ def get_data_to_save(config, wer, split, dataset, model):
     }   
     return data
 
-def check_if_already_evaluated(model_save_path, cur_df):
+def check_if_already_evaluated(model_save_path, cur_df, dataset, split):
     '''
     ADD CHECKS FOR DATASET ASWELL AND SPLIT AS MODEL CAN BE EVALUATED ON MULTIPLE DATASETS AND SPLITS (currently only checks model_save_path)
     '''
     # check if a model with the same checkpoint path has already been evaluated
     if cur_df is None:
         return False
-    if model_save_path in cur_df['checkpoint'].values:
-        return True
-
+    
+    model = cur_df.loc[cur_df['checkpoint'] == model_save_path].loc[cur_df['dataset'] == dataset].loc[cur_df['split'] == split]
+    if len(model) == 0:return False
+    else: return True
+       
 def main(args, config):
     datasets = config.args.datasets
     checks(config)
