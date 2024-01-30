@@ -6,4 +6,4 @@
 module load Anaconda3/2022.10
 source activate a100
 
-python eval_manager.py -config eval_config_fourier_pos.yaml
+python eval_manager.py -config eval_config_fourier_pos_spec1.yaml

@@ -12,12 +12,12 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_1024_rp_2/step_105360.pt
     description: "looking at setting rotary base frequency to 1.5M and varying the sequence length"  
-  # - name: rb_n_seq_sched
-  #   repeat: 3
-  #   seq_len: 1024
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_1024_rp_3/step_105360.pt
-  #   description: "looking at setting rotary base frequency to 1.5M and varying the sequence length"
+  - name: rb_n_seq_sched
+    repeat: 3
+    seq_len: 1024
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_1024_rp_3/step_105360.pt
+    description: "looking at setting rotary base frequency to 1.5M and varying the sequence length"
 
   - name: rb_n_seq_sched
     repeat: 1
