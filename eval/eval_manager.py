@@ -8,12 +8,14 @@ from earnings22.run import main as run_earnings22
 from tedlium.run import main as run_tedlium
 from rev16.run import main as run_rev16
 from tedlium_concat.run import main as run_tedlium_concat
+from earnings21.run import main as run_earnings21
 
 dataset_funcs = {
     'earnings22': run_earnings22,
     'tedlium': run_tedlium,
     'tedlium_concat': run_tedlium_concat, 
-    'rev16': run_rev16
+    'rev16': run_rev16,
+    'earnings21': run_earnings21
 }
 singlue_utterance_datasets = 'tedlium'
 accepted_splits = ['test', 'dev']
@@ -92,7 +94,7 @@ def main(args, config):
     results = []
     for dataset in datasets:
         for split in config.args.splits:
-            if dataset == 'rev16' and split == 'dev': continue # rev16 does not have a dev split
+            if dataset in ['rev16', 'earnings21'] and split == 'dev': continue # rev16 does not have a dev split
             for model in config.models:
                 if check_if_already_evaluated(model.path, cur_df, dataset=dataset, split=split): print(f'Skipping {model.path} as it has already been evaluated'); continue
 

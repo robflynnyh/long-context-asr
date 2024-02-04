@@ -126,12 +126,12 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_65536_rp_2/step_105360.pt
     description: "here we half the number of layers to look at its effect on context"
-  # - name: rotary_pos_3l
-  #   repeat: 3
-  #   seq_len: 65536
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_65536_rp_3/step_105360.pt
-  #   description: "here we half the number of layers to look at its effect on context"
+  - name: rotary_pos_3l
+    repeat: 3
+    seq_len: 65536
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_65536_rp_3/step_105360.pt
+    description: "here we half the number of layers to look at its effect on context"
 
   - name: rotary_pos_3l
     repeat: 1
@@ -158,12 +158,12 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_262144_rp_1/step_105360.pt
     description: "here we half the number of layers to look at its effect on context"
-  # - name: rotary_pos_3l
-  #   repeat: 2
-  #   seq_len: 262144
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_262144_rp_2/step_105360.pt
-  #   description: "here we half the number of layers to look at its effect on context"
+  - name: rotary_pos_3l
+    repeat: 2
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_262144_rp_2/step_105360.pt
+    description: "here we half the number of layers to look at its effect on context"
   - name: rotary_pos_3l
     repeat: 3
     seq_len: 262144
@@ -177,12 +177,12 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
     description: "here we half the number of layers to look at its effect on context"
-  # - name: rotary_pos_3l
-  #   repeat: 2
-  #   seq_len: 360000
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
-  #   description: "here we half the number of layers to look at its effect on context"
+  - name: rotary_pos_3l
+    repeat: 2
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "here we half the number of layers to look at its effect on context"
   - name: rotary_pos_3l
     repeat: 3
     seq_len: 360000

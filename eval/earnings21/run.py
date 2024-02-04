@@ -9,16 +9,19 @@ from lcasr.eval.wer import word_error_rate_detail
 from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
 
-TEST_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/test_original'
-DEV_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/dev_original'
-ALL_TEXT_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/full_transcripts.json'
+TEST_PATH = '/mnt/parscratch/users/acp21rjf/earnings21/media'
+ALL_TEXT_PATH = '/mnt/parscratch/users/acp21rjf/earnings21/transcripts/nlp_references'
 
 
+def load_and_parse_test(path):
+    words = []
+    with open(path, 'r') as f:
+        for line in f:
+            words.append(line.strip().split("|")[0])
+    return " ".join(words)
 
 
 def fetch_data(audio_path:str = TEST_PATH, txt_path:str = ALL_TEXT_PATH):
-    with open(txt_path, 'r') as f:
-        all_text_json = json.load(f)
 
     audio_files = [{
         'meeting': el.replace('.mp3', ''),
@@ -26,10 +29,10 @@ def fetch_data(audio_path:str = TEST_PATH, txt_path:str = ALL_TEXT_PATH):
         } for el in os.listdir(audio_path) if el.endswith('.mp3')]
 
     text_files = [{
-        'meeting': el['meeting'],
-        'text': all_text_json[el['meeting']]
-        } for el in audio_files]
- 
+        'meeting': meeting,
+        'path': os.path.join(txt_path, meeting+'.nlp'),
+        'text': load_and_parse_test(os.path.join(txt_path, meeting+'.nlp'))
+        } for meeting in [el['meeting'] for el in audio_files]]
 
     return audio_files, text_files
 
@@ -53,8 +56,8 @@ def preprocess_transcript(text:str):
 
 
 def main(args):
-    assert args.split in ['test', 'dev'], 'Split must be either test or dev'
-    data_path = TEST_PATH if args.split == 'test' else DEV_PATH
+    assert args.split in ['test'], 'Split must be test!'
+    data_path = TEST_PATH 
     
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
@@ -96,7 +99,7 @@ def main(args):
         logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
 
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
-        decoded, bo = decode_beams_lm([logits], decoder, beam_width=args.beam_width, ds_factor=ds_factor)
+        decoded, bo = decode_beams_lm([logits], decoder, beam_width=1, ds_factor=ds_factor)
         out = normalize(decoded[0]['text']).lower()
         
         print(cur_text, '\n', out, '\n\n')
@@ -113,6 +116,7 @@ def main(args):
         with open(args.log, 'a') as f:
             f.write(f'{args.checkpoint}\t overlap: {args.overlap}\t seq_len: {args.seq_len}\t WER: {wer}\n')
 
+    return wer, model_config
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
