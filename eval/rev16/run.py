@@ -60,6 +60,9 @@ def main(args):
     model = model.to(device)
     model.eval()
 
+    if args.pad_to != 0 and hasattr(model, 'use_padded_forward'):
+        model.use_padded_forward(pad_to = args.pad_to)
+
     vocab = [tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""]
     decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
 
@@ -110,6 +113,7 @@ if __name__ == '__main__':
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-cache_len', '--cache_len', type=int, default=-1, help='cache length for decoding')
     parser.add_argument('-log', '--log', type=str, default='')
+    parser.add_argument('-pad_to', '--pad_to', default=0, type=int, help='pad sequence to pad_to')
 
     args = parser.parse_args()
     main(args)

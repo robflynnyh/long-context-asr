@@ -18,10 +18,14 @@ from flash_attn.bert_padding import unpad_input, pad_input
 from lcasr.models.base import BaseModel
 import warnings
 
+
+
+
+
 # TODO: 
 # -. remove caching stuff as it is not used anymore
 # -. change name of class to just conforer or something
-# -. remove intermediate losses stuff as it is not used anymore
+# -. remove intermediate losses stuff as it is not used anymore 
 
 class SCConformerXL(BaseModel): 
     def __init__(
@@ -152,8 +156,44 @@ class SCConformerXL(BaseModel):
             )
             self.layers.append(l)
 
+        if kwargs.get('padded_forward_pad_to', None) is not None: self.use_padded_forward(kwargs['padded_forward_pad_to'])
 
+    def padded_forward(self, audio_signal):
+        '''
+            audio_signal: (batch_size, feat, time)
+            for inference when we want the input to be equal to a certain length
+        '''
+        assert audio_signal.shape[0] == 1, 'padded forward only implemented for batch size 1!'
+        if self.pad_to <= audio_signal.shape[-1]:
+            return self.main_forward(audio_signal)
+        else:
+            #print(f' input shape: {audio_signal.shape} ')
+            pad_amount = self.pad_to - audio_signal.shape[-1] 
+            # pad equal amount on both sides
+            pad_left = pad_amount // 2
+            pad_right = pad_amount - pad_left
+        
+            audio_signal = F.pad(audio_signal, (pad_left, pad_right), 'constant', 0)
+            #print(f' padded input shape: {audio_signal.shape} ')
+            out =  self.main_forward(audio_signal)
+            final_posteriors = out['final_posteriors']
+            out_n = final_posteriors.shape[1]
+            #print(audio_signal.shape, final_posteriors.shape)
+            downsample_factor = audio_signal.shape[-1] // out_n
+            remove_left, remove_right = pad_left // downsample_factor, pad_right // downsample_factor
+            final_posteriors = final_posteriors[:, remove_left: -remove_right]
+            
+            length = torch.LongTensor([final_posteriors.shape[1]])
+            return {
+                'final_posteriors': final_posteriors,
+                'length': length,
+            }
 
+    def use_padded_forward(self, pad_to): 
+        self.main_forward = self.forward
+        self.pad_to = pad_to
+        self.forward = self.padded_forward
+        
     def forward(
             self, 
             audio_signal,

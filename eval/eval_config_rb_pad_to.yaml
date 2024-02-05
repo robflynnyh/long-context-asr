@@ -1,0 +1,52 @@
+models:
+  - name: rb_n_seq_sched
+    repeat: 1
+    seq_len: 1024
+    pad_to: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "looking at setting rotary base frequency to 1.5M and varying the sequence length"
+  - name: rb_n_seq_sched
+    repeat: 2
+    seq_len: 1024
+    pad_to: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "looking at setting rotary base frequency to 1.5M and varying the sequence length"  
+  - name: rb_n_seq_sched
+    repeat: 3
+    seq_len: 1024
+    pad_to: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "looking at setting rotary base frequency to 1.5M and varying the sequence length"
+
+  - name: rb_n_seq_sched
+    repeat: 1
+    seq_len: 2048
+    pad_to: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "looking at setting rotary base frequency to 1.5M and varying the sequence length"
+  - name: rb_n_seq_sched
+    repeat: 2
+    seq_len: 2048
+    pad_to: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "looking at setting rotary base frequency to 1.5M and varying the sequence length"  
+  - name: rb_n_seq_sched
+    repeat: 3
+    seq_len: 2048
+    pad_to: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "looking at setting rotary base frequency to 1.5M and varying the sequence length"
+
+args:
+  splits: [test]
+  datasets: [earnings22]
+  single_utterance: false # only used on some datasets i.e tedlium
+  verbose: true
+  model_class: SCConformerXL
+  save_dataframe_path: './results/evals_rb_pad_to.csv'
