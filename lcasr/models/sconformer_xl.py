@@ -22,7 +22,6 @@ import warnings
 # -. remove caching stuff as it is not used anymore
 # -. change name of class to just conforer or something
 # -. remove intermediate losses stuff as it is not used anymore
-# -. fuse self-conditioning layers
 
 class SCConformerXL(BaseModel): 
     def __init__(
