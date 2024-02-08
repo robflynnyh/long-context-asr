@@ -1,0 +1,142 @@
+models:
+
+  - name: r10k_n_seq_sched
+    repeat: 1
+    seq_len: 1024
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-10s/step_105360_repeat_1.pt
+    description: "standard rotary with 10k base frequency"
+  - name: r10k_n_seq_sched
+    repeat: 2
+    seq_len: 1024
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-10s/step_105360_repeat_2.pt
+    description: "standard rotary with 10k base frequency"  
+  - name: r10k_n_seq_sched
+    repeat: 3
+    seq_len: 1024
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-10s/step_105360_repeat_3.pt
+    description: "standard rotary with 10k base frequency"
+
+  - name: r10k_n_seq_sched
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-20s/step_105360_repeat_1.pt
+    description: "standard rotary with 10k base frequency"
+  - name: r10k_n_seq_sched
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-20s/step_105360_repeat_2.pt
+    description: "standard rotary with 10k base frequency"  
+  - name: r10k_n_seq_sched
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-20s/step_105360_repeat_3.pt
+    description: "standard rotary with 10k base frequency"
+
+  - name: r10k_n_seq_sched
+    repeat: 1
+    seq_len: 4096
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-40s/step_105360_repeat_1.pt
+    description: "standard rotary with 10k base frequency"
+  - name: r10k_n_seq_sched
+    repeat: 2
+    seq_len: 4096
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-40s/step_105360_repeat_2.pt
+    description: "standard rotary with 10k base frequency"  
+  - name: r10k_n_seq_sched
+    repeat: 3
+    seq_len: 4096
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-40s/step_105360_repeat_3.pt
+    description: "standard rotary with 10k base frequency"
+
+  - name: r10k_n_seq_sched
+    repeat: 1
+    seq_len: 8192
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-80s/step_105360_repeat_1.pt
+    description: "standard rotary with 10k base frequency"
+  - name: r10k_n_seq_sched
+    repeat: 2
+    seq_len: 8192
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-80s/step_105360_repeat_2.pt
+    description: "standard rotary with 10k base frequency"  
+  - name: r10k_n_seq_sched
+    repeat: 3
+    seq_len: 8192
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-80s/step_105360_repeat_3.pt
+    description: "standard rotary with 10k base frequency"
+
+  - name: r10k_n_seq_sched
+    repeat: 1
+    seq_len: 16384
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-160s/step_105360_repeat_1.pt
+    description: "standard rotary with 10k base frequency"
+  - name: r10k_n_seq_sched
+    repeat: 2
+    seq_len: 16384
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-160s/step_105360_repeat_2.pt
+    description: "standard rotary with 10k base frequency"  
+  - name: r10k_n_seq_sched
+    repeat: 3
+    seq_len: 16384
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-160s/step_105360_repeat_3.pt
+    description: "standard rotary with 10k base frequency"
+
+  - name: r10k_n_seq_sched
+    repeat: 1
+    seq_len: 32768
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-320s/step_105360_repeat_1.pt
+    description: "standard rotary with 10k base frequency"
+  - name: r10k_n_seq_sched
+    repeat: 2
+    seq_len: 32768
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-320s/step_105360_repeat_2.pt
+    description: "standard rotary with 10k base frequency"  
+  - name: r10k_n_seq_sched
+    repeat: 3
+    seq_len: 32768
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-320s/step_105360_repeat_3.pt
+    description: "standard rotary with 10k base frequency"
+
+  - name: r10k_n_seq_sched
+    repeat: 1
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-1hour/step_105360_repeat_1.pt
+    description: "standard rotary with 10k base frequency"
+  - name: r10k_n_seq_sched
+    repeat: 2
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-1hour/step_105360_repeat_2.pt
+    description: "standard rotary with 10k base frequency"  
+  - name: r10k_n_seq_sched
+    repeat: 3
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/lcasr-1hour/step_105360_repeat_3.pt
+    description: "standard rotary with 10k base frequency"
+
+args:
+  splits: [test]
+  datasets: [earnings22_full]
+  single_utterance: false # only used on some datasets i.e tedlium
+  verbose: true
+  model_class: SCConformerXL
+  save_dataframe_path: './results/evals_rotary_10k.csv'

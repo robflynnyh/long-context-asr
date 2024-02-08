@@ -104,3 +104,4 @@
 0,earnings22_full,test,0.2712959384576059,rotary_pos_12l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_2048_rp_2/step_105360.pt,2,False,2048,0.875,SCConformerXL,-1
 0,earnings22_full,test,0.28002945660476114,rotary_pos_12l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_2048_rp_3/step_105360.pt,3,False,2048,0.875,SCConformerXL,-1
 0,earnings22_full,test,0.2690298897304579,rotary_pos_12l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_4096_rp_2/step_105360.pt,2,False,4096,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.2641681298606187,rotary_pos_12l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_4096_rp_3/step_105360.pt,3,False,4096,0.875,SCConformerXL,-1

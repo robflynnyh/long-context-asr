@@ -152,3 +152,4 @@ Unnamed: 0,dataset,split,wer,name,checkpoint,repeat,single_utterance,seq_len,ove
 0,earnings22_full,test,0.2776295142196079,no_rotary,/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_1024_rp_1/step_105360.pt,1,False,1024,0.875,SCConformerXL,-1
 0,earnings22_full,test,0.27177775275724575,no_rotary,/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_1024_rp_2/step_105360.pt,2,False,1024,0.875,SCConformerXL,-1
 0,earnings22_full,test,0.27446069764681896,no_rotary,/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_1024_rp_3/step_105360.pt,3,False,1024,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.2698900550485517,no_rotary,/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_2048_rp_1/step_105360.pt,1,False,2048,0.875,SCConformerXL,-1

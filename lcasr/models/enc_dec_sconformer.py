@@ -770,7 +770,7 @@ class CrossAttnDecoder(nn.Module):
         self.flash_attn = kwargs.get('flash_attn', True)
 
         self.embed = nn.Embedding(vocab_size, d_model)
-        self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=64)
+        self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=kwargs.get('fourier_pos_hidden_dim', 64))
         
         self.embed_dropout = nn.Dropout(dropout_attn)
 

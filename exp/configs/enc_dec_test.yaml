@@ -1,5 +1,5 @@
 template_info:
-  create: 5 # number of experiments to create
+  create: 3 # number of experiments to create
   include_keys: [
     'model', 
     'optimizer', 
@@ -16,7 +16,7 @@ template_info:
   template_keys: [
     'checkpointing.dir', 
     'wandb.name', 
-    'model.ctc_loss_weight',
+    'optimizer.args.lr',
     'training.random_seed',
   ] # keys to use to create experiments
 
@@ -27,14 +27,15 @@ model:
   feat_in: 80
   n_layers: 3
   d_model: 768
-  ctc_loss_weight: [0.0, 0.01, 0.05, 0.1, 0.5]
+  ctc_loss_weight: 0.05
+  fourier_pos_hidden_dim: null
 
 optimizer:
   name: madgrad
   args:
-    lr: 5e-3
-  decoupled_decay: true
-  weight_decay: 0.1
+    lr: [1e-3, 5e-3, 8e-3]
+    decouple_decay: true
+    weight_decay: 0.1
 
 scheduler:
   warmup_steps: 9000
@@ -68,22 +69,18 @@ wandb:
   use: true
   project_name: spotify_enc_dec
   name: [
-    'enc_dec_test_lr_5e3_ctcw_0',
-    'enc_dec_test_lr_5e3_ctcw_0_01',
-    'enc_dec_test_lr_5e3_ctcw_0_05',
-    'enc_dec_test_lr_5e3_ctcw_0_1',
-    'enc_dec_test_lr_5e3_ctcw_0_5',
+    'enc_dec_lr_1e3_ctcw_0_05',
+    'enc_dec_lr_5e3_ctcw_0_05',
+    'enc_dec_lr_8e3_ctcw_0_05',
   ]
   update_config_with_wandb_id: true
   id: '' 
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec_tests_lr_5e3_ctcw_0',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec_tests_lr_5e3_ctcw_0_01',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec_tests_lr_5e3_ctcw_0_05',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec_tests_lr_5e3_ctcw_0_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec_tests_lr_5e3_ctcw_0_5',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_test_lr_1e3_ctcw_0_05',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_test_lr_5e3_ctcw_0_05',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_test_lr_8e3_ctcw_0_05',
   ]
   save_every_n_steps: 2000
 
