@@ -14,14 +14,12 @@ normalize = EnglishTextNormalizer()
 paths_dir = os.path.join(os.path.dirname(__file__), '../paths.yaml')
 if os.path.exists(paths_dir):
     paths = OmegaConf.load(paths_dir)
-    TEST_PATH = paths.earnings22.test
-    DEV_PATH = paths.earnings22.dev
+    TEST_PATH = paths.earnings22_full.test
     ALL_TEXT_PATH = paths.earnings22.text
 else:
-    warnings.warn('paths.yaml not found, using default paths for earnings22 dataset')
-    TEST_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/test_original'
-    DEV_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/dev_original'
-    ALL_TEXT_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/full_transcripts.json'
+    warnings.warn('paths.yaml not found, using default paths for earnings22_full dataset')
+    TEST_PATH = '/mnt/parscratch/users/acp21rjf/earnings22_full/media'
+    ALL_TEXT_PATH = '/mnt/parscratch/users/acp21rjf/earnings22_full/full_transcripts.json'
 
 
 
@@ -61,8 +59,8 @@ def preprocess_transcript(text:str):
 
 
 def main(args):
-    assert args.split in ['test', 'dev'], 'Split must be either test or dev'
-    data_path = TEST_PATH if args.split == 'test' else DEV_PATH
+    assert args.split in ['test'], 'Split must be test for earnings22_full (we just use the entire dataset as a test set)'
+    data_path = TEST_PATH 
     
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
@@ -135,7 +133,6 @@ if __name__ == '__main__':
     parser.add_argument('-cache_len', '--cache_len', type=int, default=-1, help='cache length for decoding')
     parser.add_argument('-log', '--log', type=str, default='')
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
-    #parser.add_argument('-pad_to', '--pad_to', default=0, type=int, help='pad sequence to pad_to')
 
     args = parser.parse_args()
     main(args)

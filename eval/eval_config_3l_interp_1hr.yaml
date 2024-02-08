@@ -1,0 +1,200 @@
+models:
+
+  - name: 3l
+    repeat: 1
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+  - name: 3l
+    repeat: 2
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"  
+  - name: 3l
+    repeat: 3
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+
+  - name: 3l
+    repeat: 1
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+  - name: 3l
+    repeat: 2
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"  
+  - name: 3l
+    repeat: 3
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+
+  - name: 3l
+    repeat: 1
+    seq_len: 131072
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+  - name: 3l
+    repeat: 2
+    seq_len: 131072
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"  
+  - name: 3l
+    repeat: 3
+    seq_len: 131072
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+
+  - name: 3l
+    repeat: 1
+    seq_len: 65536
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+  - name: 3l
+    repeat: 2
+    seq_len: 65536
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"  
+  - name: 3l
+    repeat: 3
+    seq_len: 65536
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+
+  - name: 3l
+    repeat: 1
+    seq_len: 32768
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+  - name: 3l
+    repeat: 2
+    seq_len: 32768
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"  
+  - name: 3l
+    repeat: 3
+    seq_len: 32768
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+
+  - name: 3l
+    repeat: 1
+    seq_len: 16384
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+  - name: 3l
+    repeat: 2
+    seq_len: 16384
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"  
+  - name: 3l
+    repeat: 3
+    seq_len: 16384
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+
+  - name: 3l
+    repeat: 1
+    seq_len: 8192
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+  - name: 3l
+    repeat: 2
+    seq_len: 8192
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"  
+  - name: 3l
+    repeat: 3
+    seq_len: 8192
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+
+  - name: 3l
+    repeat: 1
+    seq_len: 4096
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+  - name: 3l
+    repeat: 2
+    seq_len: 4096
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"  
+  - name: 3l
+    repeat: 3
+    seq_len: 4096
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+
+  - name: 3l
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+  - name: 3l
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"  
+  - name: 3l
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+
+  - name: 3l
+    repeat: 1
+    seq_len: 1024
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+  - name: 3l
+    repeat: 2
+    seq_len: 1024
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"  
+  - name: 3l
+    repeat: 3
+    seq_len: 1024
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "Testing the performance of the model at constant sequence length"
+
+
+args:
+  splits: [test]
+  datasets: [earnings22]
+  single_utterance: false # only used on some datasets i.e tedlium
+  verbose: true
+  model_class: SCConformerXL
+  save_dataframe_path: './results/evals_3l_1hr_interp.csv'

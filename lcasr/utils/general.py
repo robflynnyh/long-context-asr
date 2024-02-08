@@ -9,6 +9,7 @@ from lcasr.models.enc_dec_sconformer import EncDecSconformer
 # from lcasr.models.stconformer import STConformer
 from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler
 import os
+from tqdm import tqdm
 
 from apex.optimizers import FusedAdam
 from torch.optim import Adam
@@ -154,6 +155,27 @@ def load_checkpoint(
     seen_ids, epoch, step = checkpoint.get('seen_ids', []), checkpoint.get('epoch', 0), checkpoint.get('podcast_step', 0)
     return seen_ids, step, epoch
 
+
+def avg_all_models_in_dir(path:str, out_path:str, model_name:str='step_105360.pt'):
+    all_folders = os.listdir(path)
+    all_folders = [el for el in all_folders if os.path.exists(os.path.join(path, el, model_name))]
+    total_models = len(all_folders)
+    avg_model = None
+    model_checkpoint = None
+    for folder in tqdm(all_folders):
+        model_path = os.path.join(path, folder, model_name)
+  
+        model = torch.load(model_path, map_location='cpu')
+        state_dict = model['model']
+        if avg_model is None:
+            avg_model = {key:state_dict[key] * (1/total_models) for key in state_dict.keys()}
+            model_checkpoint = {key:model[key] for key in model.keys() if key not in ['model', 'optimizer', 'scheduler']}
+        else:
+            for key in state_dict.keys():
+                avg_model[key] += state_dict[key] * (1/total_models)
+    
+    model_checkpoint['model'] = avg_model
+    torch.save(model_checkpoint, out_path)
 
 class KeepCount:
     def __getitem__(self, key):

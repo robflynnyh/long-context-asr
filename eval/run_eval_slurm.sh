@@ -6,4 +6,4 @@
 module load Anaconda3/2022.10
 source activate a100
 
-python eval_manager.py -config eval_config_rb_pad_to_65536.yaml
+python eval_manager.py -config eval_config_12l_256.yaml

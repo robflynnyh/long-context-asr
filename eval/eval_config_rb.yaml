@@ -192,7 +192,7 @@ models:
 
 args:
   splits: [dev, test]
-  datasets: [earnings22, tedlium, tedlium_concat, rev16, earnings21]
+  datasets: [earnings22, tedlium, tedlium_concat, rev16, earnings22_full]
   single_utterance: false # only used on some datasets i.e tedlium
   verbose: true
   model_class: SCConformerXL

@@ -22,8 +22,8 @@ source activate a100
 
 """,
     'h100':f"""#!/bin/bash\n
-#SBATCH --time=96:00:00
-#SBATCH --mem=200GB
+#SBATCH --time=90:00:00
+#SBATCH --mem=160GB
 #SBATCH --partition=gpu-h100
 #SBATCH --gres=gpu:h100:1   
 #SBATCH --qos=gpu
