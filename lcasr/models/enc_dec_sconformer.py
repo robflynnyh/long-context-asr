@@ -132,6 +132,7 @@ class EncDecSconformer(BaseModel):
             dropout_ff = dropout_ff,
             decoder_norm=decoder_norm,
             bias_in_ff=bias_in_ff,
+            **kwargs
         )
 
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
@@ -233,7 +234,7 @@ class EncDecSconformer(BaseModel):
         }
         
     @torch.no_grad()
-    def generate(self, audio_signal, max_generate=256, bos_id=0, eos_id=0):
+    def generate(self, audio_signal, max_generate=256, bos_id=0, eos_id=0, return_encoder_states=False):
         '''
         greedy generation, audio_signal should be a single batch
         '''
@@ -255,7 +256,7 @@ class EncDecSconformer(BaseModel):
                 finished = True
             else:
                 text_sequence = torch.cat([text_sequence, decoder_pred.unsqueeze(0).unsqueeze(0)], dim=1)
-        return text_sequence
+        return text_sequence if not return_encoder_states else (text_sequence, encoder_out)
 
 
 
@@ -540,14 +541,16 @@ class Attention(nn.Module):
 
         q, k, v = self.qkv(x)
         kv, kv_to_cache = self.attatch_cache([k, v], cached_kv)
-
+        
         if rotary_emb_fn is not None:
             if rotary_emb_fn.learned == False:
+                #print(kv.shape, q.shape)
                 q, kv[:, :, 0] = rotary_emb_fn.apply(q, kv[:, :, 0])
             else:
                 k, v = kv[:, :, 0], kv[:, :, 1]
                 q, k = rotary_emb_fn.apply(q, k)
                 kv = torch.stack([k, v], dim=2)
+ 
 
         if self.num_position_embeddings > 0:
             assert kv.shape[1] <= self.num_position_embeddings, "kv_seq_len should be less than or equal to num_position_embeddings"
@@ -592,7 +595,7 @@ class Attention(nn.Module):
         else:
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
-            out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
+            out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=self.causal)
             out = rearrange(out, "b h n d -> b n (h d)")
       
         if pad_mask != None:
@@ -658,6 +661,7 @@ class CrossAttention(nn.Module):
     ):
         super().__init__()
         self.layer_idx = kwargs.get('layer_idx', None)
+        self.flash_attn = kwargs.get('flash_attn', True)
 
         self.n_feats, self.head_dim, self.n_heads = n_feats, head_dim, n_heads
    
@@ -680,10 +684,10 @@ class CrossAttention(nn.Module):
 
 
         
-    def forward(self, xq, xkv, kv_mask = None):
+    def forward(self, xq, xkv, kv_mask = None, attn_mask=None):
         H, D = self.n_heads, self.head_dim
 
-        flash_attn = True # not implemented otherwise !
+        flash_attn = self.flash_attn
 
         q = self.q(xq)
         k, v = self.kv(xkv)
@@ -719,7 +723,6 @@ class CrossAttention(nn.Module):
             out = out.to(xq.dtype) 
             out = rearrange(out, "b n h d -> b n (h d)")
         else:
-            raise NotImplementedError # just need to implemenent masking for cross attention sdp
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
             out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
@@ -764,6 +767,7 @@ class CrossAttnDecoder(nn.Module):
         self.rotary_interpolation_factor = rotary_interpolation_factor
         self.bias_in_ff = bias_in_ff
         self.default_norm = default_norm
+        self.flash_attn = kwargs.get('flash_attn', True)
 
         self.embed = nn.Embedding(vocab_size, d_model)
         self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=64)
@@ -786,7 +790,9 @@ class CrossAttnDecoder(nn.Module):
                         head_dim = head_dim,
                         bias = bias_in_ff,
                         causal = True,
-                        dropout = dropout_attn,),
+                        dropout = dropout_attn,
+                        **kwargs
+                    ),
                     norm = default_norm
                 ),
                 PreNorm(
@@ -797,6 +803,7 @@ class CrossAttnDecoder(nn.Module):
                         head_dim = head_dim,
                         bias = bias_in_ff,
                         dropout = dropout_attn,
+                        **kwargs
                     ), 
                     norm = default_norm
                 ),
@@ -838,12 +845,23 @@ class CrossAttnDecoder(nn.Module):
         
         lengths = torch.LongTensor([x.shape[1]] * x.shape[0]).to(x.device)
         
-        if a_lengths.max() == a_lengths.min(): a_mask = None # if all the same length don't bother with the mask
-        else: a_mask = ~(torch.arange(a_hidden.shape[1], device=a_hidden.device).expand(a_hidden.size(0), a_hidden.shape[1]) >= a_lengths.unsqueeze(1))
+        if a_lengths.max() == a_lengths.min(): kv_mask = None # if all the same length don't bother with the mask
+        else: kv_mask = ~(torch.arange(a_hidden.shape[1], device=a_hidden.device).expand(a_hidden.size(0), a_hidden.shape[1]) >= a_lengths.unsqueeze(1))
+
+        rotary_emb_fn = None
+        if self.use_rotary:
+            max_seq_len = tokens.shape[1]
+            cos, sin = self.rotary_pos_emb(max_seq_len, tokens.device)
+            rotary_emb_fn = apply_rotary(cos = cos, sin = sin, q_offset = 0, learned = self.rotary_pos_emb.learned_freq)
+
+        if a_hidden.device.type != 'cuda' or not self.flash_attn: # create attention mask
+            kv_mask = kv_mask if kv_mask is not None else ~(torch.arange(a_hidden.shape[1], device=a_hidden.device).expand(a_hidden.size(0), a_hidden.shape[1]) >= a_lengths.unsqueeze(1))
+            q_mask = torch.zeros(x.shape[0], x.shape[1], dtype=torch.bool, device=x.device) # no mask
+            attn_mask = ~(rearrange(~q_mask, 'b n -> b () n ()') * rearrange(~kv_mask, 'b n -> b () () n'))
 
         for lth, (self_attn, cross_attn, ff_out) in enumerate(self.layers):
-            x = self_attn(x, length=lengths)[0] + x
-            x = cross_attn(x, xkv = a_hidden, kv_mask=a_mask) + x
+            x = self_attn(x, length=lengths, flash_attn=self.flash_attn, rotary_emb_fn=rotary_emb_fn)[0] + x
+            x = cross_attn(x, xkv = a_hidden, kv_mask=kv_mask) + x
             x = ff_out(x) + x
 
         return self.out_proj(x)
