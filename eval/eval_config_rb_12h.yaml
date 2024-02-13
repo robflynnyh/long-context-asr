@@ -1,0 +1,123 @@
+models:
+
+  # - name: rb_n_seq_sched_12h
+  #   repeat: 1
+  #   seq_len: 1024
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_1024_rp_1/step_105360.pt
+  #   description: "looking at increasing the number of heads to 12"
+  # - name: rb_n_seq_sched_12h
+  #   repeat: 2
+  #   seq_len: 1024
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_1024_rp_2/step_105360.pt
+  #   description: "looking at increasing the number of heads to 12"  
+  - name: rb_n_seq_sched_12h
+    repeat: 3
+    seq_len: 1024
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_1024_rp_3/step_105360.pt
+    description: "looking at increasing the number of heads to 12"
+
+  # - name: rb_n_seq_sched_12h
+  #   repeat: 1
+  #   seq_len: 32768
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_32768_rp_1/step_105360.pt
+  #   description: "looking at increasing the number of heads to 12"
+  - name: rb_n_seq_sched_12h
+    repeat: 2
+    seq_len: 32768
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_32768_rp_2/step_105360.pt
+    description: "looking at increasing the number of heads to 12"  
+  - name: rb_n_seq_sched_12h
+    repeat: 3
+    seq_len: 32768
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_32768_rp_3/step_105360.pt
+    description: "looking at increasing the number of heads to 12"
+
+  - name: rb_n_seq_sched_12h
+    repeat: 1
+    seq_len: 65536
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_65536_rp_1/step_105360.pt
+    description: "looking at increasing the number of heads to 12"
+  - name: rb_n_seq_sched_12h
+    repeat: 2
+    seq_len: 65536
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_65536_rp_2/step_105360.pt
+    description: "looking at increasing the number of heads to 12"  
+  - name: rb_n_seq_sched_12h
+    repeat: 3
+    seq_len: 65536
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_65536_rp_3/step_105360.pt
+    description: "looking at increasing the number of heads to 12"
+
+  - name: rb_n_seq_sched_12h
+    repeat: 1
+    seq_len: 131072
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_131072_rp_1/step_105360.pt
+    description: "looking at increasing the number of heads to 12"
+  - name: rb_n_seq_sched_12h
+    repeat: 2
+    seq_len: 131072
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_131072_rp_2/step_105360.pt
+    description: "looking at increasing the number of heads to 12"  
+  - name: rb_n_seq_sched_12h
+    repeat: 3
+    seq_len: 131072
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_131072_rp_3/step_105360.pt
+    description: "looking at increasing the number of heads to 12"
+
+  # - name: rb_n_seq_sched_12h
+  #   repeat: 1
+  #   seq_len: 262144
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_262144_rp_1/step_105360.pt
+  #   description: "looking at increasing the number of heads to 12"
+  - name: rb_n_seq_sched_12h
+    repeat: 2
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_262144_rp_2/step_105360.pt
+    description: "looking at increasing the number of heads to 12"  
+  - name: rb_n_seq_sched_12h
+    repeat: 3
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_262144_rp_3/step_105360.pt
+    description: "looking at increasing the number of heads to 12"
+
+  - name: rb_n_seq_sched_12h
+    repeat: 1
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "looking at increasing the number of heads to 12"
+  - name: rb_n_seq_sched_12h
+    repeat: 2
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt
+    description: "looking at increasing the number of heads to 12"  
+  # - name: rb_n_seq_sched_12h
+  #   repeat: 3
+  #   seq_len: 360000
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt
+  #   description: "looking at increasing the number of heads to 12"
+
+args:
+  splits: [test, dev]
+  datasets: [earnings22_full, earnings22, tedlium, rev16]
+  single_utterance: false # only used on some datasets i.e tedlium
+  verbose: true
+  model_class: SCConformerXL
+  save_dataframe_path: './results/evals_rb_12h.csv'

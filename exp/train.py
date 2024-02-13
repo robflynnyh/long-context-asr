@@ -13,7 +13,7 @@ from lcasr.utils.helpers import exists
 from lcasr.utils.general import load_model, save_model, load_checkpoint, load_optimizer
 from lcasr.utils.augmentation import SpecAugment
 import resource
-
+import time
 
 from einops import rearrange
 import numpy as np
@@ -405,6 +405,11 @@ def main(args):
 
     print(f'Starting from podcast: {len(seen_ids)}')
     random_seed = args.config['training'].get('random_seed', 1234)
+    if random_seed == 'random':  # generate using time
+        random_seed = int(time.time()) % 10000 
+        print(f'random seed: {random_seed}')
+
+    random.seed(random_seed)
     start_spec_augment_after_n_epochs = args.config['training'].get('start_spec_augment_after_n_epochs', -1)
 
     # skip data up to step

@@ -78,7 +78,7 @@ class EncDecSconformer(BaseModel):
         self.ctc_loss_weight = ctc_loss_weight
 
         # self.abs_pos_enc = PosEnc(d_model)
-        self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=64)
+        self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=kwargs.get('fourier_pos_hidden_dim', 64))
 
         self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
 

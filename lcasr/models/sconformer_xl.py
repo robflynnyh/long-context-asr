@@ -20,8 +20,6 @@ import warnings
 
 
 
-
-
 # TODO: 
 # -. remove caching stuff as it is not used anymore
 # -. change name of class to just conforer or something
@@ -348,9 +346,30 @@ class ConformerLayer(nn.Module):
             self.do_conv = nn.Dropout(dropout_conv)
 
         if not self.trasformer:
-            self.ff1 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
+            self.ff1 = Scale(0.5, PreNorm(
+                d_model = d_model, 
+                fn = ConformerFeedForward(
+                    d_model, 
+                    bias1 = bias_in_ff, 
+                    bias2 = bias_in_ff,
+                    checkpoint_lvl = kwargs.get('ff_checkpoint_lvl', 0)
+                ), 
+                norm = default_norm, 
+                sandwich_norm = sandwich_norm
+            ))
         
-        self.ff2 = Scale(0.5, PreNorm(d_model = d_model, fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff), norm = default_norm, sandwich_norm = sandwich_norm))
+        self.ff2 = Scale(0.5, PreNorm(
+            d_model = d_model, 
+            fn = ConformerFeedForward(
+                d_model, 
+                bias1 = bias_in_ff, 
+                bias2 = bias_in_ff,
+                checkpoint_lvl = kwargs.get('ff_checkpoint_lvl', 0)
+            ), 
+            norm = default_norm, 
+            sandwich_norm = sandwich_norm
+        ))
+
         self.do_ff = nn.Dropout(dropout_ff)
 
         self.attend = PreNorm(

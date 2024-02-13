@@ -28,14 +28,11 @@ model:
   n_layers: 3
   d_model: 768
   ctc_loss_weight: 0.05
-  fourier_pos_hidden_dim: null
 
 optimizer:
   name: madgrad
   args:
-    lr: [1e-3, 5e-3, 8e-3]
-    decouple_decay: true
-    weight_decay: 0.1
+    lr: [1e-3, 3e-3, 5e-3]
 
 scheduler:
   warmup_steps: 9000
@@ -70,8 +67,8 @@ wandb:
   project_name: spotify_enc_dec
   name: [
     'enc_dec_lr_1e3_ctcw_0_05',
+    'enc_dec_lr_3e3_ctcw_0_05',
     'enc_dec_lr_5e3_ctcw_0_05',
-    'enc_dec_lr_8e3_ctcw_0_05',
   ]
   update_config_with_wandb_id: true
   id: '' 
@@ -79,8 +76,8 @@ wandb:
 checkpointing:
   dir: [
     '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_test_lr_1e3_ctcw_0_05',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_test_lr_3e3_ctcw_0_05',
     '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_test_lr_5e3_ctcw_0_05',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_test_lr_8e3_ctcw_0_05',
   ]
   save_every_n_steps: 2000
 
@@ -97,9 +94,9 @@ training:
   clip_value: 0.1
   intermediate_loss_weighting: 0.0
   random_seed: [
-    75268,
-    75268,
-    75268,
+    91268,
+    25268,
+    55268,
     75268,
     75268
   ]

@@ -1,23 +1,23 @@
 models:
 
-  - name: rotary_pos_12l_256d
-    repeat: 1
-    seq_len: 1024
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_1024_rp_1/step_105360.pt
-    description: "here we reduce the parameters and look at its effect on context"
+  # - name: rotary_pos_12l_256d
+  #   repeat: 1
+  #   seq_len: 1024
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_1024_rp_1/step_105360.pt
+  #   description: "here we reduce the parameters and look at its effect on context"
   - name: rotary_pos_12l_256d
     repeat: 2
     seq_len: 1024
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_1024_rp_2/step_105360.pt
     description: "here we reduce the parameters and look at its effect on context"
-  # - name: rotary_pos_12l_256d
-  #   repeat: 3
-  #   seq_len: 1024
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_1024_rp_3/step_105360.pt
-  #   description: "here we reduce the parameters and look at its effect on context"
+  - name: rotary_pos_12l_256d
+    repeat: 3
+    seq_len: 1024
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_1024_rp_3/step_105360.pt
+    description: "here we reduce the parameters and look at its effect on context"
 
   # - name: rotary_pos_12l_256d
   #   repeat: 1
@@ -38,12 +38,12 @@ models:
     path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_2048_rp_3/step_105360.pt
     description: "here we reduce the parameters and look at its effect on context"
 
-  # - name: rotary_pos_12l_256d
-  #   repeat: 1
-  #   seq_len: 4096
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_4096_rp_1/step_105360.pt
-  #   description: "here we reduce the parameters and look at its effect on context"
+  - name: rotary_pos_12l_256d
+    repeat: 1
+    seq_len: 4096
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_4096_rp_1/step_105360.pt
+    description: "here we reduce the parameters and look at its effect on context"
   - name: rotary_pos_12l_256d
     repeat: 2
     seq_len: 4096
@@ -107,12 +107,12 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_32768_rp_2/step_105360.pt
     description: "here we reduce the parameters and look at its effect on context"
-  # - name: rotary_pos_12l_256d
-  #   repeat: 3
-  #   seq_len: 32768
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_32768_rp_3/step_105360.pt
-  #   description: "here we reduce the parameters and look at its effect on context"
+  - name: rotary_pos_12l_256d
+    repeat: 3
+    seq_len: 32768
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_32768_rp_3/step_105360.pt
+    description: "here we reduce the parameters and look at its effect on context"
 
   # - name: rotary_pos_12l_256d
   #   repeat: 1
@@ -139,12 +139,12 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_131072_rp_1/step_105360.pt
     description: "here we reduce the parameters and look at its effect on context"
-  # - name: rotary_pos_12l_256d
-  #   repeat: 2
-  #   seq_len: 131072
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_131072_rp_2/step_105360.pt
-  #   description: "here we reduce the parameters and look at its effect on context"
+  - name: rotary_pos_12l_256d
+    repeat: 2
+    seq_len: 131072
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_131072_rp_2/step_105360.pt
+    description: "here we reduce the parameters and look at its effect on context"
   # - name: rotary_pos_12l_256d
   #   repeat: 3
   #   seq_len: 131072
@@ -158,18 +158,18 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_262144_rp_1/step_105360.pt
     description: "here we reduce the parameters and look at its effect on context"
-  # - name: rotary_pos_12l_256d
-  #   repeat: 2
-  #   seq_len: 262144
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_262144_rp_2/step_105360.pt
-  #   description: "here we reduce the parameters and look at its effect on context"
-  # - name: rotary_pos_12l_256d
-  #   repeat: 3
-  #   seq_len: 262144
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_262144_rp_3/step_105360.pt
-  #   description: "here we reduce the parameters and look at its effect on context"
+  - name: rotary_pos_12l_256d
+    repeat: 2
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_262144_rp_2/step_105360.pt
+    description: "here we reduce the parameters and look at its effect on context"
+  - name: rotary_pos_12l_256d
+    repeat: 3
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12l_256d_seq_sched/n_seq_sched_262144_rp_3/step_105360.pt
+    description: "here we reduce the parameters and look at its effect on context"
 
   - name: rotary_pos_12l_256d
     repeat: 1
