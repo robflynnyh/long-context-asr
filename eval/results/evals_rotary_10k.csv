@@ -17,3 +17,6 @@
 0,earnings22_full,test,0.24689686232384617,r10k_n_seq_sched,/mnt/parscratch/users/acp21rjf/lcasr-320s/step_105360_repeat_1.pt,1,False,32768,0.875,SCConformerXL,-1
 0,earnings22_full,test,0.24866588156294472,r10k_n_seq_sched,/mnt/parscratch/users/acp21rjf/lcasr-320s/step_105360_repeat_2.pt,2,False,32768,0.875,SCConformerXL,-1
 0,earnings22_full,test,0.24974311690234993,r10k_n_seq_sched,/mnt/parscratch/users/acp21rjf/lcasr-320s/step_105360_repeat_3.pt,3,False,32768,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.2517160196661382,r10k_n_seq_sched,/mnt/parscratch/users/acp21rjf/lcasr-1hour/step_105360_repeat_1.pt,1,False,360000,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.2487379001214172,r10k_n_seq_sched,/mnt/parscratch/users/acp21rjf/lcasr-1hour/step_105360_repeat_2.pt,2,False,360000,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.24820333983529053,r10k_n_seq_sched,/mnt/parscratch/users/acp21rjf/lcasr-1hour/step_105360_repeat_3.pt,3,False,360000,0.875,SCConformerXL,-1

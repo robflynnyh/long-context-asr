@@ -231,3 +231,11 @@
 0,earnings22_full,test,0.24464805747689575,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_65536_rp_2/step_105360.pt,2,False,65536,0.875,SCConformerXL,-1
 0,earnings22_full,test,0.24365501284669075,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_65536_rp_3/step_105360.pt,3,False,65536,0.875,SCConformerXL,-1
 0,earnings22_full,test,0.2448052810904624,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_131072_rp_1/step_105360.pt,1,False,131072,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.2379909053747146,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_131072_rp_2/step_105360.pt,2,False,131072,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.2477509415665761,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_131072_rp_3/step_105360.pt,3,False,131072,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.24368747191529805,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_262144_rp_1/step_105360.pt,1,False,262144,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.2431843563518847,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_262144_rp_2/step_105360.pt,2,False,262144,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.2438457098747587,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_262144_rp_3/step_105360.pt,3,False,262144,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.24307582134122901,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_1/step_105360.pt,1,False,360000,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.24377267697039226,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_2/step_105360.pt,2,False,360000,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.2435069183461699,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_3/step_105360.pt,3,False,360000,0.875,SCConformerXL,-1
