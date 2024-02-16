@@ -176,3 +176,4 @@ Unnamed: 0,dataset,split,wer,name,checkpoint,repeat,single_utterance,seq_len,ove
 0,earnings22_full,test,0.2542204396783712,no_rotary,/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_262144_rp_1/step_105360.pt,1,False,262144,0.875,SCConformerXL,-1
 0,earnings22_full,test,0.2511956602225272,no_rotary,/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_262144_rp_2/step_105360.pt,2,False,262144,0.875,SCConformerXL,-1
 0,earnings22_full,test,0.2605692306287829,no_rotary,/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_262144_rp_3/step_105360.pt,3,False,262144,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.25884991433848925,no_rotary,/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt,1,False,360000,0.875,SCConformerXL,-1
