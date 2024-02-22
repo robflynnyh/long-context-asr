@@ -680,7 +680,7 @@ class CrossAttention(nn.Module):
         else:
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
-            out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
+            out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=0.0 if not self.training else self.dropout_p, is_causal=False)
             out = rearrange(out, "b h n d -> b n (h d)")
 
 
