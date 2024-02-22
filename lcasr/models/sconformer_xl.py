@@ -516,7 +516,6 @@ class Attention(nn.Module):
                 qkv = torch.cat([q[:,:,None], kv], dim=2)
                 out = self.flash_attn_fn(qkv, attn_mask)[0] #!!! !!!!!!
             else:
-                out = self.flash_attn_c_fn(q, kv)
                 if attn_mask is None:
                     out = self.flash_attn_c_fn(q, kv)
                 else:

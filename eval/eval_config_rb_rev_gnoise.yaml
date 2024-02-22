@@ -196,4 +196,4 @@ args:
   single_utterance: false # only used on some datasets i.e tedlium
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_rb_rev16_gnoise_0SNR.csv'
+  save_dataframe_path: './results/evals_rb_rev16_gnoise_m10_10SNR.csv'

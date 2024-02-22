@@ -569,7 +569,6 @@ class Attention(nn.Module):
                 qkv = torch.cat([q[:,:,None], kv], dim=2)
                 out = self.flash_attn_fn(qkv, attn_mask, causal=self.causal)[0] #!!! !!!!!!
             else:
-                out = self.flash_attn_c_fn(q, kv)
                 if attn_mask is None:
                     out = self.flash_attn_c_fn(q, kv)
                 else:
@@ -605,48 +604,6 @@ class Attention(nn.Module):
         
         return out, kv_to_cache
 
-class CrossAttentionPosEnc(nn.Module):
-    def __init__(
-        self,
-        heads,
-        d_head,
-        seq_len=64,
-    ):
-        super().__init__()
-        self.heads = heads
-        self.d_head = d_head
-        self.d_pos = d_head 
-        
-        
-        self.pos_emb_q = nn.Parameter(torch.randn(1, seq_len, heads, self.d_pos))
-        self.pos_emb_k = nn.Parameter(torch.randn(1, seq_len, heads, self.d_pos)) 
-        self.pos_emb_q.data.normal_(mean=0.0, std=0.05)
-        self.pos_emb_k.data.normal_(mean=0.0, std=0.05)
-
-    def extend_pos_emb(self, cur_seq_len_q:int, cur_seq_len_k:int, device: torch.device = torch.device('cuda')):
-        if cur_seq_len_q > self.pos_emb_q.shape[1]:
-            if self.training:
-                diff = cur_seq_len_q - self.pos_emb_q.shape[1]
-                pos_ext = torch.randn(1, diff, self.heads, self.d_pos)
-                pos_ext.data.normal_(mean=0.0, std=self.pos_emb_q.std().item())
-                self.pos_emb_q = nn.Parameter(torch.cat([self.pos_emb_q, pos_ext.to(device)], dim=1))
-            else:
-                warnings.warn(f'cur_seq_len_q ({cur_seq_len_q}) > self.pos_emb_q.shape[1] ({self.pos_emb_q.shape[1]}), this will cause an error at inference time')
-        if cur_seq_len_k > self.pos_emb_k.shape[1]:
-            if self.training:
-                diff = cur_seq_len_k - self.pos_emb_k.shape[1]
-                pos_ext = torch.randn(1, diff, self.heads, self.d_pos)
-                pos_ext.data.normal_(mean=0.0, std=self.pos_emb_k.std().item())
-                self.pos_emb_k = nn.Parameter(torch.cat([self.pos_emb_k, pos_ext.to(device)], dim=1))
-            else:
-                warnings.warn(f'cur_seq_len_k ({cur_seq_len_k}) > self.pos_emb_k.shape[1] ({self.pos_emb_k.shape[1]}), this will cause an error at inference time')
-
-    def forward(self, q, k):
-        # b, n, h, d = q.shape
-        cur_seq_len_q, cur_seq_len_k = q.shape[1], k.shape[1]
-        self.extend_pos_emb(cur_seq_len_q, cur_seq_len_k, device = q.device)
-      
-        return q + self.pos_emb_q[:, :cur_seq_len_q, :, :].clone(), k + self.pos_emb_k[:, :cur_seq_len_k, :, :].clone()
 
 
 class CrossAttention(nn.Module):
@@ -676,7 +633,6 @@ class CrossAttention(nn.Module):
         self.q_proj = nn.Linear(n_feats, n_heads * head_dim, bias=bias)
         self.kv_proj = nn.Linear(n_feats, 2 * n_heads * head_dim, bias=bias)
 
-        #self.kv = lambda x: rearrange(self.kv_proj(x), "b n (h d kv) -> b n kv h d", kv=2, h=n_heads, d=head_dim)
         self.kv = lambda x: rearrange(self.kv_proj(x), "b n (h d kv) -> kv b n h d", kv=2, h=n_heads, d=head_dim)
         self.q = lambda x: rearrange(self.q_proj(x), "b n (h d) -> b n h d", h=n_heads, d=head_dim)
 
@@ -699,7 +655,6 @@ class CrossAttention(nn.Module):
             if q.dtype == torch.float32:
                 q, kv = q.half(), kv.half()
 
-            out = self.flash_attn_c_fn(q, kv)
             if kv_mask is None:
                 out = self.flash_attn_c_fn(q, kv)
             else:
@@ -771,8 +726,8 @@ class CrossAttnDecoder(nn.Module):
 
         self.embed = nn.Embedding(vocab_size, d_model)
         self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=kwargs.get('fourier_pos_hidden_dim', 64))
-        
-        self.embed_dropout = nn.Dropout(dropout_attn)
+        self.dropout_emb = kwargs.get('dropout_emb', 0.0)
+        self.ff_out_dropout = kwargs.get('ff_out_dropout', 0.0)
 
         accepted_norms = ['rms_norm', 'layer_norm']
         assert default_norm in accepted_norms, f'default_norm must be one of {accepted_norms} (got {default_norm})'
@@ -841,6 +796,7 @@ class CrossAttnDecoder(nn.Module):
         pos_enc_module: positional encoding module - instance of PosEnc
         '''
         x = self.pos_enc(self.embed(tokens))
+        x = F.dropout(x, p=self.dropout_emb, training=self.training)
         a_hidden = self.acoustic_norm(a_hidden)
         
         lengths = torch.LongTensor([x.shape[1]] * x.shape[0]).to(x.device)
@@ -862,7 +818,7 @@ class CrossAttnDecoder(nn.Module):
         for lth, (self_attn, cross_attn, ff_out) in enumerate(self.layers):
             x = self_attn(x, length=lengths, flash_attn=self.flash_attn, rotary_emb_fn=rotary_emb_fn)[0] + x
             x = cross_attn(x, xkv = a_hidden, kv_mask=kv_mask) + x
-            x = ff_out(x) + x
+            x = F.dropout(ff_out(x), p=self.ff_out_dropout, training=self.training) + x
 
         return self.out_proj(x)
 

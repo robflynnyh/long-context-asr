@@ -11,12 +11,12 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_1024_rp_2/step_105360.pt
     description: "increasing the model layers to 9 from 6"  
-  - name: rb_n_seq_sched_9l_768d
-    repeat: 3
-    seq_len: 1024
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_1024_rp_3/step_105360.pt
-    description: "increasing the model layers to 9 from 6"
+  # - name: rb_n_seq_sched_9l_768d
+  #   repeat: 3
+  #   seq_len: 1024
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_1024_rp_3/step_105360.pt
+  #   description: "increasing the model layers to 9 from 6"
 
   - name: rb_n_seq_sched_9l_768d
     repeat: 1
@@ -68,12 +68,12 @@ models:
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_8192_rp_2/step_105360.pt
     description: "increasing the model layers to 9 from 6"  
-  # - name: rb_n_seq_sched_9l_768d
-  #   repeat: 3
-  #   seq_len: 8192
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_8192_rp_3/step_105360.pt
-  #   description: "increasing the model layers to 9 from 6"
+  - name: rb_n_seq_sched_9l_768d
+    repeat: 3
+    seq_len: 8192
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_8192_rp_3/step_105360.pt
+    description: "increasing the model layers to 9 from 6"
 
   - name: rb_n_seq_sched_9l_768d
     repeat: 1
@@ -94,12 +94,12 @@ models:
     path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_16384_rp_3/step_105360.pt
     description: "increasing the model layers to 9 from 6"
 
-  # - name: rb_n_seq_sched_9l_768d
-  #   repeat: 1
-  #   seq_len: 32768
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_32768_rp_1/step_105360.pt
-  #   description: "increasing the model layers to 9 from 6"
+  - name: rb_n_seq_sched_9l_768d
+    repeat: 1
+    seq_len: 32768
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_32768_rp_1/step_105360.pt
+    description: "increasing the model layers to 9 from 6"
   - name: rb_n_seq_sched_9l_768d
     repeat: 2
     seq_len: 32768
@@ -113,24 +113,24 @@ models:
     path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_32768_rp_3/step_105360.pt
     description: "increasing the model layers to 9 from 6"
 
-  # - name: rb_n_seq_sched_9l_768d
-  #   repeat: 1
-  #   seq_len: 65536
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_65536_rp_1/step_105360.pt
-  #   description: "increasing the model layers to 9 from 6"
+  - name: rb_n_seq_sched_9l_768d
+    repeat: 1
+    seq_len: 65536
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_65536_rp_1/step_105360.pt
+    description: "increasing the model layers to 9 from 6"
   - name: rb_n_seq_sched_9l_768d
     repeat: 2
     seq_len: 65536
     overlap_ratio: 0.875
     path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_65536_rp_2/step_105360.pt
     description: "increasing the model layers to 9 from 6"  
-  # - name: rb_n_seq_sched_9l_768d
-  #   repeat: 3
-  #   seq_len: 65536
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_65536_rp_3/step_105360.pt
-  #   description: "increasing the model layers to 9 from 6"
+  - name: rb_n_seq_sched_9l_768d
+    repeat: 3
+    seq_len: 65536
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_65536_rp_3/step_105360.pt
+    description: "increasing the model layers to 9 from 6"
 
   - name: rb_n_seq_sched_9l_768d
     repeat: 1
@@ -151,47 +151,47 @@ models:
     path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_131072_rp_3/step_105360.pt
     description: "increasing the model layers to 9 from 6"
 
-  # - name: rb_n_seq_sched_9l_768d
-  #   repeat: 1
-  #   seq_len: 262144
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_262144_rp_1/step_105360.pt
-  #   description: "increasing the model layers to 9 from 6"
-  # - name: rb_n_seq_sched_9l_768d
-  #   repeat: 2
-  #   seq_len: 262144
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_262144_rp_2/step_105360.pt
-  #   description: "increasing the model layers to 9 from 6"  
-  # - name: rb_n_seq_sched_9l_768d
-  #   repeat: 3
-  #   seq_len: 262144
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_262144_rp_3/step_105360.pt
-  #   description: "increasing the model layers to 9 from 6"
+  - name: rb_n_seq_sched_9l_768d
+    repeat: 1
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_262144_rp_1/step_105360.pt
+    description: "increasing the model layers to 9 from 6"
+  - name: rb_n_seq_sched_9l_768d
+    repeat: 2
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_262144_rp_2/step_105360.pt
+    description: "increasing the model layers to 9 from 6"  
+  - name: rb_n_seq_sched_9l_768d
+    repeat: 3
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_262144_rp_3/step_105360.pt
+    description: "increasing the model layers to 9 from 6"
 
-  # - name: rb_n_seq_sched_9l_768d
-  #   repeat: 1
-  #   seq_len: 360000
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_360000_rp_1/step_105360.pt
-  #   description: "increasing the model layers to 9 from 6"
+  - name: rb_n_seq_sched_9l_768d
+    repeat: 1
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_360000_rp_1/step_105360.pt
+    description: "increasing the model layers to 9 from 6"
   # - name: rb_n_seq_sched_9l_768d
   #   repeat: 2
   #   seq_len: 360000
   #   overlap_ratio: 0.875
   #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_360000_rp_2/step_105360.pt
   #   description: "increasing the model layers to 9 from 6"  
-  # - name: rb_n_seq_sched_9l_768d
-  #   repeat: 3
-  #   seq_len: 360000
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_360000_rp_3/step_105360.pt
-  #   description: "increasing the model layers to 9 from 6"
+  - name: rb_n_seq_sched_9l_768d
+    repeat: 3
+    seq_len: 360000
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_9l/n_seq_sched_360000_rp_3/step_105360.pt
+    description: "increasing the model layers to 9 from 6"
 
 args:
   splits: [dev, test]
-  datasets: [earnings22, earnings22_full, tedlium, tedlium_concat, rev16]
+  datasets: [earnings22_full, earnings22, tedlium, rev16]
   single_utterance: false # only used on some datasets i.e tedlium
   verbose: true
   model_class: SCConformerXL

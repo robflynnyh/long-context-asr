@@ -53,8 +53,8 @@ def get_args(config, split, model):
         'cache_len': -1,
         'single_utterance': config.args.get('single_utterance', False),
         'verbose': False,
-        'min_snr_db': model.get('min_snr_db', -0.0), # for rev16_gaussian_noise
-        'max_snr_db': model.get('max_snr_db', 0.0), # for rev16_gaussian_noise
+        'min_snr_db': model.get('min_snr_db', -7.5), # for rev16_gaussian_noise
+        'max_snr_db': model.get('max_snr_db', -7.5), # for rev16_gaussian_noise
         'p': model.get('p', 1.0), # for rev16_gaussian_noise
         
     })
