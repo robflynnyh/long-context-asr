@@ -963,17 +963,20 @@ class CrossAttnDecoder(nn.Module):
             tokens: torch.Tensor, 
             a_hidden: torch.Tensor, 
             a_lengths: torch.Tensor,
+            text_lengths: torch.Tensor = None,
             cache:Dict=None,
         ):
         '''
         tokens: (batch, seq_len) - target text sequence
         a_hidden: (batch, seq_len, dim) - encoder output
         '''
-        x = self.pos_enc(self.embed(tokens), position_offset = 0)
+        lengths = torch.LongTensor([x.shape[1]] * x.shape[0]).to(x.device) if text_lengths is None else text_lengths
+        offsets = cache['cache_lengths'] if exists(cache) else None
+        x = self.pos_enc(self.embed(tokens), lengths=lengths, position_offsets=offsets)
         x = F.dropout(x, p=self.dropout_emb, training=self.training)
         a_hidden = self.acoustic_norm(a_hidden)
         
-        lengths = torch.LongTensor([x.shape[1]] * x.shape[0]).to(x.device)
+        
 
         mask, attn_mask, total_lens, x_len, cache_len, pos_bias = self.create_masks_and_positions(x, lengths, cache)
         cache_indices = self.get_cache_indices(x_len, cache_len, cache['cache'], x) if exists(cache) and self.cache_needs_gather else None

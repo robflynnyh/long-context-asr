@@ -62,9 +62,10 @@ class LearnableFourierPosEnc(torch.nn.Module): # code taken from espnet: https:/
             0, (1 / math.sqrt(self.gamma)), (1, self.d_model // 2)
         )
 
-    def extend_pe(self, x, position_offset):
+    def extend_pe(self, x, lengths, position_offsets):
         """Reset the positional encodings."""
-        position_v = torch.arange(position_offset, position_offset + x.size(1), dtype=torch.float32).unsqueeze(1).to(x)
+        start, end = position_offsets.min().item(), (position_offsets + lengths).max().item()
+        position_v = torch.arange(start, end, dtype=torch.float32, device=x.device).unsqueeze(1)
 
         cosine = torch.cos(torch.matmul(position_v, self.w_r))
         sine = torch.sin(torch.matmul(position_v, self.w_r))
@@ -72,12 +73,21 @@ class LearnableFourierPosEnc(torch.nn.Module): # code taken from espnet: https:/
         pos_enc /= math.sqrt(self.d_model)
 
         if self.hidden_dim is None:
-            return pos_enc.unsqueeze(0)
+            pos_enc =  pos_enc.unsqueeze(0)
         else:
-            return self.mlp(pos_enc.unsqueeze(0))
+            pos_enc = self.mlp(pos_enc.unsqueeze(0))
+        if (position_offsets == position_offsets[0]).all():
+            return pos_enc
+        else:
+            zero_index = torch.zeros(1, 1, self.d_model, device=x.device)
+            pos_enc = torch.cat((pos_enc, zero_index), dim=1)
+            indexes = torch.arange(0, lengths.max(), device=x.device)[None].expand(x.size(0), -1) + position_offsets[:, None]
+            indexes = indexes.clamp(start, end)
+            pos_enc = pos_enc.expand(x.size(0), -1, -1).gather(1, indexes[:,:,None].expand(-1, -1, pos_enc.size(-1)))
+            return pos_enc
 
 
-    def forward(self, x: torch.Tensor, position_offset: int = 0):
+    def forward(self, x: torch.Tensor, lengths: torch.Tensor = None, position_offsets: torch.Tensor = None):
         """Add positional encoding.
 
         Args:
@@ -86,7 +96,9 @@ class LearnableFourierPosEnc(torch.nn.Module): # code taken from espnet: https:/
         Returns:
             torch.Tensor: Encoded tensor (batch, time, `*`).
         """
-        pe = self.extend_pe(x, position_offset)
+        lengths = torch.LongTensor([x.size(1)] * x.size(0)).to(x) if lengths is None else lengths
+        position_offsets = torch.LongTensor([0] * x.size(0)).to(x) if position_offsets is None else position_offsets
+        pe = self.extend_pe(x, lengths, position_offsets)
         x = x * self.xscale + pe
         return self.dropout(x)
     

@@ -312,7 +312,7 @@ class EncDecSconformer(BaseModel):
         
         kvs_to_cache = []
 
-        audio_signal = self.pos_enc(audio_signal)
+        audio_signal = self.pos_enc(audio_signal, lengths = length)
 
         for lth, layer in enumerate(self.layers):
             current_layer_kvs = cached_kvs[:,:,lth] if cached_kvs is not None else None
@@ -795,11 +795,11 @@ class CrossAttnDecoder(nn.Module):
         a_hidden: (batch, seq_len, dim) - encoder output
         pos_enc_module: positional encoding module - instance of PosEnc
         '''
-        x = self.pos_enc(self.embed(tokens), position_offset = 0)
+        lengths = torch.LongTensor([x.shape[1]] * x.shape[0]).to(x.device)
+        x = self.pos_enc(self.embed(tokens), lengths=lengths)
         x = F.dropout(x, p=self.dropout_emb, training=self.training)
         a_hidden = self.acoustic_norm(a_hidden)
         
-        lengths = torch.LongTensor([x.shape[1]] * x.shape[0]).to(x.device)
         
         if a_lengths.max() == a_lengths.min(): kv_mask = None # if all the same length don't bother with the mask
         else: kv_mask = ~(torch.arange(a_hidden.shape[1], device=a_hidden.device).expand(a_hidden.size(0), a_hidden.shape[1]) >= a_lengths.unsqueeze(1))
