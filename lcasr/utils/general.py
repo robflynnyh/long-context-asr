@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
 from lcasr.models.mamba import Mamba
 from lcasr.models.enc_dec_sconformer import EncDecSconformer
+from lcasr.models.enc_dec_sconformer_v2 import EncDecSconformerV2
 
 # from lcasr.models.metaconformer import MetaConformer
 # from lcasr.models.stconformer import STConformer
@@ -18,7 +19,7 @@ import argparse
 import warnings
 
 def get_model_class(config:Dict={}, args:argparse.Namespace={}):
-    model_classes = ['SCConformerXL', 'Mamba', 'EncDecSconformer']
+    model_classes = ['SCConformerXL', 'Mamba', 'EncDecSconformer', 'EncDecSconformerV2']
     
     if 'model_class' in args:
         model_class = args.model_class
@@ -35,6 +36,8 @@ def get_model_class(config:Dict={}, args:argparse.Namespace={}):
         return Mamba
     elif model_class == 'EncDecSconformer':
         return EncDecSconformer
+    elif model_class == 'EncDecSconformerV2':
+        return EncDecSconformerV2
     else:
         raise NotImplementedError(f'Unknown model class {model_class}, must be one of {model_classes}')
     

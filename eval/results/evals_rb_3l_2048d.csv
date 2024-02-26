@@ -3,3 +3,9 @@
 0,earnings22_full,test,0.2737841289355353,rb_n_seq_sched_3l_2048d,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_2048_rp_2/step_105360.pt,2,False,2048,0.875,SCConformerXL,-1
 0,earnings22_full,test,0.2711326287686754,rb_n_seq_sched_3l_2048d,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_4096_rp_2/step_105360.pt,2,False,4096,0.875,SCConformerXL,-1
 0,earnings22_full,test,0.26647170938584397,rb_n_seq_sched_3l_2048d,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_4096_rp_3/step_105360.pt,3,False,4096,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.26323898902173437,rb_n_seq_sched_3l_2048d,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_8192_rp_1/step_105360.pt,1,False,8192,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.26641592036167516,rb_n_seq_sched_3l_2048d,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_8192_rp_2/step_105360.pt,2,False,8192,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.260232467791982,rb_n_seq_sched_3l_2048d,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_16384_rp_2/step_105360.pt,2,False,16384,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.26189396636631884,rb_n_seq_sched_3l_2048d,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_16384_rp_3/step_105360.pt,3,False,16384,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.27809104160136816,rb_n_seq_sched_3l_2048d,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_2048_rp_3/step_105360.pt,3,False,2048,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.26548373648510887,rb_n_seq_sched_3l_2048d,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_8192_rp_3/step_105360.pt,3,False,8192,0.875,SCConformerXL,-1

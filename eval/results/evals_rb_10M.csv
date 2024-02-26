@@ -1,0 +1,6 @@
+,dataset,split,wer,name,checkpoint,repeat,single_utterance,seq_len,overlap_ratio,model_class,cache_len
+0,earnings22_full,test,0.2410146704846646,rb_10M_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_10M_seq_sched/n_seq_sched_131072_rp_2/step_105360.pt,2,False,131072,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.24193062482692723,rb_10M_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_10M_seq_sched/n_seq_sched_131072_rp_3/step_105360.pt,3,False,131072,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.24036447476662437,rb_10M_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_10M_seq_sched/n_seq_sched_360000_rp_1/step_105360.pt,1,False,360000,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.24465921528172951,rb_10M_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_10M_seq_sched/n_seq_sched_360000_rp_2/step_105360.pt,2,False,360000,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.24192961048103326,rb_10M_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_10M_seq_sched/n_seq_sched_360000_rp_3/step_105360.pt,3,False,360000,0.875,SCConformerXL,-1

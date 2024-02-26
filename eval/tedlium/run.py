@@ -105,8 +105,6 @@ def main(args):
     model = model.to(device)
     model.eval()
 
-    if args.pad_to != 0 and hasattr(model, 'use_padded_forward'):
-        model.use_padded_forward(pad_to = args.pad_to)
 
     vocab = [tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""]
     decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
