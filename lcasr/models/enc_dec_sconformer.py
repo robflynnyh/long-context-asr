@@ -795,7 +795,7 @@ class CrossAttnDecoder(nn.Module):
         a_hidden: (batch, seq_len, dim) - encoder output
         pos_enc_module: positional encoding module - instance of PosEnc
         '''
-        lengths = torch.LongTensor([x.shape[1]] * x.shape[0]).to(x.device)
+        lengths = torch.LongTensor([tokens.shape[1]] * tokens.shape[0]).to(tokens.device)
         x = self.pos_enc(self.embed(tokens), lengths=lengths)
         x = F.dropout(x, p=self.dropout_emb, training=self.training)
         a_hidden = self.acoustic_norm(a_hidden)

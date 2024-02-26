@@ -970,7 +970,7 @@ class CrossAttnDecoder(nn.Module):
         tokens: (batch, seq_len) - target text sequence
         a_hidden: (batch, seq_len, dim) - encoder output
         '''
-        lengths = torch.LongTensor([x.shape[1]] * x.shape[0]).to(x.device) if text_lengths is None else text_lengths
+        lengths = torch.LongTensor([tokens.shape[1]] * tokens.shape[0]).to(tokens.device) if text_lengths is None else text_lengths
         offsets = cache['cache_lengths'] if exists(cache) else None
         x = self.pos_enc(self.embed(tokens), lengths=lengths, position_offsets=offsets)
         x = F.dropout(x, p=self.dropout_emb, training=self.training)
