@@ -1006,6 +1006,7 @@ class CrossAttnDecoder(nn.Module):
             x = cross_attn(x, xkv = a_hidden, kv_mask=kv_mask, attn_mask=cross_attn_mask) + x
             x = F.dropout(ff_out(x), p=self.ff_out_dropout, training=self.training) + x
 
+
         kv_cache = torch.stack(kv_cache, dim=0) if len(kv_cache) > 0 else None
         kv_cache = {'cache_lengths': total_lens, 'cache': kv_cache} if exists(kv_cache) else None
         self.cache_needs_gather = x_len.max() != x_len.min()

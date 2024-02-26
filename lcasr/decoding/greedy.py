@@ -7,7 +7,7 @@ class GreedyCTCDecoder(torch.nn.Module): # Modifcation of: https://pytorch.org/a
         self.tokenizer = tokenizer
         self.blank = blank_id
 
-    def forward(self, emission: torch.Tensor) -> str:
+    def forward(self, emission: torch.Tensor, decode=True) -> str:
         """Given a sequence emission over labels, get the best path
         Args:
           emission (Tensor): Logit tensors. Shape `[num_seq, num_label]`.
@@ -15,9 +15,10 @@ class GreedyCTCDecoder(torch.nn.Module): # Modifcation of: https://pytorch.org/a
         Returns:
           List[str]: The resulting transcript
         """
+        decode = decode and self.tokenizer is not None
         indices = torch.argmax(emission, dim=-1)  # [num_seq,]
         indices = torch.unique_consecutive(indices, dim=-1).tolist()
         indices = [i for i in indices if i != self.blank]
-        return self.tokenizer.decode(indices) if self.tokenizer is not None else indices
+        return self.tokenizer.decode(indices) if decode else indices
 
 
