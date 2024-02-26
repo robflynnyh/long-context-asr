@@ -201,7 +201,7 @@ class BeamSearch():
 
     def prune_less_than(self, beams):
         if self.prune_less_than_val is None:
-            return
+            return beams
         top_beam_score = beams[0].score
         num_beams = len(beams)
         beams = [beam for beam in beams if not beam.score < (top_beam_score - self.prune_less_than_val)] # prune beams that are less than top beam score by prune_less_than_val

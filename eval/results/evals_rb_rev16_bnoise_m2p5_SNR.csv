@@ -1,3 +1,6 @@
 ,dataset,split,wer,name,checkpoint,repeat,single_utterance,seq_len,overlap_ratio,model_class,cache_len
 0,rev16_background_noise,test,0.32476140384919805,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_1024_rp_1/step_105360.pt,1,False,1024,0.875,SCConformerXL,-1
 0,rev16_background_noise,test,0.30988137852149533,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_1024_rp_2/step_105360.pt,2,False,1024,0.875,SCConformerXL,-1
+0,rev16_background_noise,test,0.33720057395842373,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_1024_rp_3/step_105360.pt,3,False,1024,0.875,SCConformerXL,-1
+0,rev16_background_noise,test,0.29390858537631553,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_2048_rp_1/step_105360.pt,1,False,2048,0.875,SCConformerXL,-1
+0,rev16_background_noise,test,0.30678690516920026,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_2048_rp_2/step_105360.pt,2,False,2048,0.875,SCConformerXL,-1
