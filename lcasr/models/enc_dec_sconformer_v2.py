@@ -22,6 +22,7 @@ from lcasr.models.base import BaseModel
 from torch import einsum
 import math
 import warnings
+from lcasr.decoding import ctc_beam_search
 
 class EncDecSconformerV2(BaseModel): 
     def __init__(
@@ -243,23 +244,79 @@ class EncDecSconformerV2(BaseModel):
         text_sequence = torch.LongTensor([[bos_id]]).to(a_hidden.device)
         finished = False
         #generated = 0
+        cache = None
+        final_text_sequence = text_sequence.clone()
         while not finished:
-            decoder_logits = self.language_model_decoder(
+            decoder_out = self.language_model_decoder(
                 tokens = text_sequence,
                 a_hidden = a_hidden,
                 a_lengths = length,
-            )['logits']
+                cache = cache,
+                text_lengths = torch.tensor([1], device=a_hidden.device),
+            )
+            decoder_logits = decoder_out['logits']
+            cache = decoder_out['kv_cache']
             decoder_pred = decoder_logits[0, -1, :].softmax(dim=-1).argmax(dim=-1)
             #generated += 1
             #print(f'Generated {generated} tokens: {decoder_pred.item()}')
             if decoder_pred == eos_id or text_sequence.shape[1] > max_generate:
                 finished = True
             else:
-                text_sequence = torch.cat([text_sequence, decoder_pred.unsqueeze(0).unsqueeze(0)], dim=1)
-        return text_sequence if not return_encoder_states else (text_sequence, encoder_out)
+                text_sequence = decoder_pred.unsqueeze(0).unsqueeze(0)
+                final_text_sequence = torch.cat([final_text_sequence, text_sequence], dim=1)
+               
+        return final_text_sequence if not return_encoder_states else (final_text_sequence, encoder_out)
 
 
+    @torch.no_grad()
+    def ctc_beam_search(
+        self, 
+        audio_signal,
+        tokenizer,
+        beam_width,
+        alpha,
+        beta,
+        prune_less_than_val,
+        top_am_threshold=-6,
+    ):
+        encoder_out = self.forward(audio_signal=audio_signal)
+        a_hidden, length = encoder_out['a_hidden'], encoder_out['length']
+        decoder = self.language_model_decoder
+        decoder.old_forward = decoder.forward
 
+        def fake_forward(a_hidden, a_length, decoder):
+            def fwd(x, length, cache=None):
+                cur_a_hidden = a_hidden.clone().expand(x.shape[0], -1, -1)
+                cur_a_length = a_length.clone().expand(x.shape[0]) 
+        
+                decoder_out = decoder.old_forward(tokens = x, a_hidden = cur_a_hidden, a_lengths = cur_a_length, text_lengths = length, cache=cache)
+                logits, kv_cache = decoder_out['logits'], decoder_out['kv_cache']
+                return logits, None, kv_cache
+            return fwd
+        
+        decoder.forward = fake_forward(a_hidden, length, decoder)
+        
+        language_model = ctc_beam_search.LanguageModel(
+            model = decoder,
+            bos_id = 0,
+            device = a_hidden.device,
+        )
+
+        beamsearch = ctc_beam_search.BeamSearch(
+            tokenizer=tokenizer,
+            beam_width=beam_width,
+            log_probs=encoder_out['final_posteriors_ctc'][0].clone().to('cpu'),
+            alpha=alpha,
+            beta=beta,
+            prune_less_than_val=prune_less_than_val,
+            top_am_threshold=top_am_threshold,
+            language_model=language_model,
+            blank_id=len(tokenizer),
+            debug=False
+        )
+        beamsearch.run_search()
+        decoder.forward = decoder.old_forward
+        return beamsearch.return_text(idx = 0)
 
     def forward(
             self, 
