@@ -83,6 +83,7 @@ class LearnableFourierPosEnc(torch.nn.Module): # code taken from espnet: https:/
             pos_enc = torch.cat((pos_enc, zero_index), dim=1)
             indexes = torch.arange(0, lengths.max(), device=x.device)[None].expand(x.size(0), -1) + position_offsets[:, None]
             indexes = indexes.clamp(start, end)
+            indexes = indexes - start # shift to start from 0
             pos_enc = pos_enc.expand(x.size(0), -1, -1).gather(1, indexes[:,:,None].expand(-1, -1, pos_enc.size(-1)))
             return pos_enc
 
