@@ -246,7 +246,9 @@ class EncDecSconformerV2(BaseModel):
         #generated = 0
         cache = None
         final_text_sequence = text_sequence.clone()
+        steps = 0
         while not finished:
+            
             decoder_out = self.language_model_decoder(
                 tokens = text_sequence,
                 a_hidden = a_hidden,
@@ -256,10 +258,12 @@ class EncDecSconformerV2(BaseModel):
             )
             decoder_logits = decoder_out['logits']
             cache = decoder_out['kv_cache']
+            
             decoder_pred = decoder_logits[0, -1, :].softmax(dim=-1).argmax(dim=-1)
+            steps += 1
             #generated += 1
             #print(f'Generated {generated} tokens: {decoder_pred.item()}')
-            if decoder_pred == eos_id or text_sequence.shape[1] > max_generate:
+            if decoder_pred == eos_id or ((cache['cache_lengths'].item()+1) > max_generate):
                 finished = True
             else:
                 text_sequence = decoder_pred.unsqueeze(0).unsqueeze(0)
