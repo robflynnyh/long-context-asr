@@ -431,7 +431,6 @@ class Attention(nn.Module):
         n_feats,
         head_dim,
         n_heads,
-        bias=False,
         dropout=0.0,
         **kwargs
     ):
@@ -454,11 +453,11 @@ class Attention(nn.Module):
         self.flash_attn_fn = FlashAttention(softmax_scale = None, attention_dropout = dropout)
         self.flash_attn_c_fn = FlashCrossAttention(softmax_scale = None, attention_dropout = dropout)
 
-        self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=bias)
+        self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=kwargs.get('qkv_bias', False))
 
         self.qkv = lambda x: rearrange(self.qkv_proj(x), "b n (h d qkv) -> qkv b n h d", qkv=3, h=n_heads, d=head_dim)
 
-        self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=bias)
+        self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=kwargs.get('bias', False))
 
     
     def attatch_cache(self, kv, cached_kv):

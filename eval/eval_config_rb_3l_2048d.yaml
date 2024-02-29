@@ -5,12 +5,12 @@ models:
   #   overlap_ratio: 0.875
   #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_1024_rp_1/step_105360.pt
   #   description: "decreasing model layers to 3 and increasing dim to 2048"
-  # - name: rb_n_seq_sched_3l_2048d
-  #   repeat: 2
-  #   seq_len: 1024
-  #   overlap_ratio: 0.875
-  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_1024_rp_2/step_105360.pt
-  #   description: "decreasing model layers to 3 and increasing dim to 2048"  
+  - name: rb_n_seq_sched_3l_2048d
+    repeat: 2
+    seq_len: 1024
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_1024_rp_2/step_105360.pt
+    description: "decreasing model layers to 3 and increasing dim to 2048"  
   # - name: rb_n_seq_sched_3l_2048d
   #   repeat: 3
   #   seq_len: 1024

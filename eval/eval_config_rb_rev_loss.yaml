@@ -192,8 +192,8 @@ models:
 
 args:
   splits: [test]
-  datasets: [rev16_background_noise]
+  datasets: [rev16_loss]
   single_utterance: false # only used on some datasets i.e tedlium
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_rb_rev16_bnoise_7p5_SNR.csv'
+  save_dataframe_path: './results/evals_rb_rev16_loss.csv'

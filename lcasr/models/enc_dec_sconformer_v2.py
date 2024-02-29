@@ -890,7 +890,7 @@ class CrossAttnDecoder(nn.Module):
         accepted_norms = ['rms_norm', 'layer_norm']
         assert default_norm in accepted_norms, f'default_norm must be one of {accepted_norms} (got {default_norm})'
         default_norm = RMSNorm if default_norm == 'rms_norm' else LayerNorm
-        self.acoustic_norm = default_norm(d_model)
+        self.acoustic_norm = default_norm(d_model) if kwargs.get('acoustic_norm', False) else nn.Identity()
 
         self.layers = nn.ModuleList([])
         for _ in range(n_layers):
