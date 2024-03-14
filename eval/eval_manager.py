@@ -13,6 +13,8 @@ from rev16_background_noise.run import main as run_rev16_background_noise
 from rev16_loss.run import main as run_rev16_loss
 from tedlium_concat.run import main as run_tedlium_concat
 from earnings21.run import main as run_earnings21
+from spotify.run import main as run_spotify
+from spotify_loss.run import main as run_spotify_loss
 
 
 dataset_funcs = {
@@ -25,6 +27,8 @@ dataset_funcs = {
     'rev16_loss': run_rev16_loss,
     'earnings21': run_earnings21, 
     'earnings22_full': run_earnings22_full,
+    "spotify": run_spotify,
+    "spotify_loss": run_spotify_loss
 }
 single_utterance_datasets = 'tedlium'
 accepted_splits = ['test', 'dev']
@@ -111,6 +115,8 @@ def main(args, config):
     for dataset in datasets:
         for split in config.args.splits:
             if dataset in [
+                'spotify',
+                'spotify_loss',
                 'rev16', 
                 'rev16_gaussian_noise', 
                 'rev16_background_noise', 

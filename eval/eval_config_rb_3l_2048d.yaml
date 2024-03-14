@@ -5,12 +5,12 @@ models:
   #   overlap_ratio: 0.875
   #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_1024_rp_1/step_105360.pt
   #   description: "decreasing model layers to 3 and increasing dim to 2048"
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 2
-    seq_len: 1024
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_1024_rp_2/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"  
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 2
+  #   seq_len: 1024
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_1024_rp_2/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"  
   # - name: rb_n_seq_sched_3l_2048d
   #   repeat: 3
   #   seq_len: 1024
@@ -18,24 +18,24 @@ models:
   #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_1024_rp_3/step_105360.pt
   #   description: "decreasing model layers to 3 and increasing dim to 2048"
 
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 1
-    seq_len: 2048
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_2048_rp_1/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 2
-    seq_len: 2048
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_2048_rp_2/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"  
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 3
-    seq_len: 2048
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_2048_rp_3/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 1
+  #   seq_len: 2048
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_2048_rp_1/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 2
+  #   seq_len: 2048
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_2048_rp_2/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"  
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 3
+  #   seq_len: 2048
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_2048_rp_3/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
 
   # - name: rb_n_seq_sched_3l_2048d
   #   repeat: 1
@@ -43,132 +43,132 @@ models:
   #   overlap_ratio: 0.875
   #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_4096_rp_1/step_105360.pt
   #   description: "decreasing model layers to 3 and increasing dim to 2048"
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 2
-    seq_len: 4096
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_4096_rp_2/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"  
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 3
-    seq_len: 4096
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_4096_rp_3/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 2
+  #   seq_len: 4096
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_4096_rp_2/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"  
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 3
+  #   seq_len: 4096
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_4096_rp_3/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
 
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 1
-    seq_len: 8192
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_8192_rp_1/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 2
-    seq_len: 8192
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_8192_rp_2/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"  
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 3
-    seq_len: 8192
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_8192_rp_3/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 1
+  #   seq_len: 8192
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_8192_rp_1/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 2
+  #   seq_len: 8192
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_8192_rp_2/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"  
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 3
+  #   seq_len: 8192
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_8192_rp_3/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
 
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 1
-    seq_len: 16384
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_16384_rp_1/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 2
-    seq_len: 16384
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_16384_rp_2/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"  
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 3
-    seq_len: 16384
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_16384_rp_3/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 1
+  #   seq_len: 16384
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_16384_rp_1/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 2
+  #   seq_len: 16384
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_16384_rp_2/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"  
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 3
+  #   seq_len: 16384
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_16384_rp_3/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
 
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 1
-    seq_len: 32768
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_32768_rp_1/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 2
-    seq_len: 32768
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_32768_rp_2/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"  
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 3
-    seq_len: 32768
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_32768_rp_3/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 1
+  #   seq_len: 32768
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_32768_rp_1/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 2
+  #   seq_len: 32768
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_32768_rp_2/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"  
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 3
+  #   seq_len: 32768
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_32768_rp_3/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
 
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 1
-    seq_len: 65536
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_65536_rp_1/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 2
-    seq_len: 65536
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_65536_rp_2/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"  
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 3
-    seq_len: 65536
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_65536_rp_3/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 1
+  #   seq_len: 65536
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_65536_rp_1/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 2
+  #   seq_len: 65536
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_65536_rp_2/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"  
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 3
+  #   seq_len: 65536
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_65536_rp_3/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
 
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 1
-    seq_len: 131072
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_131072_rp_1/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 2
-    seq_len: 131072
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_131072_rp_2/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"  
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 3
-    seq_len: 131072
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_131072_rp_3/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 1
+  #   seq_len: 131072
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_131072_rp_1/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 2
+  #   seq_len: 131072
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_131072_rp_2/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"  
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 3
+  #   seq_len: 131072
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_131072_rp_3/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
 
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 1
-    seq_len: 262144
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_262144_rp_1/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 2
-    seq_len: 262144
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_262144_rp_2/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"  
-  - name: rb_n_seq_sched_3l_2048d
-    repeat: 3
-    seq_len: 262144
-    overlap_ratio: 0.875
-    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_262144_rp_3/step_105360.pt
-    description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 1
+  #   seq_len: 262144
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_262144_rp_1/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 2
+  #   seq_len: 262144
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_262144_rp_2/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"  
+  # - name: rb_n_seq_sched_3l_2048d
+  #   repeat: 3
+  #   seq_len: 262144
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_262144_rp_3/step_105360.pt
+  #   description: "decreasing model layers to 3 and increasing dim to 2048"
 
   - name: rb_n_seq_sched_3l_2048d
     repeat: 1

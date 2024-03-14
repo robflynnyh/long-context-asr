@@ -92,8 +92,8 @@ def main(args):
 
     audio_files, text_files = fetch_data()
     
-    all_texts = []
-    all_golds = []
+    losses = []
+    target_lengths = []
 
     for ix, (rec, tex) in tqdm(enumerate(zip(audio_files, text_files)), total=len(audio_files)):
         print(f'Processing {ix+1}/{len(audio_files)}') if args.verbose else None   
@@ -101,29 +101,30 @@ def main(args):
         audio_spec = load_audio(rec)
         gold_text = load_text(tex)
        
-        logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
-       
-        ds_factor = audio_spec.shape[-1] / logits.shape[0]
-        decoded, bo = decode_beams_lm([logits], decoder, beam_width=1, ds_factor=ds_factor)
+        logprobs = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
 
-        all_text = normalize(decoded[0]['text']).lower()
-        gold_text = normalize(gold_text).lower()    
-        print(gold_text) if args.verbose else None
-        print(all_text) if args.verbose else None
-        all_texts.append(all_text)
-        all_golds.append(gold_text)
- 
+        logprobs = torch.tensor(logprobs, dtype=torch.float32, device=device).unsqueeze(0)
+        cur_text_tokenized = tokenizer.encode(gold_text)
+        cur_text_tokenized = torch.tensor(cur_text_tokenized, dtype=torch.long, device=device).unsqueeze(0)
+        targets = cur_text_tokenized
+        target_lengths.append(targets.shape[1])
+        loss = torch.nn.CTCLoss(blank=4095, reduction='sum')(
+            logprobs.transpose(0,1),
+            targets,
+            input_lengths = torch.LongTensor([logprobs.shape[1]]),
+            target_lengths = torch.LongTensor([targets.shape[1]])
+        )
+        losses.append(loss.item())
+        print(f'Loss: {loss.item()/targets.shape[1]}') if args.verbose else None    
 
-        
-    wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
-
-    print(f'WER: {wer}')
+    final_loss = sum(losses) / sum(target_lengths)
+    print(f'Final Loss: {final_loss}')
 
     if args.log != '':
         with open(args.log, 'a') as f:
-            f.write(f'{args.checkpoint}\t overlap: {args.overlap}\t seq_len: {args.seq_len}\t WER: {wer}\n')
+            f.write(f'{args.checkpoint}\t overlap: {args.overlap}\t seq_len: {args.seq_len}\t Final Loss: {final_loss}\n')
 
-    return wer, model_config
+    return final_loss, model_config
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

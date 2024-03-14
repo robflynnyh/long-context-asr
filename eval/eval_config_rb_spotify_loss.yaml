@@ -192,8 +192,8 @@ models:
 
 args:
   splits: [test]
-  datasets: [rev16_loss]
+  datasets: [spotify_loss]
   single_utterance: false # only used on some datasets i.e tedlium
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_rb_rev16_self_loss.csv'
+  save_dataframe_path: './results/spotify_rb_8_loss.csv'

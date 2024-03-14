@@ -167,3 +167,15 @@
 0,earnings22,dev,0.31789312308366185,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_1024_rp_2/step_105360.pt,2,False,1024,0.875,SCConformerXL,-1
 0,earnings22,dev,0.29141480508103373,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_32768_rp_3/step_105360.pt,3,False,32768,0.875,SCConformerXL,-1
 0,earnings22,dev,0.2926850635129216,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_65536_rp_1/step_105360.pt,1,False,65536,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.32792889841021566,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_1024_rp_2/step_105360.pt,2,False,1024,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.29571022977977535,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_32768_rp_3/step_105360.pt,3,False,32768,0.875,SCConformerXL,-1
+0,earnings22_full,test,0.3019961312847604,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_65536_rp_1/step_105360.pt,1,False,65536,0.875,SCConformerXL,-1
+0,tedlium,test,0.0886053517632465,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_1024_rp_2/step_105360.pt,2,False,1024,0.875,SCConformerXL,-1
+0,tedlium,test,0.08158780790359738,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_32768_rp_3/step_105360.pt,3,False,32768,0.875,SCConformerXL,-1
+0,tedlium,test,0.08176501860712387,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_65536_rp_1/step_105360.pt,1,False,65536,0.875,SCConformerXL,-1
+0,tedlium,dev,0.10058582955675914,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_1024_rp_2/step_105360.pt,2,False,1024,0.875,SCConformerXL,-1
+0,tedlium,dev,0.09207472090195645,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_32768_rp_3/step_105360.pt,3,False,32768,0.875,SCConformerXL,-1
+0,tedlium,dev,0.09516966950370288,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_65536_rp_1/step_105360.pt,1,False,65536,0.875,SCConformerXL,-1
+0,rev16,test,0.1749960425464554,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_1024_rp_2/step_105360.pt,2,False,1024,0.875,SCConformerXL,-1
+0,rev16,test,0.1703543325180128,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_32768_rp_3/step_105360.pt,3,False,32768,0.875,SCConformerXL,-1
+0,rev16,test,0.17157986651892174,rotary_pos_6l_256d,/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_256d_seq_sched/n_seq_sched_65536_rp_1/step_105360.pt,1,False,65536,0.875,SCConformerXL,-1

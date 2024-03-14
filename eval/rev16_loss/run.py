@@ -87,10 +87,15 @@ def main(args):
         print('\n-------\n'+cur_meetings+'\n-------\n')
         
         logprobs = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
+
+        ds_factor = audio_spec.shape[-1] / logprobs.shape[0]
+        decoded, bo = decode_beams_lm([logprobs], decoder, beam_width=1, ds_factor=ds_factor)
+        text = decoded[0]['text']
+
         logprobs = torch.tensor(logprobs, dtype=torch.float32, device=device).unsqueeze(0)
       
 
-        cur_text_tokenized = tokenizer.encode(cur_text)
+        cur_text_tokenized = tokenizer.encode(text)
         cur_text_tokenized = torch.tensor(cur_text_tokenized, dtype=torch.long, device=device).unsqueeze(0)
 
         targets = cur_text_tokenized[cur_text_tokenized!=1][None] # remove unk  
