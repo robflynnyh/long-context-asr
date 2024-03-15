@@ -13,9 +13,11 @@ ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
 DEFAULT_NORM, RMSNorm, LayerNorm = apex.normalization.FusedRMSNorm, apex.normalization.FusedRMSNorm, apex.normalization.FusedLayerNorm
 PreNorm, Scale = wrappers.PreNorm, wrappers.Scale
-from flash_attn.flash_attention import FlashAttention
-from flash_attn.modules.mha import FlashCrossAttention
-from flash_attn.bert_padding import unpad_input, pad_input
+
+
+# from flash_attn.flash_attention import FlashAttention
+# from flash_attn.modules.mha import FlashCrossAttention
+# from flash_attn.bert_padding import unpad_input, pad_input
 from lcasr.components.helpers import get_act
 from lcasr.models.base import BaseModel
 import math
@@ -104,6 +106,8 @@ class EncDecSconformer(BaseModel):
         self.decoder_norm = decoder_norm
 
         self.use_rotary = use_rotary
+
+        raise NotImplementedError('This model is not yet implemented')
 
         self.rotary_pos_emb = None
         if self.use_rotary:

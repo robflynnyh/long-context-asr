@@ -8,5 +8,6 @@ from . import (
     feedforward,
     helpers,
     wrappers, 
-    dynamicpos
+    dynamicpos,
+    attention
 )

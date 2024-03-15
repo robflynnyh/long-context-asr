@@ -14,9 +14,9 @@ ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
 DEFAULT_NORM, RMSNorm, LayerNorm = apex.normalization.FusedRMSNorm, apex.normalization.FusedRMSNorm, apex.normalization.FusedLayerNorm
 PreNorm, Scale = wrappers.PreNorm, wrappers.Scale
-from flash_attn.flash_attention import FlashAttention
-from flash_attn.modules.mha import FlashCrossAttention
-from flash_attn.bert_padding import unpad_input, pad_input
+# from flash_attn.flash_attention import FlashAttention
+# from flash_attn.modules.mha import FlashCrossAttention
+# from flash_attn.bert_padding import unpad_input, pad_input
 from lcasr.components.helpers import get_act
 from lcasr.models.base import BaseModel
 from torch import einsum
@@ -97,6 +97,8 @@ class EncDecSconformerV2(BaseModel):
         self.dropout_ff = dropout_ff
         self.dropout_conv = dropout_conv
         self.dropout_attn = dropout_attn
+
+        raise NotImplementedError('This model is not yet implemented')
 
         self.subsampling_mode = subsampling
         self.subsampling_factor = subsampling_factor
