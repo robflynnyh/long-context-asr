@@ -1,0 +1,282 @@
+global:
+  root_path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_
+  name: rotary_pos_3l
+  seq_len: 360000
+  checkpoint: step_105360.pt
+  
+
+models:
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 32
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 32
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 64
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 64
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 64
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 128
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 128
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 256
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 256
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 256
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 512
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 512
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 1024
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 1024
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 1024
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 2048
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 2048
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 4096
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 4096
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 4096
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 8192
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 8192
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 16384
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 16384
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 16384
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 32768
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 32768
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 360000
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 360000
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 360000
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+
+args:
+  splits: [test, dev]
+  datasets: [tedlium, earnings22, rev16, earnings22_full]
+  single_utterance: false # only used on some datasets i.e tedlium
+  verbose: true
+  model_class: SCConformerXL
+  save_dataframe_path: './results/evals_rotary_windowed.csv'

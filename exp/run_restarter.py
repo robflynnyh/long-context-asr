@@ -48,7 +48,7 @@ def main(args):
         
         if not args.keep_seed:
             config = OmegaConf.load(config_path)
-            config['training']['random_seed'] = random.randint(0, 1000000) # set new random seed for restart
+            config['training']['random_seed'] = random.randint(0, 1000000) if args.seed == 'random' else int(args.seed)
             OmegaConf.save(config, config_path) # save new config
 
         run_string_cmd = f"\npython {args.launch} -config {config_path} -num_workers 0"
@@ -67,5 +67,6 @@ if __name__ == '__main__':
     parser.add_argument('-mode','--mode', type=str, default='a100', help='denotes launch string to use to start slurm script')
     parser.add_argument('-l', '--launch', default='train.py', help='Path to the training script')
     parser.add_argument('-keep_seed', '--keep_seed', action='store_true', help='If true, will not re-randomize the seed for each restart (we do this by default to avoid dodgy batch that caused the crash)')
+    parser.add_argument('-seed', '--seed', default='random', help='Seed to use for restarts (if not random must be an integer)')
     args = parser.parse_args()
     main(args)

@@ -370,7 +370,7 @@ class ConformerLayer(nn.Module):
 
 if __name__ == '__main__':
     # run test
-    model = SCConformerXL(vocab_size=4096, head_dim=256, n_heads=3)
+    model = SCConformerXL(vocab_size=4096, head_dim=256, n_heads=3, attention_window_size=128)
     audio = torch.randn(2, 80, 1000)
     lengths = torch.tensor([1000, 500])
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

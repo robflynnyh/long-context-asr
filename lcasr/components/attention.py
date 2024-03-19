@@ -3,6 +3,15 @@ from einops import rearrange
 from flash_attn.modules.mha import FlashSelfAttention
 from flash_attn.bert_padding import unpad_input, pad_input
 
+def get_window_size(kwargs, direction=None):
+    if direction is None:
+        return kwargs.get('attention_window_size', -1)
+    else:
+        if kwargs.get(f'attention_window_size_{direction}', None) is not None:
+            return kwargs.get(f'attention_window_size_{direction}')
+        else:
+            return kwargs.get('attention_window_size', -1)
+
 class Attention(nn.Module):
     def __init__(
         self,
@@ -19,13 +28,13 @@ class Attention(nn.Module):
    
         self.activation = nn.Softmax(dim=-1)
         self.dropout_p = dropout
-
+        #print(get_window_size(kwargs, direction=None))
         # softmax_scale is set to None but will default to 1/sqrt(d_k) in FlashAttention
         self.flash_attn_fn = FlashSelfAttention(
             softmax_scale = None, 
             attention_dropout = dropout, 
             causal = False, 
-            window_size=(-1, -1), 
+            window_size=(get_window_size(kwargs, direction='left'), get_window_size(kwargs, direction='right')),
             alibi_slopes=None
         )
      

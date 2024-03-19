@@ -1,0 +1,212 @@
+global:
+  root_path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3h_seq_sched/n_seq_sched_
+  name: rotary_pos_3h
+  overlap_ratio: 0.875
+  checkpoint: step_105360.pt
+  description: "here we look at using a larger head dimension"
+  
+
+models:
+  # - name: ${global.name}
+  #   repeat: 1
+  #   seq_len: 1024
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 2
+  #   seq_len: 1024
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 3
+  #   seq_len: 1024
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 2
+  #   seq_len: 2048
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   seq_len: 4096
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 4096
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 3
+  #   seq_len: 4096
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   seq_len: 8192
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 2
+  #   seq_len: 8192
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 8192
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   seq_len: 16384
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 16384
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 3
+  #   seq_len: 16384
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   seq_len: 32768
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 32768
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 32768
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   seq_len: 65536
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 2
+  #   seq_len: 65536
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 3
+  #   seq_len: 65536
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   seq_len: 131072
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 131072
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 131072
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 262144
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 262144
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 3
+  #   seq_len: 262144
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 360000
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 360000
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 360000
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+args:
+  splits: [test, dev]
+  datasets: [tedlium, earnings22, rev16, earnings22_full]
+  single_utterance: false # only used on some datasets i.e tedlium
+  verbose: true
+  model_class: SCConformerXL
+  save_dataframe_path: './results/evals_rotary_3h.csv'
