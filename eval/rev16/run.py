@@ -41,6 +41,21 @@ def preprocess_transcript(text:str):
     return normalize(text).lower()
 
 
+def process_text_and_audio_fn(rec_dict): return processing_chain(rec_dict['audio']), preprocess_transcript(rec_dict['text'])
+
+def get_text_and_audio(split):
+    assert split in ['test'], 'Split must be test'
+    audio_files, text_files = fetch_data(data_path = DATA_PATH, ids = TEST_IDS)
+    return_data = []
+    for rec in range(len(audio_files)):
+        return_data.append({
+            'text': text_files[rec]['text'], 
+            'audio': audio_files[rec]['path'], 
+            "process_fn": process_text_and_audio_fn,
+            "id": text_files[rec]['id'],
+        })
+    return return_data
+
 def main(args):
     assert args.split in ['test'], 'Split must be test'
     IDS = TEST_IDS

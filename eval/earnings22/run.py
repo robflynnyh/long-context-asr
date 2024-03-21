@@ -60,6 +60,22 @@ def preprocess_transcript(text:str):
     return normalize(text).lower()
 
 
+def process_text_and_audio_fn(rec_dict): return processing_chain(rec_dict['audio']), preprocess_transcript(rec_dict['text'])
+
+def get_text_and_audio(split):
+    assert split in ['test', 'dev'], f'Split must be either test or dev (got {args.split})'
+    data_path = TEST_PATH if split == 'test' else DEV_PATH
+    audio_files, text_files = fetch_data(audio_path=data_path, txt_path=ALL_TEXT_PATH)
+    return_data = []
+    for rec in range(len(audio_files)):
+        return_data.append({
+            'id': audio_files[rec]['meeting'],
+            'text': text_files[rec]['text'], 
+            'audio': audio_files[rec]['path'], 
+            "process_fn": process_text_and_audio_fn
+        })
+    return return_data
+
 def main(args):
     assert args.split in ['test', 'dev'], 'Split must be either test or dev'
     data_path = TEST_PATH if args.split == 'test' else DEV_PATH

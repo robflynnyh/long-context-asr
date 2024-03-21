@@ -5,6 +5,7 @@ from lcasr.models.sconformer_xl import SCConformerXL
 from lcasr.models.mamba import Mamba
 from lcasr.models.enc_dec_sconformer import EncDecSconformer
 from lcasr.models.enc_dec_sconformer_v2 import EncDecSconformerV2
+from lcasr.models.sconformer_sa import SCConformerSA
 
 # from lcasr.models.metaconformer import MetaConformer
 # from lcasr.models.stconformer import STConformer
@@ -19,7 +20,13 @@ import argparse
 import warnings
 
 def get_model_class(config:Dict={}, args:argparse.Namespace={}):
-    model_classes = ['SCConformerXL', 'Mamba', 'EncDecSconformer', 'EncDecSconformerV2']
+    model_classes = [
+        'SCConformerXL', 
+        'Mamba', 
+        'EncDecSconformer', 
+        'EncDecSconformerV2',
+        'SCConformerSA',
+    ]
     
     if 'model_class' in args:
         model_class = args.model_class
@@ -38,6 +45,8 @@ def get_model_class(config:Dict={}, args:argparse.Namespace={}):
         return EncDecSconformer
     elif model_class == 'EncDecSconformerV2':
         return EncDecSconformerV2
+    elif model_class == 'SCConformerSA':
+        return SCConformerSA
     else:
         raise NotImplementedError(f'Unknown model class {model_class}, must be one of {model_classes}')
     

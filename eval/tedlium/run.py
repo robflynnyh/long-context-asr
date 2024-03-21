@@ -82,6 +82,28 @@ def fetch_data(path:str = TEST_PATH):
     return audio_files, text_files
 
 
+def process_text_and_audio_fn(rec_dict):
+    audio, text = rec_dict['audio'], rec_dict['text']
+    gold_text, _, remove_timings = proc_stm_and_timings(stm_path=text)
+    audio_spec = processing_chain(audio)
+    audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
+    return audio_spec, normalize(gold_text).lower()
+
+def get_text_and_audio(split):
+    assert split in ['test', 'dev', 'train'], f'Split must be either test or dev train (got {args.split})'
+    data_path = TEST_PATH if split == 'test' else DEV_PATH
+    
+    audio_files, text_files = fetch_data(path=data_path)
+    return_data = []
+    for rec in range(len(audio_files)):
+        return_data.append({
+            'id': audio_files[rec],
+            'text': text_files[rec], 
+            'audio': audio_files[rec], 
+            "process_fn": process_text_and_audio_fn
+        })
+
+    return return_data
 
 
 def main(args):

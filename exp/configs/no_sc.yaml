@@ -1,3 +1,5 @@
+model_class: SCConformerSA
+
 model:
   feat_in: 80
   n_layers: 6
@@ -14,7 +16,7 @@ model:
   self_condition_subsampling: false
   subsampling_norm_out: false
   conv_kernel_size: 9
-  self_conditioning: false
+  self_conditioning: true
   gated_sc: false
   decoder_norm: true
   use_rotary: true
@@ -28,8 +30,6 @@ optimizer:
   name: madgrad
   args:
     lr: 3e-3
-    weight_decay: 0.1
-    decouple_decay: true
 
 scheduler:
   warmup_steps: 1500
@@ -76,13 +76,13 @@ data:
 training:
   start_spec_augment_after_n_epochs: -1 # -1 to disable
   max_epochs: 1
-  batch_size: 10
+  batch_size: 5
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
-  random_seed: 25849
+  random_seed: 25819
 
 
 # size: 512 = batch size 704

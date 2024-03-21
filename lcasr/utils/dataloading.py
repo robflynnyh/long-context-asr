@@ -57,6 +57,79 @@ def chunk_text_json( # TODO: speed up
     return splits if not get_seconds else (splits, start_end_times)
 
 
+def chunk_text_and_speakers_json( # TODO: speed up
+        text: List[Dict[str, str]],
+        chunk_size: int,
+        chunk_overlap: int,
+        spectogram_length: int,
+        get_seconds: bool = False
+    ):
+    assert chunk_size > chunk_overlap, "chunk_size must be greater than chunk_overlap"
+    
+    text_remaining = text
+    splits = []
+    speakers = []
+    start_end_times = []
+    for i in range(0, spectogram_length, chunk_size - chunk_overlap):
+        c_start_pos, c_end_pos = i, i + chunk_size
+        c_start_pos_sec, c_end_pos_sec = total_seconds(c_start_pos), total_seconds(c_end_pos)
+        chunk_overlap_sec = total_seconds(chunk_overlap)
+        c_text = []
+        c_speakers = []
+        max_text_index = 0
+        for i, el in enumerate(text_remaining):
+            if float(el['startTime'][:-1]) >= c_start_pos_sec and float(el['endTime'][:-1]) <= c_end_pos_sec:
+                c_text.append(el['word'])
+                c_speakers.append(el['speakerTag'])
+            if float(el['endTime'][:-1]) < c_end_pos_sec - chunk_overlap_sec:
+                max_text_index = i
+            if float(el['endTime'][:-1]) > c_end_pos_sec:
+                break
+        text_remaining = text_remaining[max_text_index:]
+        c_speakers = len(set(c_speakers))
+        speakers.append(c_speakers)
+        splits.append(" ".join(c_text))
+        start_end_times.append((c_start_pos_sec, c_end_pos_sec))
+    
+    return (splits, speakers) if not get_seconds else (splits, speakers, start_end_times)
+
+def chunk_text_json_with_speaker_change( # TODO: speed up
+        text: List[Dict[str, str]],
+        chunk_size: int,
+        chunk_overlap: int,
+        spectogram_length: int,
+        get_seconds: bool = False,
+        speaker_change_token: str = "¬"
+    ):
+    assert chunk_size > chunk_overlap, "chunk_size must be greater than chunk_overlap"
+    
+    text_remaining = text
+    splits = []
+    start_end_times = []
+    for i in range(0, spectogram_length, chunk_size - chunk_overlap):
+        c_start_pos, c_end_pos = i, i + chunk_size
+        c_start_pos_sec, c_end_pos_sec = total_seconds(c_start_pos), total_seconds(c_end_pos)
+        chunk_overlap_sec = total_seconds(chunk_overlap)
+        c_text = []
+        max_text_index = 0
+        prev_speaker = None
+        for i, el in enumerate(text_remaining):
+            prev_speaker = el['speakerTag'] if prev_speaker is None else prev_speaker
+            if float(el['startTime'][:-1]) >= c_start_pos_sec and float(el['endTime'][:-1]) <= c_end_pos_sec:
+                if el['speakerTag'] != prev_speaker:
+                    c_text.append(speaker_change_token)
+                c_text.append(el['word'])
+                prev_speaker = el['speakerTag']
+            if float(el['endTime'][:-1]) < c_end_pos_sec - chunk_overlap_sec:
+                max_text_index = i
+            if float(el['endTime'][:-1]) > c_end_pos_sec:
+                break
+        text_remaining = text_remaining[max_text_index:]
+        splits.append(" ".join(c_text))
+        start_end_times.append((c_start_pos_sec, c_end_pos_sec))
+    
+    return splits if not get_seconds else (splits, start_end_times)
+
 
 def load_sample(entry:Dict[str, str]) -> Tuple[torch.Tensor, torch.Tensor]:
     # audio_name = entry['audio'].replace('.spec.pt', '.ogg')
