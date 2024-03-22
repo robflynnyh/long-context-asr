@@ -1,19 +1,12 @@
-import torch, argparse, lcasr, os, re, json
-from tqdm import tqdm
-from typing import Tuple
-from lcasr.utils.audio_tools import processing_chain
+import torch, argparse, lcasr
 from lcasr.eval.utils import fetch_logits, decode_beams_lm
-from lcasr.utils.general import load_model
+from lcasr.utils.general import load_model, get_model_class
 from pyctcdecode import build_ctcdecoder
 from lcasr.eval.wer import word_error_rate_detail 
 #from lcasr.eval.dynamic_eval import dynamic_eval
 from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
-import pickle
-import sys
-import os.path
-
-import time
+from tqdm import tqdm
 
 from earnings22_full.run import get_text_and_audio as get_text_and_audio_earnings22_full
 from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
@@ -26,7 +19,6 @@ datasets_functions = {
     'tedlium': get_text_and_audio_tedlium,
     'rev16': get_text_and_audio_rev16
 }
-
 
 
 def main(args):
@@ -42,7 +34,7 @@ def main(args):
         args.config.model.flash_attn = False
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
-    model = load_model(args.config, tokenizer.vocab_size())
+    model = load_model(args.config, tokenizer.vocab_size(), model_class=get_model_class({'model_class': args.config.get('model_class', args.model_class)}))
     tparams = model.print_total_params()
     model.load_state_dict(checkpoint['model'], strict=False)
     print(f'Loaded model from {args.checkpoint}')
@@ -56,11 +48,8 @@ def main(args):
 
     data = datasets_functions[args.dataset](args.split)
 
-
-
-    all_texts, all_golds = [],[]
-    wers = []
-    elapsed_times = []
+    all_texts = []
+    all_golds = []
 
     for rec in tqdm(range(len(data)), total=len(data)):
         print(f'Processing {rec+1}/{len(data)}')
@@ -69,29 +58,12 @@ def main(args):
     
         audio_spec, gold_text = data[rec]['process_fn'](data[rec])
         
-        stime = time.time()
-        logits = eval_fn(
-            args, 
-            model, 
-            audio_spec, 
-            args.seq_len, 
-            args.overlap, 
-            tokenizer,
-            beam_search_fn = beamsearch
-        )
-        etime = time.time()
-        elapsed = etime - stime
-        elapsed_times.append(elapsed)  
+        logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
         
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
-        if beamsearch is None:
-            decoded, bo = decode_beams_lm([logits], decoder, beam_width=1, ds_factor=ds_factor)
-            out_text = decoded[0]['text']
-        else:
-            run_beam_search = beamsearch(log_probs = logits, beam_width = beams)
-            run_beam_search.run_search(use_tqdm = True)
-            out_text = run_beam_search.return_text(idx = 0)
 
+        decoded, bo = decode_beams_lm([logits], decoder, beam_width=1, ds_factor=ds_factor)
+        out_text = decoded[0]['text']
 
         out = normalize(out_text).lower()
         
@@ -105,18 +77,19 @@ def main(args):
 
     print(f'WER: {wer}')
 
-    if args.log != '':
-        with open(args.log, 'a') as f:
-            f.write(f'{args.checkpoint}\t overlap: {args.overlap}\t seq_len: {args.seq_len}\t WER: {wer}\n')
-
+    return wer, model_config
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', '-d', type=str, default='earnings22', choices=datasets_functions.keys())
-    parser.add_argument('--repeats', '-r', type=int, default=1, help='Number of times to repeat the evaluation')
-    parser.add_argument('--save_path', '-s', type=str, default='', help='path to save')
 
-    args = lib.apply_args(parser)
+    parser.add_argument('-c', '--checkpoint', type=str, default='../../exp/model.pt', help='path to checkpoint')
+    parser.add_argument('-split', '--split', type=str, default='test', help='test or dev split')
+    parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
+    parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
+    parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
+
+    args = parser.parse_args()
     main(args)
     
 
