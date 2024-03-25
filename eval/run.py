@@ -30,12 +30,19 @@ def main(args):
     model_config = checkpoint['config']
     args.config = model_config
 
-    if args.disable_flash_attention:    
-        args.config.model.flash_attn = False
+    if args.__dict__.get('disable_flash_attention', False): args.config.model.flash_attn = False
+
+    if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'windowed_attention':
+        seq_len = args.seq_len
+        subsample_factor = args.config.model.get('subsampling_factor', 8)
+        ds_seq_len = seq_len // subsample_factor
+        args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
+        args.seq_len = args.get('max_sequence_length', 3600000) # 10 hours
+       
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
     model = load_model(args.config, tokenizer.vocab_size(), model_class=get_model_class({'model_class': args.config.get('model_class', args.model_class)}))
-    tparams = model.print_total_params()
+    model.print_total_params()
     model.load_state_dict(checkpoint['model'], strict=False)
     print(f'Loaded model from {args.checkpoint}')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
