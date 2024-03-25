@@ -16,10 +16,8 @@ class ArgsClass():
         return key in self.__dict__.keys()
 
 def checks(config):
-    for dataset in config.args.datasets:
-        assert dataset in datasets_functions.keys(), f'Dataset {dataset} not found! must be one of {datasets_functions.keys()}'
-    for split in config.args.splits:
-        assert split in accepted_splits, f'Split {split} not found! must be one of {accepted_splits}'  
+    for dataset in config.datasets:
+        assert dataset.name in datasets_functions.keys(), f'Dataset {dataset} not found! must be one of {datasets_functions.keys()}'
     for model in config.models:
         assert os.path.exists(model.path), f'Checkpoint {model.path} does not exist'
     assert os.path.exists("/".join(config.args.save_dataframe_path.split("/")[:-1])), f'dataframe save directory {"/".join(config.args.save_dataframe_path.split("/")[:-1])} does not exist'
@@ -72,8 +70,7 @@ def main(args, config):
 
     print(f'Running evals on datasets: {", ".join(datasets)}')
     print(f'Checkpoints to evaluate: {len(config.models)}')
-    print(f'Evaluating on splits: {", ".join(config.args.splits)}')
-    total_evals = len(config.models) * sum([len(config.datasets[el].splits) for el in datasets]) 
+    total_evals = len(config.models) * sum([len(config.datasets[ix].splits) for ix, el in enumerate(datasets)]) 
     print(f'Total number of evals: {total_evals}')
 
     cur_df = pd.read_csv(config.args.save_dataframe_path) if os.path.exists(config.args.save_dataframe_path) else None

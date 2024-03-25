@@ -12,12 +12,14 @@ from earnings22_full.run import get_text_and_audio as get_text_and_audio_earning
 from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
 from tedlium.run import get_text_and_audio as get_text_and_audio_tedlium
 from rev16.run import get_text_and_audio as get_text_and_audio_rev16
+from this_american_life.run import get_text_and_audio as get_text_and_audio_this_american_life
 
 datasets_functions = {
     'earnings22_full': get_text_and_audio_earnings22_full,
     'earnings22': get_text_and_audio_earnings22,
     'tedlium': get_text_and_audio_tedlium,
-    'rev16': get_text_and_audio_rev16
+    'rev16': get_text_and_audio_rev16,
+    'this_american_life': get_text_and_audio_this_american_life
 }
 
 
@@ -37,7 +39,7 @@ def main(args):
         subsample_factor = args.config.model.get('subsampling_factor', 8)
         ds_seq_len = seq_len // subsample_factor
         args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
-        args.seq_len = args.get('max_sequence_length', 3600000) # 10 hours
+        args.seq_len = args.__dict__.get('max_sequence_length', 3600000) # 10 hours
        
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()

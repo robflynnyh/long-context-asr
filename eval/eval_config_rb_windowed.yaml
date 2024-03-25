@@ -200,11 +200,13 @@ models:
 args:
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_rb.csv'
+  save_dataframe_path: './results/evals_rb_post_windowed_attn.csv'
   evaluation_mode: windowed_attention
   max_sequence_length: 3600000
 
 datasets:
+  - name: this_american_life
+    splits: [test, dev]
   - name: tedlium
     splits: [test, dev]
     args:

@@ -1,0 +1,4 @@
+,dataset,split,wer,name,checkpoint,repeat,seq_len,overlap_ratio,model_class
+0,this_american_life,test,0.14275806069628177,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_1024_rp_1/step_105360.pt,1,1024,0.875,SCConformerXL
+0,this_american_life,test,0.1443341114907918,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_1024_rp_2/step_105360.pt,2,1024,0.875,SCConformerXL
+0,this_american_life,test,0.14374767398585783,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_1024_rp_3/step_105360.pt,3,1024,0.875,SCConformerXL
