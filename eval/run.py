@@ -1,9 +1,11 @@
 import torch, argparse, lcasr
-from lcasr.eval.utils import fetch_logits, decode_beams_lm
+from lcasr.eval.utils import fetch_logits as moving_average_eval
+from lcasr.eval.buffered_transcription import fetch_logits as buffered_eval
 from lcasr.utils.general import load_model, get_model_class
 from pyctcdecode import build_ctcdecoder
 from lcasr.eval.wer import word_error_rate_detail 
 #from lcasr.eval.dynamic_eval import dynamic_eval
+from lcasr.decoding.greedy import GreedyCTCDecoder
 from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
 from tqdm import tqdm
@@ -34,13 +36,15 @@ def main(args):
 
     if args.__dict__.get('disable_flash_attention', False): args.config.model.flash_attn = False
 
+    eval_fn = moving_average_eval
     if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'windowed_attention':
         seq_len = args.seq_len
         subsample_factor = args.config.model.get('subsampling_factor', 8)
         ds_seq_len = seq_len // subsample_factor
         args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
         args.seq_len = args.__dict__.get('max_sequence_length', 3600000) # 10 hours
-       
+    if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'buffered': eval_fn = buffered_eval
+    verbose = args.__dict__.get('verbose', True)   
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
     model = load_model(args.config, tokenizer.vocab_size(), model_class=get_model_class({'model_class': args.config.get('model_class', args.model_class)}))
@@ -52,31 +56,34 @@ def main(args):
     model = model.to(device)
     model.eval()
 
-    vocab = [tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""]
-    decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
+    decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
 
     data = datasets_functions[args.dataset](args.split)
 
     all_texts = []
     all_golds = []
 
-    for rec in tqdm(range(len(data)), total=len(data)):
-        print(f'Processing {rec+1}/{len(data)}')
+    pbar = tqdm(range(len(data)), total=len(data)) if verbose else range(len(data))
+    for rec in pbar:
+        if verbose: print(f'Processing {rec+1}/{len(data)}')
         
-        print('\n-------\n'+data[rec]['id']+'\n-------\n')
+        if verbose: print('\n-------\n'+data[rec]['id']+'\n-------\n')
     
         audio_spec, gold_text = data[rec]['process_fn'](data[rec])
         
-        logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
-        
-        ds_factor = audio_spec.shape[-1] / logits.shape[0]
-
-        decoded, bo = decode_beams_lm([logits], decoder, beam_width=1, ds_factor=ds_factor)
-        out_text = decoded[0]['text']
+        logits = eval_fn(
+            args = args, 
+            model = model, 
+            spec = audio_spec,
+            seq_len = args.seq_len,
+            overlap = args.overlap,
+            tokenizer = tokenizer
+        ) 
+        out_text = decoder(torch.as_tensor(logits))
 
         out = normalize(out_text).lower()
         
-        print(gold_text, '\n', out, '\n\n')
+        if verbose: print(gold_text, '\n', out, '\n\n')
         
         all_texts.append(out)
         all_golds.append(gold_text)
@@ -84,7 +91,7 @@ def main(args):
 
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
 
-    print(f'WER: {wer}')
+    if verbose: print(f'WER: {wer}')
 
     return wer, model_config
 
