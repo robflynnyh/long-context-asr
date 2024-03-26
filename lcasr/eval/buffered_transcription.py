@@ -36,10 +36,11 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     print(f'Using seq_len: {seq_len} and overlap: {overlap}')
 
     all_logits = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
+    logit_count = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
     logit_position = 0
 
     chunk_size = seq_len - overlap
-
+    
     chunk_i_start = 0
     chunk_i_end = chunk_i_start + chunk_size
 
@@ -73,6 +74,7 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     for i, pos in tqdm(enumerate(positions), total=len(positions)) if use_tqdm else enumerate(positions):
         buffer_start, buffer_end = pos['buffer_start_frame'], pos['buffer_end_frame']
         chunk_start, chunk_end = pos['chunk_start_frame'], pos['chunk_end_frame']
+        #print(buffer_end-buffer_start, chunk_end-chunk_start)
         audio_chunk = spec[:, :, buffer_start:buffer_end]
         audio_chunk = audio_chunk.to(model.device)
         out = model(audio_signal = audio_chunk)
@@ -84,8 +86,12 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
 
         rel_chunk_start_ds, rel_chunk_end_ds = int(rel_chunk_start / downsampled_by), int(rel_chunk_end / downsampled_by)
         all_logits[:, logit_position + rel_chunk_start_ds:logit_position + rel_chunk_end_ds, :] += logits[:, rel_chunk_start_ds:rel_chunk_end_ds, :]
+        logit_count[:, logit_position + rel_chunk_start_ds:logit_position + rel_chunk_end_ds, :] += 1
         logit_position += rel_chunk_end_ds - rel_chunk_start_ds
 
-    all_logits = all_logits[:, :logit_position, :]
+    assert logit_count.max() == 1, 'logit_count should not be greater than 1'
+    B,N,C = all_logits.shape
+    logits = all_logits[logit_count.sum(dim=-1) != 0]
+    logits = logits.reshape(B,-1,C)
    
-    return all_logits.squeeze(0).numpy()
+    return logits.squeeze(0).numpy()

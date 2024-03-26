@@ -93,6 +93,15 @@ def main(args):
 
     if verbose: print(f'WER: {wer}')
 
+    # return [{
+    #     'name': 'all',
+    #     'wer': wer,
+    #     'words': words,
+    #     'ins_rate': ins_rate,
+    #     'del_rate': del_rate,
+    #     'sub_rate': sub_rate
+    # }], model_config
+    
     return wer, model_config
 
 if __name__ == '__main__':
