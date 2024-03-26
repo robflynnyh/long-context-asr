@@ -35,18 +35,24 @@ def get_args(config, split, model, dataset_config):
     })
 
 
-def get_data_to_save(config, wer, split, dataset, model):
-    data = {
+def get_data_to_save(config, wers, split, dataset, model):
+    data = [{
         'dataset': dataset,
         'split': split,
-        'wer': [wer],
+        'wer': wer_data['wer'],
+        'recording': wer_data['recording'],
+        'words': wer_data['words'],
+        'ins_rate': wer_data['ins_rate'],
+        'del_rate': wer_data['del_rate'],
+        'sub_rate': wer_data['sub_rate'],
         'name': model.name,
         'checkpoint': model.path,
         'repeat': model.repeat,
         'seq_len': model.seq_len,
-        'overlap_ratio': [model.overlap_ratio],
+        'overlap_ratio': model.overlap_ratio,
         'model_class': config.args.model_class,
-    }   
+    } for wer_data in wers]
+
     return data
 
 def check_if_already_evaluated(model_save_path, cur_df, dataset, split, args):
@@ -87,8 +93,8 @@ def main(args, config):
             for model in config.models:
                 args = get_args(config, split, model, dataset_config)
                 if check_if_already_evaluated(model.path, cur_df, dataset=dataset_reference, split=split, args=args): print(f'Skipping {model.path} as it has already been evaluated'); continue
-                wer, model_config = run_eval(args = args)
-                data_to_save = get_data_to_save(config, wer, split, dataset_reference, model)
+                wers, model_config = run_eval(args = args)
+                data_to_save = get_data_to_save(config, wers, split, dataset_reference, model)
                 df = pd.DataFrame(data_to_save)
                 df.to_csv(config.args.save_dataframe_path, mode='a', header=not os.path.exists(config.args.save_dataframe_path)) if config.args.save_dataframe_path != '' else None
                 evals_completed += 1

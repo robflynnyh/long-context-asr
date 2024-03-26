@@ -26,10 +26,6 @@ datasets_functions = {
 
 
 def main(args):
-    assert args.split in ['test', 'dev'], f'Split must be either test or dev (got {args.split})'
-    for el in ['rev16', 'earnings22_full']: 
-        if args.dataset == el: assert args.split == 'test', f'Split must be test for {el}'
-
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
     args.config = model_config
@@ -44,6 +40,9 @@ def main(args):
         args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
         args.seq_len = args.__dict__.get('max_sequence_length', 3600000) # 10 hours
     if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'buffered': eval_fn = buffered_eval
+    
+    include_per_recording_evaluations = args.__dict__.get('include_per_recording_evaluations', False)
+
     verbose = args.__dict__.get('verbose', True)   
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
@@ -62,8 +61,9 @@ def main(args):
 
     all_texts = []
     all_golds = []
+    wer_data = []
 
-    pbar = tqdm(range(len(data)), total=len(data)) if verbose else range(len(data))
+    pbar = tqdm(range(len(data)), total=len(data)) #if verbose else range(len(data))
     for rec in pbar:
         if verbose: print(f'Processing {rec+1}/{len(data)}')
         
@@ -87,22 +87,33 @@ def main(args):
         
         all_texts.append(out)
         all_golds.append(gold_text)
+
+        if include_per_recording_evaluations:
+            wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
+            wer_data.append({
+                'recording': data[rec]['id'],
+                'wer': wer,
+                'words': words,
+                'ins_rate': ins_rate,
+                'del_rate': del_rate,
+                'sub_rate': sub_rate
+            })
         
 
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
 
     if verbose: print(f'WER: {wer}')
 
-    # return [{
-    #     'name': 'all',
-    #     'wer': wer,
-    #     'words': words,
-    #     'ins_rate': ins_rate,
-    #     'del_rate': del_rate,
-    #     'sub_rate': sub_rate
-    # }], model_config
+    wer_data.append({
+        'recording': 'all',
+        'wer': wer,
+        'words': words,
+        'ins_rate': ins_rate,
+        'del_rate': del_rate,
+        'sub_rate': sub_rate
+    })
+    return wer_data, model_config
     
-    return wer, model_config
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

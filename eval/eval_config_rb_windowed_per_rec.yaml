@@ -3,7 +3,7 @@ global:
   name: rb_n_seq_sched
   overlap_ratio: 0.875
   checkpoint: step_105360.pt
-  description: "rotary base 90M param model, decoding using buffered eval"
+  description: "rotary base 90M param model, decoding using windowed attention"
   
 
 models:
@@ -198,22 +198,20 @@ models:
     description: ${global.description}
 
 args:
-  verbose: false
+  verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_rb_buffered.csv'
-  evaluation_mode: buffered # averaged_moving_window | buffered | windowed_attention
-  include_per_recording_evaluations: false 
+  save_dataframe_path: './results/evals_rb_post_windowed_attn_per_rec.csv'
+  evaluation_mode: windowed_attention
+  include_per_recording_evaluations: true 
 
 datasets:
+  - name: this_american_life
+    splits: [all]
   - name: tedlium
     splits: [test, dev]
     args:
       single_utterance: false
       concat: false
-  - name: this_american_life
-    splits: [test, dev]
-  - name: rev16
-    splits: [test]
   - name: earnings22
     splits: [test, dev]
   - name: earnings22_full

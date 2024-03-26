@@ -52,6 +52,8 @@ def get_text_and_audio(split):
         data_path = DEV_PATH
     elif split == 'test':
         data_path = TEST_PATH
+    elif split == 'all':
+        return get_text_and_audio('train') + get_text_and_audio('dev') + get_text_and_audio('test')
     else:
         raise ValueError(f'Invalid split: {split}')
      
