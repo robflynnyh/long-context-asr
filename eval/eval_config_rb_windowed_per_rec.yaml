@@ -198,7 +198,7 @@ models:
     description: ${global.description}
 
 args:
-  verbose: true
+  verbose: false
   model_class: SCConformerXL
   save_dataframe_path: './results/evals_rb_post_windowed_attn_per_rec.csv'
   evaluation_mode: windowed_attention
