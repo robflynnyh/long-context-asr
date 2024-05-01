@@ -438,11 +438,12 @@ class Attention(nn.Module):
         self.dropout_p = dropout
         #print(get_window_size(kwargs, direction=None))
         # softmax_scale is set to None but will default to 1/sqrt(d_k) in FlashAttention
+        self.left_window, self.right_window = get_window_size(kwargs, direction='left'), get_window_size(kwargs, direction='right')
         self.flash_attn_fn = FlashSelfAttention(
             softmax_scale = None, 
             attention_dropout = dropout, 
             causal = False, 
-            window_size=(get_window_size(kwargs, direction='left'), get_window_size(kwargs, direction='right')),
+            window_size=(self.left_window, self.right_window),
             alibi_slopes=None
         )
      
@@ -462,17 +463,8 @@ class Attention(nn.Module):
         a_weight = a_weight.softmax(dim=-1)
         return torch.einsum("b h i j, b h j d -> b h i d", a_weight, v), a_weight
 
-        
-    def forward(self, x, attn_mask=None, length=None, pad_mask=None, flash_attn = True, rotary_emb_fn = None):
-        B, N, C, H, D = *x.shape, self.n_heads, self.head_dim
-
-        if pad_mask is not None:
-            x = x.masked_fill(pad_mask.unsqueeze(-1), 0)
-
-        q, k, v = self.qkv(x)
-        kv = torch.stack([k, v], dim=2)
-        
-
+    @staticmethod
+    def apply_rotary(q, kv, rotary_emb_fn):
         if rotary_emb_fn is not None:
             if rotary_emb_fn.learned == False:
                 q, kv[:, :, 0] = rotary_emb_fn.apply(q, kv[:, :, 0])
@@ -480,7 +472,16 @@ class Attention(nn.Module):
                 k, v = kv[:, :, 0], kv[:, :, 1]
                 q, k = rotary_emb_fn.apply(q, k)
                 kv = torch.stack([k, v], dim=2)
+        return q, kv
+        
+    def forward(self, x, attn_mask=None, length=None, pad_mask=None, flash_attn = True, rotary_emb_fn = None):
+        B, N, C, H, D = *x.shape, self.n_heads, self.head_dim
+        if pad_mask is not None: x = x.masked_fill(pad_mask.unsqueeze(-1), 0)
 
+        q, k, v = self.qkv(x)
+        kv = torch.stack([k, v], dim=2)
+        
+        q, kv = self.apply_rotary(q, kv, rotary_emb_fn)
      
         ### Flash attention stuff 
         if x.device.type == 'cuda' and flash_attn:
@@ -501,6 +502,7 @@ class Attention(nn.Module):
             out = out.to(x.dtype) 
             out = rearrange(out, "b n h d -> b n (h d)")
         else:
+            assert self.left_window == -1 and self.right_window == -1, "windowed attention not supported in CPU mode (yet)"
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
             out = nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)

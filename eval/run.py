@@ -68,17 +68,19 @@ def main(args):
         if verbose: print(f'Processing {rec+1}/{len(data)}')
         
         if verbose: print('\n-------\n'+data[rec]['id']+'\n-------\n')
-    
+
+        
         audio_spec, gold_text = data[rec]['process_fn'](data[rec])
         
-        logits = eval_fn(
-            args = args, 
-            model = model, 
-            spec = audio_spec,
-            seq_len = args.seq_len,
-            overlap = args.overlap,
-            tokenizer = tokenizer
-        ) 
+        for z in range(1):
+            logits = eval_fn(
+                args = args, 
+                model = model, 
+                spec = audio_spec,
+                seq_len = args.seq_len,
+                overlap = args.overlap,
+                tokenizer = tokenizer
+            ) 
         out_text = decoder(torch.as_tensor(logits))
 
         out = normalize(out_text).lower()
@@ -98,6 +100,8 @@ def main(args):
                 'del_rate': del_rate,
                 'sub_rate': sub_rate
             })
+        
+        break
         
 
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)

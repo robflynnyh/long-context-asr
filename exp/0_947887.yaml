@@ -1,0 +1,86 @@
+model:
+  feat_in: 80
+  n_layers: 6
+  d_model: 768
+  n_heads: 6
+  head_dim: 128
+  dropout_ff: 0.0
+  dropout_attn: 0.0
+  dropout_conv: 0.0
+  subsampling_factor: 8
+  subsampling: dw_striding
+  subsampling_act: silu
+  subsampling_conv_channels: 256
+  self_condition_subsampling: false
+  subsampling_norm_out: false
+  conv_kernel_size: 9
+  qk_rms_norm: false
+  shift_kvs: false
+  self_conditioning: true
+  gated_sc: false
+  decoder_norm: true
+  use_rotary: true
+  encoder_mode: conformer
+  default_norm: layer_norm
+  sandwich_norm: false
+  bias_in_ff: false
+  checkpoint_every_n_layers: 0
+  rotary_base_freq: 1500000
+  flash_attn: true
+  load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_16384_rp_1/step_105360.pt"
+  meta_glu_layers: 0
+  n_meta_layers: 1
+
+optimizer:
+  name: madgrad
+  args:
+    lr: 3e-3
+scheduler:
+  warmup_steps: 3500
+audio_chunking:
+  size: 2048
+  overlap: 0
+wandb:
+  use: false
+  project_name: spotify_long_context
+  name: meta_on_loss
+  id: ""
+  dir: /mnt/parscratch/users/acp21rjf/wandb_log/
+  update_config_with_wandb_id: false
+checkpointing:
+  dir: /mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_on_loss
+  save_every_n_steps: 2000
+data:
+  path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
+training:
+  start_spec_augment_after_n_epochs: -1
+  batch_size: 176
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
+  clip_value: 0.8
+  intermediate_loss_weighting: 0.0
+  random_seed: 64332
+  meta_loss_scale: 1.0
+  #dtype: float32
+  #loss: 'l2'
+  #dtype: float32
+sequence_scheduler:
+  increase_every: 5000
+  stop_after: 90000
+  start_after: 0
+  max_sequence_length: 16384
+  increase_by_multiplier: 2
+  batch_size_multiplier: 0.5
+  interpolate_rotary: false
+description: Looking at meta learning arch
+model_class: SCConformerMeta
+spec_augment:
+  n_time_masks: 0
+  time_mask_param: 0
+  n_freq_masks: 2
+  freq_mask_param: 18
+  iid_masks: true
+  min_p: 0.0
+  max_p: 0.0
+  zero_masking: false
