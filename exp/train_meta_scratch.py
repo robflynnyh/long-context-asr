@@ -101,15 +101,13 @@ def train(
     model.train()
 
     model_dtype = next(model.parameters()).dtype
-    ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='none')
+    ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
 
     backprop_every, backwards_every = args.config['training']['backprop_every'], args.config['training'].get('backwards_every', 1)
     assert backprop_every >= backwards_every, f'backprop_every ({backprop_every}) must be >= backwards_every ({backwards_every})'
     
     batch_size = args.config['training']['batch_size']
     max_cache_length = args.config['training'].get('max_cache_length', 0)
-
-    meta_loss_scale = args.config['training'].get('meta_loss_scale', 1.0)
 
     cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
 
@@ -180,8 +178,6 @@ def train(
         backwards_every_loss, steps_since_backwards = 0.0, 0
         chunks, culm_lengths_audio, nans_in_a_row = [], torch.zeros_like(audio_lengths), 0
 
-        
-
         ################################
         for ix, el in enumerate(audio_chunks_):
 
@@ -248,14 +244,15 @@ def train(
                         out_kvs = out['kvs_to_cache'].clone()
                         last_kv_set = out_kvs[:, -max_cache_length:].clone()
                     
-                    cur_probs = out['final_posteriors']
-                    #meta_pred = out['meta_pred']
-                    B,N,C = cur_probs.shape 
-                    ctc_loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths)
-                    loss = torch.nn.functional.mse_loss(ctc_loss / out['length'], model.grad_preds)
-                    #print(ctc_loss / out['length'], model.grad_preds)
+                    cur_probs_1 = out['final_posteriors']
+                    cur_probs_2 = out['final_posteriors_2']
+
+                    B,N,C = cur_probs_1.shape 
+                    loss_1 = ctc_loss_fn(cur_probs_1.transpose(0,1), txt, out['length'], t_lengths).sum()
+                    loss_2 = ctc_loss_fn(cur_probs_2.transpose(0,1), txt, out['length'], t_lengths).sum()
+                    loss = (loss_1 + loss_2) / 2
                     
-                blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
+                blank_prob = blank_p(cur_probs_1.detach(), dataloader.tokenizer)
                 # check for nan in loss
                 if torch.isnan(loss):
                     print('OH NO! NAN IN LOSS, SKIPPING') # TODO: set kv cache to None here
@@ -279,10 +276,7 @@ def train(
                 cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
-            
-
-                    scaler.scale((backwards_every_loss)).backward()
-                  
+                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
                     last_kv_set.detach_() if last_kv_set != None else None
                     steps_since_backwards = 0
                     backwards_every_loss = 0
@@ -306,9 +300,6 @@ def train(
 
                     if wandb_config['use']:
                         wandb.log({
-                            #'repr_csim': meta_csim.item(),
-                            # 'repr_norm': repr_grad_norm.item(),
-                            # 'meta_loss': meta_loss.item() * (1/meta_loss_scale),
                             'loss': loss_to_log,
                             'blank_p': blank_prob,
                             'learning_rate': learning_rate,
@@ -385,7 +376,7 @@ def main(args):
     if wandb_config['use']:
         project_name, w_id = wandb_config['project_name'], wandb_config['id']
         run_name = None if 'name' not in wandb_config else wandb_config['name']
-        wandb_dir = args.config['wandb'].get('dir', './')
+        wandb_dir = args.config['wandb'].get('dir', './wandb')
         wandb.init(project=project_name, config=args.config, name=run_name, dir=wandb_dir) if w_id == '' else wandb.init(project=project_name, id=w_id, resume="must", config=args.config, allow_val_change=True, dir=wandb_dir)
         wandb.watch(model, log="all") # sometimes this causes a crash ):
         wandb.config.update({'total_params': tparams}, allow_val_change=True)
@@ -394,19 +385,6 @@ def main(args):
         if wandb_config.get('update_config_with_wandb_id', False): OmegaConf.save(config=args.config, f=args.config_path)
 
     model = model.to(device)
-
-    for param in model.parameters():
-        param.requires_grad = False
-        
-    for param in model.meta_decoder.parameters():
-        param.requires_grad = True
-
-    for param in model.meta_layers.parameters():
-        param.requires_grad = True
-
-    for param in model.combine.parameters():
-        param.requires_grad = True
-
     optimizer, scheduler = load_optimizer(args.config, model)
 
     sequence_scheduler = None

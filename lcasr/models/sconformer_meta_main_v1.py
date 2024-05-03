@@ -34,6 +34,26 @@ class metadecoder(nn.Module):
         x = self.norm(x)
         x = self.glu(x)
         return self.ff(x)
+    
+
+class combiner(nn.Module):
+    def __init__(self, d_model, norm=nn.LayerNorm, **kwargs):
+        super().__init__()
+        self.d_model = d_model
+        # module to combine two representations
+        self.norm1 = norm(d_model)
+        self.norm2 = norm(d_model)
+        self.ff = nn.Sequential(
+            nn.Linear(d_model*2, d_model*2),
+            nn.SiLU(),
+            nn.Linear(d_model*2, d_model)
+        )
+
+    def forward(self, x1, x2):
+        x1 = self.norm1(x1)
+        x2 = self.norm2(x2)
+        x = torch.cat([x1, x2], dim=-1)
+        return self.ff(x)
 
 
 class EMAGradModule(nn.Module):
@@ -174,6 +194,7 @@ class SCConformerMeta(BaseModel):
         self.output_signal = None
 
         self.meta_mode = kwargs.get('meta_mode', 1)
+        #self.combiner = combiner(d_model)
 
         for i in range(n_layers):
             l = ConformerLayer(
@@ -238,6 +259,8 @@ class SCConformerMeta(BaseModel):
 
         for param in self.meta_layers.parameters():
             param.requires_grad = True
+
+        
 
         #self.emas = [EMAGradModule(ema_decay=0.99, init_val=p.data) for p in self.layers[0].parameters()]
 
@@ -349,8 +372,8 @@ class SCConformerMeta(BaseModel):
         self.grad_preds = None
         self.output_signal = None
 
-        iterations = random.randint(1, 3)
-        if not self.training: iterations = 1
+        iterations = 1
+        if not self.training: iterations = 35
 
         was_training = self.training
         
@@ -369,6 +392,7 @@ class SCConformerMeta(BaseModel):
                 audio_signal.requires_grad = True
             # if was_training: audio_signal = audio_signal.detach()
             # if was_training: audio_signal.requires_grad = True
+        
 
             self.reprs = audio_signal.clone()
             audio_signal = self.reprs
@@ -412,8 +436,8 @@ class SCConformerMeta(BaseModel):
         # if was_training: audio_signal = self.reprs - meta_pred
         # else: audio_signal = self.reprs   
         audio_signal = self.reprs - meta_pred   
-              
         final_posts = decoder(x = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal, logits = return_logits)
+        
         
 
         if self.training and self.rotary_pos_emb is not None:

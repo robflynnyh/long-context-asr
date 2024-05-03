@@ -1,4 +1,4 @@
-import apex, torch.nn as nn, torch.nn.functional as F
+import apex, torch.nn as nn, torch.nn.functional as F, torch
 DEFAULT_NORM = apex.normalization.FusedRMSNorm
 from einops import rearrange
 
@@ -8,7 +8,8 @@ class ASRLinearSCDecoder(nn.Module):
             d_model, 
             vocab_size, 
             norm=False, 
-            norm_fn=DEFAULT_NORM
+            norm_fn=DEFAULT_NORM,
+            **kwargs
         ):
         super().__init__()
         # Add 1 for blank char
@@ -16,13 +17,12 @@ class ASRLinearSCDecoder(nn.Module):
         self.ff = nn.Linear(d_model, self.num_classes)
         self.reprojection = nn.Linear(self.num_classes, d_model)
         self.norm = norm_fn(d_model) if norm else nn.Identity()
- 
 
     def forward(self, x, logits=False):
         x_norm = self.norm(x)
         x = self.ff(x_norm)
         x = F.log_softmax(x, dim=-1) if not logits else x
-        return x     
+        return x        
 
     def project_back(self, x):
         return self.reprojection(x)

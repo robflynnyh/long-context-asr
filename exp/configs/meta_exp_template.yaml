@@ -1,5 +1,5 @@
 template_info:
-  create: 1 # number of experiments to create
+  create: 6 # number of experiments to create
   include_keys: [
     'model', 
     'optimizer', 
@@ -17,6 +17,9 @@ template_info:
   template_keys: [
     'checkpointing.dir', 
     'wandb.name',
+    'model.n_meta_layers',
+    'model.meta_glu_layers',
+    'model.detach_grad',
     #'training.loss',
   ] # keys to use to create experiments
 
@@ -51,9 +54,10 @@ model:
   bias_in_ff: false
   checkpoint_every_n_layers: 0
   rotary_base_freq: 1500000 # https://arxiv.org/pdf/2309.16039.pdf
-  load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_16384_rp_1/step_105360.pt"
-  n_meta_layers: 1
-  meta_glu_layers: 0
+  #load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_16384_rp_1/step_105360.pt"
+  n_meta_layers: [0, 1, 0, 0, 1, 0]
+  meta_glu_layers: [0, 0 , 1, 0, 0 , 1]
+  detach_grad: [false, false, false, true, true, true]
 
 optimizer:
   name: 'madgrad'
@@ -64,7 +68,7 @@ scheduler:
   warmup_steps: 5500
 
 audio_chunking: # 360000 (max = 1 hour)
-  size: 2048
+  size: 1024
   overlap: 0 # not using currently...
 
 sequence_scheduler:
@@ -80,7 +84,12 @@ wandb:
   use: true
   project_name: "spotify_long_context"
   name: [
-    'meta_on_loss',
+    'meta_from_scratch_fullgrad_0glu_0meta',
+    'meta_from_scratch_fullgrad_0glu_1meta',
+    'meta_from_scratch_fullgrad_1glu_0meta',
+    'meta_from_scratch_stopgrad_0glu_0meta',
+    'meta_from_scratch_stopgrad_0glu_1meta',
+    'meta_from_scratch_stopgrad_1glu_0meta',
       #'meta_scale_ppppp1',
   ]
   id: "" # leave empty if not resuming a previous run
@@ -88,7 +97,12 @@ wandb:
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_on_loss',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_from_scratch_fullgrad_0glu_0meta',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_from_scratch_fullgrad_0glu_1meta',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_from_scratch_fullgrad_1glu_0meta',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_from_scratch_stopgrad_0glu_0meta',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_from_scratch_stopgrad_0glu_1meta',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_from_scratch_stopgrad_1glu_0meta',
     #'/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_scale_ppppp1',
   ]
   save_every_n_steps: 2000
@@ -112,7 +126,7 @@ spec_augment:
 
 training:
   start_spec_augment_after_n_epochs: -1 # -1 to disable
-  batch_size: 176
+  batch_size: 352
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0

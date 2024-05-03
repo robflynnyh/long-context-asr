@@ -27,9 +27,10 @@ model:
   checkpoint_every_n_layers: 0
   rotary_base_freq: 1500000
   flash_attn: true
-  load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_16384_rp_1/step_105360.pt"
-  meta_glu_layers: 0
+  #load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_16384_rp_1/step_105360.pt"
+  meta_glu_layers: 1
   n_meta_layers: 1
+  #multi_frame_prediction: true
 
 optimizer:
   name: madgrad
@@ -41,20 +42,20 @@ audio_chunking:
   size: 2048
   overlap: 0
 wandb:
-  use: false
+  use: true
   project_name: spotify_long_context
-  name: meta_on_loss
+  name: test
   id: ""
   dir: /mnt/parscratch/users/acp21rjf/wandb_log/
   update_config_with_wandb_id: false
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_on_loss
+  dir: /mnt/parscratch/users/acp21rjf/spotify/meta_exp/test
   save_every_n_steps: 2000
 data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
 training:
   start_spec_augment_after_n_epochs: -1
-  batch_size: 176
+  batch_size: 20
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0

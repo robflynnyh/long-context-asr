@@ -117,6 +117,7 @@ class SCConformerXL(BaseModel):
             vocab_size = vocab_size,
             norm = decoder_norm,
             norm_fn = default_norm,
+            **kwargs
         )
 
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}

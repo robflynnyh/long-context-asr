@@ -101,7 +101,7 @@ def main(args):
                 'sub_rate': sub_rate
             })
         
-        break
+        #break
         
 
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
