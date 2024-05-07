@@ -255,7 +255,7 @@ class FlashSelfAttention(nn.Module):
                 return_attn_probs=self.return_attention,
             )
         
-class CollectFlashAttentionProbs:
+class CollectFlashAttentionProbs: # old
     '''
     Pass a list of Flashattention modules as specified above and this will collect the attention probabilities
     '''
@@ -420,6 +420,21 @@ class CPUAttention(nn.Module):
         )
 
 
+class ReturnAttention(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, q, k, v, mask, causal=False):
+        assert causal == False, "Causal attention not implemented when returning attention (o:)"
+        a_weight = torch.einsum("b h i d, b h j d -> b h i j", q, k)
+        a_weight = (a_weight / self.head_dim ** 0.5)
+        if mask is not None:
+            a_weight = a_weight.masked_fill(mask, -torch.finfo(a_weight.dtype).max)
+        a_probs = a_probs.softmax(dim=-1)
+        return torch.einsum("b h i j, b h j d -> b h i d", a_weight, v), a_weight
+
+    
+
 class Attention(nn.Module):
     def __init__(
         self,
@@ -442,11 +457,14 @@ class Attention(nn.Module):
         self.flash_attn_fn = FlashSelfAttention(
             softmax_scale = None, 
             attention_dropout = dropout, 
-            causal = False, 
+            causal = kwargs.get('causal', False),
             window_size=(self.left_window, self.right_window),
             alibi_slopes=None
         )
+        self.causal = kwargs.get('causal', False)
      
+        self.return_attention_weights = kwargs.get('return_attention_weights', False)
+        self.return_attention_module = ReturnAttention()
 
         self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=kwargs.get('qkv_bias', False))
 
@@ -484,7 +502,7 @@ class Attention(nn.Module):
         q, kv = self.apply_rotary(q, kv, rotary_emb_fn)
      
         ### Flash attention stuff 
-        if x.device.type == 'cuda' and flash_attn:
+        if x.device.type == 'cuda' and flash_attn and not self.return_attention_weights:
             q, kv = q.contiguous(), kv.contiguous()
             if q.dtype == torch.float32:
                 q, kv = q.half(), kv.half()
@@ -505,7 +523,10 @@ class Attention(nn.Module):
             assert self.left_window == -1 and self.right_window == -1, "windowed attention not supported in CPU mode (yet)"
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
-            out = nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=False)
+            if not self.return_attention_weights:
+                out = nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=self.causal)
+            else:
+                out, _ = self.return_attention_module(q, k, v, attn_mask, causal=self.causal)
             out = rearrange(out, "b h n d -> b n (h d)")
       
         if pad_mask != None:
@@ -517,3 +538,32 @@ class Attention(nn.Module):
     
 
 
+
+class CollectAttentionProbs: 
+    '''
+    Pass a list of Attention modules as specified above and this will collect the attention probabilities
+    '''
+    def __init__(self, attn_modules: List[Attention]):
+        self.attn_modules = attn_modules
+        self.attn_probs = []
+
+        for module in self.attn_modules:
+            module.return_attention_weights = True
+            module.return_attention_module.register_forward_hook(self.attn_hook)
+
+    def collect(self):
+        return self.attn_probs
+
+    def clear(self):
+        self.attn_probs = []
+
+    def __call__(self):
+        probs = self.collect()
+        if len(probs) == 0: print("No attention probabilities found! Make sure to call the model on some input first!")
+        self.clear()
+        return probs
+
+    def attn_hook(self, module, input, output):
+        out, a_weight  = output
+        self.attn_probs.append(a_weight.detach().cpu())
+        return out, a_weight

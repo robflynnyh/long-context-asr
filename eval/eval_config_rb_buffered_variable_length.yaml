@@ -1,0 +1,135 @@
+global:
+  root_path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_
+  name: rb_n_seq_sched
+  overlap_ratio: 0.875
+  checkpoint: step_105360.pt
+  description: "rotary base 90M param model, decoding using buffered eval"
+  
+
+models:
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0.0
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: 0.0
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: 0.0
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0.25
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: 0.25
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: 0.25
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0.5
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: 0.5
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: 0.5
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0.75
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: 0.75
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: 0.75
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0.9375
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: 0.9375
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: 0.9375
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+args:
+  verbose: false
+  model_class: SCConformerXL
+  save_dataframe_path: './results/evals_rb_buffered_variable_overlap.csv'
+  evaluation_mode: buffered # averaged_moving_window | buffered | windowed_attention
+  include_per_recording_evaluations: false 
+
+datasets:
+  - name: earnings22_full
+    splits: [test]

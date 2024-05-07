@@ -65,6 +65,7 @@ def check_if_already_evaluated(model_save_path, cur_df, dataset, split, args):
     
     cur_df = cur_df.loc[cur_df['checkpoint'] == model_save_path].loc[cur_df['dataset'] == dataset].loc[cur_df['split'] == split]
     cur_df = cur_df.loc[cur_df['seq_len'] == args.seq_len]
+    cur_df = cur_df.loc[cur_df['overlap_ratio'] == args.overlap]
 
     model = cur_df
     if len(model) == 0:return False

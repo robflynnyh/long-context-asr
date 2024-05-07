@@ -1,5 +1,5 @@
 template_info:
-  create: 5 # number of experiments to create
+  create: 3 # number of experiments to create
   include_keys: [
     'model', 
     'optimizer', 
@@ -18,7 +18,6 @@ template_info:
     'checkpointing.dir', 
     'wandb.name',
     'model.n_meta_layers',
-    'model.meta_glu_layers',
     #'training.loss',
   ] # keys to use to create experiments
 
@@ -54,13 +53,12 @@ model:
   checkpoint_every_n_layers: 0
   rotary_base_freq: 1500000 # https://arxiv.org/pdf/2309.16039.pdf
   load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_16384_rp_1/step_105360.pt"
-  n_meta_layers: [0, 1, 0, 2, 3]
-  meta_glu_layers: [0, 0 , 1, 0, 0]
-
+  n_meta_layers: [1, 2, 3]
+  meta_glu_layers: 0
 optimizer:
   name: 'madgrad'
   args:
-    lr: 3e-3
+    lr: 1e-3
 
 scheduler:
   warmup_steps: 5500
@@ -82,11 +80,9 @@ wandb:
   use: true
   project_name: "spotify_long_context"
   name: [
-    'meta__0glu_0meta',
-    'meta__0glu_1meta',
-    'meta__1glu_0meta',
-    'meta__0glu_2meta',
-    'meta__0glu_3meta',
+    'meta__on_loss_1meta_l',
+    'meta__on_loss_2meta_l',
+    'meta__on_loss_3meta_l',
     
       #'meta_scale_ppppp1',
   ]
@@ -95,11 +91,9 @@ wandb:
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__0glu_0meta',
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__0glu_1meta',
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__1glu_0meta',
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__0glu_2meta',
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__0glu_3meta',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__on_loss_1meta_l',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__on_loss_2meta_l',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__on_loss_3meta_l',
     #'/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_scale_ppppp1',
   ]
   save_every_n_steps: 2000
@@ -129,7 +123,7 @@ training:
   max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
-  random_seed: 6433
+  random_seed: 6431
   #meta_loss_scale: 1.0
   #loss: ['cosine', 'l2']
 

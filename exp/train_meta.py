@@ -427,9 +427,6 @@ def main(args):
     for param in model.meta_layers.parameters():
         param.requires_grad = True
 
-    for param in model.combiner.parameters():
-                param.requires_grad = True
-
     optimizer, scheduler = load_optimizer(args.config, model)
 
     sequence_scheduler = None
