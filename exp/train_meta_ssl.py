@@ -101,7 +101,7 @@ def train(
     model.train()
 
     model_dtype = next(model.parameters()).dtype
-    ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='none')
+    ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
 
     backprop_every, backwards_every = args.config['training']['backprop_every'], args.config['training'].get('backwards_every', 1)
     assert backprop_every >= backwards_every, f'backprop_every ({backprop_every}) must be >= backwards_every ({backwards_every})'
@@ -217,10 +217,6 @@ def train(
                 print(f'chunk {ix}/{len(chunks)}')
                
                 audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
-                if a_lengths.min() != a_lengths.max():
-                    print('skipping')
-                    continue
-
                 txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
                 selection_mask = chunk_json['selection_mask']
 
@@ -255,10 +251,9 @@ def train(
                     cur_probs = out['final_posteriors']
                     #meta_pred = out['meta_pred']
                     B,N,C = cur_probs.shape 
-                    ctc_loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths)
-                    
-                    loss = torch.nn.functional.mse_loss(ctc_loss / out['length'], model.grad_preds)
-                    #print(ctc_loss / out['length'], model.grad_preds)
+                    loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
+                    ssl_loss = out['ssl_loss']
+                
                     
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
                 # check for nan in loss
@@ -285,9 +280,16 @@ def train(
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
             
+                    # torch.autograd.backward(tensors=model.output_signal, grad_tensors=model.grad_preds, inputs=model.reprs, retain_graph=True, create_graph=True)
+                    # meta_grad_pred = model.reprs.grad.clone()
+                    # model.reprs.grad.zero_()
 
-                    scaler.scale((backwards_every_loss)).backward()
+                    fl = ((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100
+                    fl = (fl + ssl_loss) /2
+                    scaler.scale(fl).backward()
                   
+
+
                     last_kv_set.detach_() if last_kv_set != None else None
                     steps_since_backwards = 0
                     backwards_every_loss = 0
@@ -314,6 +316,7 @@ def train(
                             #'repr_csim': meta_csim.item(),
                             # 'repr_norm': repr_grad_norm.item(),
                             # 'meta_loss': meta_loss.item() * (1/meta_loss_scale),
+                            'ssl_loss': ssl_loss.item(),
                             'loss': loss_to_log,
                             'blank_p': blank_prob,
                             'learning_rate': learning_rate,
@@ -400,17 +403,7 @@ def main(args):
 
     model = model.to(device)
 
-    for param in model.parameters():
-        param.requires_grad = False
-        
-    for param in model.meta_decoder.parameters():
-        param.requires_grad = True
 
-    for param in model.meta_layers.parameters():
-        param.requires_grad = True
-
-    for param in model.combine.parameters():
-        param.requires_grad = True
 
     optimizer, scheduler = load_optimizer(args.config, model)
 

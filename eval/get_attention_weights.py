@@ -9,6 +9,7 @@ from lcasr.decoding.greedy import GreedyCTCDecoder
 from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
 from tqdm import tqdm
+from lcasr.components.attention import CollectAttentionProbs
 
 from earnings22_full.run import get_text_and_audio as get_text_and_audio_earnings22_full
 from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
@@ -59,10 +60,6 @@ def main(args):
 
     data = datasets_functions[args.dataset](args.split)
 
-    all_texts = []
-    all_golds = []
-    wer_data = []
-
     pbar = tqdm(range(len(data)), total=len(data)) #if verbose else range(len(data))
     for rec in pbar:
         if verbose: print(f'Processing {rec+1}/{len(data)}')
@@ -72,8 +69,8 @@ def main(args):
         
         audio_spec, gold_text = data[rec]['process_fn'](data[rec])
         
-        out = model(audio_spec.to(device))
-        
+        collect_attention = CollectAttentionProbs([el.attend.fn for el in model.layers], discard=True, save_path=args.save, save_prefix=data[rec]['id'])
+        model(audio_spec.to(device))
     
 
 if __name__ == '__main__':
@@ -85,6 +82,7 @@ if __name__ == '__main__':
     parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
+    parser.add_argument('-save', '--save', type=str, required=True, help='path to save weight_matrixes')
 
     args = parser.parse_args()
     main(args)

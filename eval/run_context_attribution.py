@@ -24,7 +24,7 @@ datasets_functions = {
     'this_american_life': get_text_and_audio_this_american_life
 }
 
-
+@torch.no_grad()
 def main(args):
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
@@ -32,14 +32,11 @@ def main(args):
 
     if args.__dict__.get('disable_flash_attention', False): args.config.model.flash_attn = False
 
-    eval_fn = moving_average_eval
-    if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'windowed_attention':
-        seq_len = args.seq_len
-        subsample_factor = args.config.model.get('subsampling_factor', 8)
-        ds_seq_len = seq_len // subsample_factor
-        args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
-        args.seq_len = args.__dict__.get('max_sequence_length', 3600000) # 10 hours
-    if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'buffered': eval_fn = buffered_eval
+    seq_len = args.seq_len
+    subsample_factor = args.config.model.get('subsampling_factor', 8)
+    ds_seq_len = seq_len // subsample_factor
+    args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
+    args.seq_len = args.__dict__.get('max_sequence_length', 3600000) # 10 hours
     
     include_per_recording_evaluations = args.__dict__.get('include_per_recording_evaluations', False)
 
@@ -68,59 +65,63 @@ def main(args):
 
     pbar = tqdm(range(len(data)), total=len(data)) #if verbose else range(len(data))
     for rec in pbar:
+        if rec != 5: continue 
         if verbose: print(f'Processing {rec+1}/{len(data)}')
         
         if verbose: print('\n-------\n'+data[rec]['id']+'\n-------\n')
 
         
         audio_spec, gold_text = data[rec]['process_fn'](data[rec])
-        
-        for z in range(args.repeat):
-            logits = eval_fn(
-                args = args, 
-                model = model, 
-                spec = audio_spec,
-                seq_len = args.seq_len,
-                overlap = args.overlap,
-                tokenizer = tokenizer
-            ) 
-        out_text = decoder(torch.as_tensor(logits))
+        print(audio_spec.shape)
+        # split into windows of size window_size
+        window_size = args.window_size
+        window_starts_and_ends = [(i, min(i+window_size, audio_spec.shape[-1])) for i in range(0, audio_spec.shape[-1], window_size)]
+        # create nxn matrix for WERs
+        wer_matrix = torch.zeros(len(window_starts_and_ends), len(window_starts_and_ends) + 1)
 
+        logits = model(audio_spec.to(device))['final_posteriors']
+        spec_n, logits_n = audio_spec.shape[-1], logits.shape[1]
+        downsampled_by = spec_n / logits_n
+        downsampled_window_starts_and_ends = [(int(start/downsampled_by), int(end/downsampled_by)) for start, end in window_starts_and_ends]
+        print(downsampled_window_starts_and_ends)
+
+        out_text = decoder(logits.squeeze(0))
         out = normalize(out_text).lower()
-        
-        if verbose: print(gold_text, '\n', out, '\n\n')
-        
-        all_texts.append(out)
-        all_golds.append(gold_text)
 
-        if include_per_recording_evaluations:
-            wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
-            wer_data.append({
-                'recording': data[rec]['id'],
-                'wer': wer,
-                'words': words,
-                'ins_rate': ins_rate,
-                'del_rate': del_rate,
-                'sub_rate': sub_rate
-            })
+        wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
+        print(wer*100)
+        wer_matrix[:, -1] = wer*100
+        unharmed_logits = logits
+
+        for i, (start, end) in enumerate(window_starts_and_ends):
+            for j, (start2, end2) in enumerate(window_starts_and_ends):
+                mask_start, mask_end = start2, end2
+                cur_audio_spec = audio_spec.clone()
+                mask_val = audio_spec[:, :, mask_start:mask_end].mean().item()
+                cur_audio_spec[:, :, mask_start:mask_end] = mask_val
+                cur_logits = model(cur_audio_spec.to(device))['final_posteriors']
+                cur_unharmed_logits = unharmed_logits.clone()
+                downsampled_start, downsampled_end = int(start/downsampled_by), int(end/downsampled_by)
+                cur_unharmed_logits[:, downsampled_start:downsampled_end] = cur_logits[:, downsampled_start:downsampled_end].clone()
+                cur_logits = cur_unharmed_logits
+                out_text = decoder(cur_logits.squeeze(0))
+                out = normalize(out_text).lower()
+                wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
+                if i!=j: 
+                    print(wer*100)
+                    wer_matrix[i, j] = wer*100
+                else: 
+                    print(f'-- self-mask: -- {wer*100}')
+                    wer_matrix[i, j] = -1
+            print('---')
+
+        print(wer_matrix.shape)
+        print(wer_matrix)
 
         if args.break_eval: break
 
         
 
-    wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
-
-    if verbose: print(f'WER: {wer}')
-
-    wer_data.append({
-        'recording': 'all',
-        'wer': wer,
-        'words': words,
-        'ins_rate': ins_rate,
-        'del_rate': del_rate,
-        'sub_rate': sub_rate
-    })
-    return wer_data, model_config
     
 
 if __name__ == '__main__':
@@ -133,6 +134,7 @@ if __name__ == '__main__':
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
     parser.add_argument('-repeat', '--repeat', type=int, default=1, help='number of times to rerun evaluation')
+    parser.add_argument('-window', '--window_size', type=int, default=2048, help='window size')
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
     args = parser.parse_args()

@@ -265,8 +265,8 @@ class SCConformerMeta(BaseModel):
 
 
     
-    def run_layers(self, layers, audio_signal, att_mask, length, pad_mask, rotary_emb_fn, self_conditioning = True):
-        for lth, layer in enumerate(layers):
+    def main_layers(self, audio_signal, att_mask, length, pad_mask, rotary_emb_fn):
+        for lth, layer in enumerate(self.layers):
 
             if self.checkpoint_every_n_layers > 0 and lth % self.checkpoint_every_n_layers == 0:
                 audio_signal = checkpoint(
@@ -288,7 +288,7 @@ class SCConformerMeta(BaseModel):
                     rotary_emb_fn = rotary_emb_fn
                 )
             
-            if lth != len(self.layers) - 1 and self_conditioning:
+            if lth != len(self.layers) - 1 and self.self_conditioning:
                 iterim_post = torch.nn.functional.softmax(self.decoder(x=audio_signal, logits=True), dim=-1)
                 audio_signal = self.decoder.integrate_projections(audio_signal, self.decoder.project_back(iterim_post))       
 
@@ -378,7 +378,7 @@ class SCConformerMeta(BaseModel):
 
         iterations = 1 #random.randint(1, 3)
         if not self.training:
-            audio_signal.requires_grad = True 
+            #audio_signal.requires_grad = True 
             iterations = 1
 
         
@@ -388,37 +388,93 @@ class SCConformerMeta(BaseModel):
             audio_signal = self.initial_signal.clone()
 
             with torch.no_grad() if self.training else nullcontext():
-                audio_signal = self.run_layers(self.layers, audio_signal, att_mask, length, pad_mask, rotary_emb_fn, self_conditioning = self.self_conditioning)
+                audio_signal = self.main_layers(audio_signal, att_mask, length, pad_mask, rotary_emb_fn)
             
                 
             self.reprs = audio_signal.clone()
 
 
-            final_posts = decoder(x = decoder.norm(self.reprs) if self.legasee_double_norm else self.reprs, logits = True)
-            final_probs_initial = final_posts.softmax(dim=-1)
+            final_posts = decoder(x = decoder.norm(self.reprs) if self.legasee_double_norm else audio_signal, logits = True)
+            final_probs = final_posts.softmax(dim=-1)
 
-            final_probs_emb = torch.matmul(final_probs_initial, self.embedding.weight)
+            # get entropy of the final posteriors
+            #entropy = -(final_probs * final_probs.log()).sum(dim=-1).mean()
+
+            # convert softmax to embeddings
+            final_probs_emb = torch.matmul(final_probs, self.embedding.weight)
+            pred_emb = self.output_pred.repeat(final_probs_emb.size(0), 1, 1)
             
+            initial_signal = self.initial_signal
             if was_training:
                 final_probs_emb = final_probs_emb.detach()
-                
-            audio_signal = self.run_layers(self.meta_layers, final_probs_emb, att_mask, length, pad_mask, rotary_emb_fn, self_conditioning = False)
-            
-            final_pred = decoder(x = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal, logits = True)
-            final_posts = final_pred.log_softmax(dim=-1)
+                initial_signal = initial_signal.detach()
 
-            # if not was_training and 1==1 and i == iterations - 1:
-            #     a = final_probs_initial
-            #     c = final_pred.softmax(dim=-1)
+            audio_signal = torch.cat([initial_signal, final_probs_emb, pred_emb], dim=1)
+            
+            comb_length = torch.tensor([audio_signal.size(1)] * audio_signal.size(0), device=audio_signal.device)
+            if self.use_rotary:
+                max_seq_len = comb_length.max()
+                q_offset = 0 
+                cos, sin = self.rotary_pos_emb(max_seq_len, audio_signal.device)
+                rotary_emb_fn_comb = apply_rotary(cos = cos, sin = sin, q_offset = q_offset, learned = self.rotary_pos_emb.learned_freq)
+            
+
+            for lth, layer in enumerate(self.meta_layers):
+                if self.checkpoint_every_n_layers > 0 and lth % self.checkpoint_every_n_layers == 0:
+                    audio_signal = checkpoint(
+                        self.create_custom_forward(layer), 
+                        audio_signal, # x
+                        None, # att_mask
+                        length,
+                        None, # pad_mask
+                        self.flash_attn,
+                        rotary_emb_fn_comb
+                    )
+                else:
+                    audio_signal = layer(
+                        x = audio_signal, 
+                        attn_mask = None, 
+                        length = length,
+                        pad_mask = None,
+                        flash_attn = self.flash_attn,
+                        rotary_emb_fn = rotary_emb_fn_comb
+                    )
+
+            meta_pred = self.meta_decoder(audio_signal[:, -1, :]).squeeze(-1)
+            self.grad_preds = meta_pred
+         
+            #print(self.grad_preds)#, entropy)
+           
+            print(meta_pred)
+            #print(meta_pred.sum())
           
-            #     meta_grad = a - c
-            #     params = [p for p in self.layers[0].parameters()]
-            #     weight_grad = torch.autograd.grad(final_probs_initial, params, grad_outputs=meta_grad)
-            #     for p, g in zip(params, weight_grad):
-            #         p.data = p.data - g * 1e-3
+
+            # if not was_training and i < iterations - 1:
+            #     input_grad = torch.autograd.grad(meta_pred, self.initial_signal)[0]
+            #     self.initial_signal = self.initial_signal - input_grad * 100#* 0.01 #* 20000
+
+            if not was_training and 1==1 and i == iterations - 1:
+                #if meta_pred.item() > 0.0:
+                params = [p for p in self.layers[0].parameters()]
+                # get all biases
+                # for p in self.layers.parameters():
+                #     if p.dim() == 1:
+                #         params.append(p) 
+                #params += [p for p in self.layers[1].parameters()]
+                #params += [p for p in self.layers[2].parameters()]
+            
+                weight_grad = torch.autograd.grad(meta_pred, params)
+                # update weights
+                for p, g in zip(params, weight_grad):
+                    p.data = p.data - g * 1e-2
+            
                 
-          
-        final_posts = final_probs_initial.log()
+                #self.initial_signal = self.initial_signal - input_grad * 20000
+            
+        #print('---')
+   
+        
+        final_posts = final_posts.log_softmax(dim=-1)
 
         if self.training and self.rotary_pos_emb is not None:
             self.rotary_pos_emb.reset_if_needed()

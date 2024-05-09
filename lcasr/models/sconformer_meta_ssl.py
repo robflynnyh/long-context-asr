@@ -12,60 +12,13 @@ ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
 DEFAULT_NORM, RMSNorm, LayerNorm = apex.normalization.FusedRMSNorm, apex.normalization.FusedRMSNorm, apex.normalization.FusedLayerNorm
 PreNorm, Scale = wrappers.PreNorm, wrappers.Scale
-import random
+from lcasr.utils.augmentation import SpecAugment
+
 from lcasr.components.attention import Attention
 from lcasr.models.base import BaseModel
 import warnings
-from lcasr.components.batchrenorm import BatchRenorm1d
-import os
-from contextlib import nullcontext
+from vector_quantize_pytorch import RandomProjectionQuantizer
 
-class metadecoder(nn.Module):
-    def __init__(self, d_model, norm=nn.LayerNorm, **kwargs):
-        super().__init__()
-        self.d_model = d_model
-        self.norm = norm(d_model)
-
-        self.glu = nn.Sequential(*[ConformerFeedForward(d_model) for _ in range(kwargs.get('meta_glu_layers', 0))])
-        self.ff = nn.Linear(d_model, 1) # ConformerFeedForward(d_model)
-
-    def forward(self, x):
-        x = self.norm(x)
-        x = self.glu(x)
-        return self.ff(x)
-
-
-class EMAGradModule(nn.Module):
-    def __init__(self, ema_decay=0.99, init_val=None):
-        super(EMAGradModule, self).__init__()
-        self.ema_decay = ema_decay
-        self.current_step = 0
-        self.current_val = init_val
-
-    def forward(self, x):
-        self.current_step += 1
-        if self.current_val is None:
-            self.current_val = x
-        else:
-            self.current_val = self.current_val.to(x.device)
-            self.current_val = self.ema_decay * self.current_val + (1 - self.ema_decay) * x
-        return self.current_val
-
-class Combine(nn.Module):
-    def __init__(self, d_model):
-        super().__init__()
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.ff1 = nn.Linear(d_model*2, d_model)
-        self.ff2 = nn.Linear(d_model*2, d_model)
-        self.ff3 = nn.Linear(d_model, d_model)
-        self.act = nn.SiLU()
-
-    def forward(self, x1, x2):
-        x = torch.cat([self.norm1(x1), self.norm2(x2)], dim=-1)
-        x = self.ff1(x) * self.act(self.ff2(x))
-        x = self.ff3(x)
-        return x
 
 
 class SCConformerMeta(BaseModel): 
@@ -100,7 +53,6 @@ class SCConformerMeta(BaseModel):
         bias_in_ff = False,
         transformer=False, # disable convolutions
         legasee_double_norm = True, # norm is applied twice before final output projection, was orignally a bug, kept got compatibility with older checkpoints
-        load_pretrained_from=None,
         **kwargs
     ):
         super().__init__()
@@ -119,12 +71,7 @@ class SCConformerMeta(BaseModel):
         self.sandwich_norm = sandwich_norm
         self.bias_in_ff = bias_in_ff
         self.transformer = transformer
-
-
-
-        self.inference_iterations = kwargs.get('inference_iterations',10)
-        self.inference_lr = kwargs.get('inference_lr', 0.05)
-
+    
         self.legasee_double_norm = legasee_double_norm
 
         self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
@@ -133,7 +80,7 @@ class SCConformerMeta(BaseModel):
         accepted_subsampling_acts = ['silu', 'relu', 'gelu', 'none']
         assert subsampling_act in accepted_subsampling_acts, f'subsampling_act must be one of {accepted_subsampling_acts} (got {subsampling_act})'
         assert default_norm in accepted_norms, f'default_norm must be one of {accepted_norms} (got {default_norm})'
-        default_norm = nn.LayerNorm #RMSNorm if default_norm == 'rms_norm' else LayerNorm
+        default_norm = RMSNorm if default_norm == 'rms_norm' else LayerNorm
 
         subsampling_act = get_act(subsampling_act)
 
@@ -170,11 +117,18 @@ class SCConformerMeta(BaseModel):
             vocab_size = vocab_size,
             norm = decoder_norm,
             norm_fn = default_norm,
+            **kwargs
         )
 
-        # layer_delta = torch.zeros(n_layers, 1, 1, d_model)
-        # # register buffer for layer delta
-        # self.register_buffer('layer_delta', layer_delta)
+        self.spec_augment = SpecAugment(
+            n_freq_masks = kwargs.get('spec_augment_n_freq_masks', 6),
+            n_time_masks = kwargs.get('spec_augment_n_time_masks', 20),
+            freq_mask_param = kwargs.get('spec_augment_freq_mask_param', 20),
+            time_mask_param = kwargs.get('spec_augment_time_mask_param', -1),
+            min_p = kwargs.get('spec_augment_min_p', 0.2),
+        )
+
+        self.detach = kwargs.get('detach', True)
 
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
         self.subsampling = \
@@ -184,11 +138,7 @@ class SCConformerMeta(BaseModel):
 
         
         self.layers = nn.ModuleList()
-        self.reprs = None
-        self.grad_preds = None
-        self.output_signal = None
 
-        self.meta_mode = kwargs.get('meta_mode', 1)
 
         for i in range(n_layers):
             l = ConformerLayer(
@@ -211,23 +161,8 @@ class SCConformerMeta(BaseModel):
             )
             self.layers.append(l)
 
-        if exists(load_pretrained_from):
-            if os.path.exists(load_pretrained_from):
-                # load from path using torch.load
-                checkpoint = torch.load(load_pretrained_from, map_location='cpu')
-                
-                self.load_state_dict(checkpoint['model'])
-                print(f"Loaded model from {load_pretrained_from} !")
-
-        self.meta_decoder = metadecoder(d_model, **kwargs)
-        self.combine = Combine(1)
-
-        self.embedding = nn.Embedding(vocab_size + 1, d_model)
-        self.output_pred = nn.Parameter(torch.randn(1, 1, d_model))
-        nn.init.normal_(self.output_pred, mean=0, std=0.1)
-
-        self.meta_layers = nn.ModuleList()
-        for i in range(kwargs.get('n_meta_layers', 2)):
+        self.ssl_layers = nn.ModuleList()
+        for i in range(2):
             l = ConformerLayer(
                 d_model = d_model,
                 conv_kernel_size = conv_kernel_size,
@@ -242,31 +177,134 @@ class SCConformerMeta(BaseModel):
                 default_norm = default_norm,
                 sandwich_norm = sandwich_norm,
                 bias_in_ff = bias_in_ff,
-                transformer = True,
+                transformer = transformer,
                 conv_expansion_factor = conv_expansion_factor,
                 **kwargs
             )
-            self.meta_layers.append(l)
 
-        #PreNorm(d_model, ConformerFeedForward(d_model), norm = default_norm)
-        for param in self.parameters():
-            param.requires_grad = False
-            
-        for param in self.meta_decoder.parameters():
-            param.requires_grad = True
+        self.ssl_project = PreNorm(d_model, nn.Linear(d_model, 4096))
+        self.ssl_loss_fn = nn.CrossEntropyLoss()
 
-        for param in self.meta_layers.parameters():
-            param.requires_grad = True
+        self.vq = RandomProjectionQuantizer(
+            dim = feat_in * subsampling_factor,
+            num_codebooks = 4,
+            codebook_dim = 256,
+            codebook_size = 1024
+        )
 
-        for param in self.combine.parameters():
-            param.requires_grad = True
+    def get_ssl_targets(self, audio_signal):
+        dowsampled = self.subsampling_factor
+        b,t,f = audio_signal.shape
+        modulo = t % dowsampled
+        if modulo != 0:
+            to_add = dowsampled - modulo
+            add_vector = torch.zeros(b, to_add, f, device=audio_signal.device)
+            audio_signal = torch.cat([audio_signal, add_vector], dim=1)
+        audio_signal = rearrange(audio_signal, 'b (t d) f -> b t (d f)', d=dowsampled)
+      
+        indices = self.vq(audio_signal)
+        return indices
 
-        #self.emas = [EMAGradModule(ema_decay=0.99, init_val=p.data) for p in self.layers[0].parameters()]
+    @torch.set_grad_enabled(True)  
+    def forward(
+            self, 
+            audio_signal,
+            length = None, 
+            cached_kvs = None, 
+            cached_kv_lengths = None, 
+            return_logits = False
+        ):
+        '''
+        audio_signal: (batch_size, time, feat)
+        length: (batch_size,)
+        cached_kvs: (kv i.e 2, batch_size, layers, heads, time, head_dim)
+        '''
+        audio_signal.requires_grad = True
+        decoder = self.decoder
+        max_audio_length: int = audio_signal.size(-1)
 
+        if cached_kvs is not None:
+            assert cached_kv_lengths.max() == cached_kvs.shape[1], 'cached kvs must all be the same length'
 
+        if length is None:
+            length = torch.tensor([max_audio_length] * audio_signal.size(0), device=audio_signal.device)
+        
+        
+        input_signal, input_length = audio_signal, length
+        ssl_targets = self.get_ssl_targets(audio_signal.transpose(1, 2))
+        audio_signal = self.spec_augment(audio_signal, audio_lengths=length)
+        audio_signal = torch.transpose(audio_signal, 1, 2)
+        
+
+        audio_signal, length = self.subsampling(audio_signal, lengths = length) if not self.checkpoint_subsampling else checkpoint(self.create_custom_forward(self.subsampling), audio_signal, length)
+
+        max_audio_length = audio_signal.size(1)
+        ## create masks
+        
+        mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
     
-    def run_layers(self, layers, audio_signal, att_mask, length, pad_mask, rotary_emb_fn, self_conditioning = True):
-        for lth, layer in enumerate(layers):
+        rotary_emb_fn = None
+   
+        full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
+        if self.use_rotary:
+            max_seq_len = full_kv_lengths.max()
+            q_offset = 0 if cached_kvs is None else cached_kvs.shape[1]
+      
+            cos, sin = self.rotary_pos_emb(max_seq_len, audio_signal.device)
+            rotary_emb_fn = apply_rotary(cos = cos, sin = sin, q_offset = q_offset, learned = self.rotary_pos_emb.learned_freq)
+        
+
+        if length.max() == length.min():
+            att_mask, mask = None, None
+        else:
+            full_kv_mask = torch.arange(full_kv_lengths.max(), device=audio_signal.device).expand(audio_signal.size(0), full_kv_lengths.max()) >= full_kv_lengths.unsqueeze(1)
+            if audio_signal.device.type == 'cuda' and self.flash_attn:
+                att_mask = ~full_kv_mask
+            else:
+                qmask, kmask = ~mask, ~full_kv_mask
+                att_mask = ~(rearrange(qmask, 'b n -> b () n ()') * rearrange(kmask, 'b n -> b () () n'))
+                att_mask = att_mask.to(audio_signal.dtype) * -torch.finfo(audio_signal.dtype).max
+
+        pad_mask = mask 
+    
+        audio_signal = self.fourier_pos_enc(audio_signal)
+
+        ssl_signal = audio_signal.clone()
+        for lth, layer in enumerate(self.ssl_layers):
+            if self.checkpoint_every_n_layers > 0 and lth % self.checkpoint_every_n_layers == 0:
+                ssl_signal = checkpoint(
+                    self.create_custom_forward(layer), 
+                    ssl_signal, # x
+                    att_mask, # att_mask
+                    length,
+                    pad_mask, # pad_mask
+                    self.flash_attn,
+                    rotary_emb_fn
+                )
+            else:
+                ssl_signal = layer(
+                    x = ssl_signal, 
+                    attn_mask = att_mask, 
+                    length = length,
+                    pad_mask = pad_mask,
+                    flash_attn = self.flash_attn,
+                    rotary_emb_fn = rotary_emb_fn
+                )   
+        ssl_preds = self.ssl_project(ssl_signal)
+        ssl_preds = rearrange(ssl_preds, 'b t (x z) -> (b t x) z', x=4)
+        ssl_targets = ssl_targets.flatten() 
+        # print(ssl_preds.argmax(-1))
+        # print('---')
+        # print(ssl_targets)
+        ssl_loss = self.ssl_loss_fn(ssl_preds, ssl_targets)
+
+        audio_signal = input_signal.transpose(1, 2)
+        audio_signal, _ = self.subsampling(audio_signal, lengths = input_length) if not self.checkpoint_subsampling else checkpoint(self.create_custom_forward(self.subsampling), audio_signal, input_length)
+
+        if self.detach:
+            audio_signal = audio_signal.detach()
+        
+        for lth, layer in enumerate(self.layers):
 
             if self.checkpoint_every_n_layers > 0 and lth % self.checkpoint_every_n_layers == 0:
                 audio_signal = checkpoint(
@@ -288,142 +326,26 @@ class SCConformerMeta(BaseModel):
                     rotary_emb_fn = rotary_emb_fn
                 )
             
-            if lth != len(self.layers) - 1 and self_conditioning:
-                iterim_post = torch.nn.functional.softmax(self.decoder(x=audio_signal, logits=True), dim=-1)
-                audio_signal = self.decoder.integrate_projections(audio_signal, self.decoder.project_back(iterim_post))       
-
-        return audio_signal
-
-    @torch.set_grad_enabled(True)
-    def forward(
-            self, 
-            audio_signal,
-            length = None, 
-            cached_kvs = None, 
-            cached_kv_lengths = None, 
-            return_logits = False,
-        ):
-        '''
-        audio_signal: (batch_size, time, feat)
-        length: (batch_size,)
-        cached_kvs: (kv i.e 2, batch_size, layers, heads, time, head_dim)
-        '''
-        audio_signal.requires_grad = True
-
-             # freeze all layers
-        if self.training:
-            for param in self.parameters():
-                param.requires_grad = False
-            for param in self.meta_decoder.parameters():
-                param.requires_grad = True
-            for param in self.meta_layers.parameters():
-                param.requires_grad = True
-            for param in self.combine.parameters():
-                param.requires_grad = True
-        else:
-            for param in self.parameters():
-                param.requires_grad = True
-
-
-        decoder = self.decoder
-        max_audio_length: int = audio_signal.size(-1)
-
-        if cached_kvs is not None:
-            assert cached_kv_lengths.max() == cached_kvs.shape[1], 'cached kvs must all be the same length'
-
-        if length is None:
-            length = torch.tensor([max_audio_length] * audio_signal.size(0), device=audio_signal.device)
-            
-        audio_signal = torch.transpose(audio_signal, 1, 2)
-
-        with torch.no_grad():
-            audio_signal, length = self.subsampling(audio_signal, lengths = length) if not self.checkpoint_subsampling else checkpoint(self.create_custom_forward(self.subsampling), audio_signal, length)
-
-        max_audio_length = audio_signal.size(1)
-        ## create masks
-        
-        mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
-    
-        rotary_emb_fn = None
-
-        full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
-        if self.use_rotary:
-            max_seq_len = full_kv_lengths.max()
-            q_offset = 0 if cached_kvs is None else cached_kvs.shape[1]
-    
-            cos, sin = self.rotary_pos_emb(max_seq_len, audio_signal.device)
-            rotary_emb_fn = apply_rotary(cos = cos, sin = sin, q_offset = q_offset, learned = self.rotary_pos_emb.learned_freq)
-        
-
-        if length.max() == length.min():
-            att_mask, mask = None, None
-        else:
-            full_kv_mask = torch.arange(full_kv_lengths.max(), device=audio_signal.device).expand(audio_signal.size(0), full_kv_lengths.max()) >= full_kv_lengths.unsqueeze(1)
-            if audio_signal.device.type == 'cuda' and self.flash_attn:
-                att_mask = ~full_kv_mask
-            else:
-                qmask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1) 
-                kmask = ~full_kv_mask
-                att_mask = ~(rearrange(qmask, 'b n -> b () n ()') * rearrange(kmask, 'b n -> b () () n'))
-                att_mask = att_mask.to(audio_signal.dtype) * -torch.finfo(audio_signal.dtype).max
-
-        pad_mask = mask 
-    
-        audio_signal = self.fourier_pos_enc(audio_signal)
-        self.reprs = None
-        self.grad_preds = None
-        self.output_signal = None
-
-        was_training = self.training
-
-        iterations = 1 #random.randint(1, 3)
-        if not self.training:
-            audio_signal.requires_grad = True 
-            iterations = 1
+            if lth != len(self.layers) - 1 and self.self_conditioning:
+                iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
+                audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))        
 
         
-        self.constant_initial_signal = audio_signal.clone()
-        self.initial_signal = audio_signal.clone()
-        for i in range(iterations):
-            audio_signal = self.initial_signal.clone()
-
-            with torch.no_grad() if self.training else nullcontext():
-                audio_signal = self.run_layers(self.layers, audio_signal, att_mask, length, pad_mask, rotary_emb_fn, self_conditioning = self.self_conditioning)
-            
-                
-            self.reprs = audio_signal.clone()
-
-
-            final_posts = decoder(x = decoder.norm(self.reprs) if self.legasee_double_norm else self.reprs, logits = True)
-            final_probs_initial = final_posts.softmax(dim=-1)
-
-            final_probs_emb = torch.matmul(final_probs_initial, self.embedding.weight)
-            
-            if was_training:
-                final_probs_emb = final_probs_emb.detach()
-                
-            audio_signal = self.run_layers(self.meta_layers, final_probs_emb, att_mask, length, pad_mask, rotary_emb_fn, self_conditioning = False)
-            
-            final_pred = decoder(x = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal, logits = True)
-            final_posts = final_pred.log_softmax(dim=-1)
-
-            # if not was_training and 1==1 and i == iterations - 1:
-            #     a = final_probs_initial
-            #     c = final_pred.softmax(dim=-1)
-          
-            #     meta_grad = a - c
-            #     params = [p for p in self.layers[0].parameters()]
-            #     weight_grad = torch.autograd.grad(final_probs_initial, params, grad_outputs=meta_grad)
-            #     for p, g in zip(params, weight_grad):
-            #         p.data = p.data - g * 1e-3
-                
-          
-        final_posts = final_probs_initial.log()
+        audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
+        final_posts = decoder(x = audio_signal, logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
 
         if self.training and self.rotary_pos_emb is not None:
             self.rotary_pos_emb.reset_if_needed()
+    
+        if not self.training:
+            print(ssl_loss.item())
+            params = [p for p in self.subsampling.parameters()]
+            #params += [p for p in self.ssl_layers.parameters()]
+            grads = torch.autograd.grad(ssl_loss, params)
+            for p, g in zip(params, grads):
+                p.data = p.data - g * 1e-4
 
-        return {'final_posteriors': final_posts, 'length': length}
+        return {'final_posteriors': final_posts, 'length': length, "ssl_loss": ssl_loss}
 
 
 class ConformerLayer(nn.Module):
@@ -550,7 +472,7 @@ class ConformerLayer(nn.Module):
 
 if __name__ == '__main__':
     # run test
-    model = SCConformerMeta(vocab_size=4096, head_dim=256, n_heads=3, attention_window_size=128)
+    model = SCConformerXL(vocab_size=4096, head_dim=256, n_heads=3, attention_window_size=128)
     audio = torch.randn(2, 80, 1000)
     lengths = torch.tensor([1000, 500])
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

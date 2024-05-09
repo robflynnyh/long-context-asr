@@ -3,6 +3,7 @@ from einops import rearrange, repeat
 from typing import List
 from torch.nn import functional as F
 import math
+from os.path import join
 
 try:
     from flash_attn import (flash_attn_qkvpacked_func, flash_attn_varlen_qkvpacked_func)
@@ -426,12 +427,21 @@ class ReturnAttention(nn.Module):
 
     def forward(self, q, k, v, mask, causal=False):
         assert causal == False, "Causal attention not implemented when returning attention (o:)"
+        
         a_weight = torch.einsum("b h i d, b h j d -> b h i j", q, k)
-        a_weight = (a_weight / self.head_dim ** 0.5)
+        a_weight = (a_weight / q.shape[-1] ** 0.5)
         if mask is not None:
             a_weight = a_weight.masked_fill(mask, -torch.finfo(a_weight.dtype).max)
-        a_probs = a_probs.softmax(dim=-1)
-        return torch.einsum("b h i j, b h j d -> b h i d", a_weight, v), a_weight
+
+        #a_weight = a_weight.to('cpu')
+        # top_values, _ = a_weight.topk(48, dim = -1)
+        # sparse_topk_mask = a_weight < top_values[..., -1:]
+        # mask = sparse_topk_mask
+        # a_weight = a_weight.masked_fill(mask, -torch.finfo(a_weight.dtype).max)
+        #a_weight = a_weight.to(q.device)
+
+        a_probs = a_weight.softmax(dim=-1)
+        return torch.einsum("b h i j, b h j d -> b h i d", a_probs, v), a_weight
 
     
 
@@ -543,13 +553,17 @@ class CollectAttentionProbs:
     '''
     Pass a list of Attention modules as specified above and this will collect the attention probabilities
     '''
-    def __init__(self, attn_modules: List[Attention]):
+    def __init__(self, attn_modules: List[Attention], discard=False, save_path=None, save_prefix=None):
         self.attn_modules = attn_modules
         self.attn_probs = []
 
-        for module in self.attn_modules:
+        self.save_path = save_path
+        self.save_prefix = save_prefix
+        self.discard = discard
+
+        for idx, module in enumerate(self.attn_modules):
             module.return_attention_weights = True
-            module.return_attention_module.register_forward_hook(self.attn_hook)
+            module.return_attention_module.register_forward_hook(self.get_attn_hook(idx))
 
     def collect(self):
         return self.attn_probs
@@ -559,11 +573,19 @@ class CollectAttentionProbs:
 
     def __call__(self):
         probs = self.collect()
+        probs = torch.stack(probs, dim=0)
         if len(probs) == 0: print("No attention probabilities found! Make sure to call the model on some input first!")
         self.clear()
         return probs
 
-    def attn_hook(self, module, input, output):
-        out, a_weight  = output
-        self.attn_probs.append(a_weight.detach().cpu())
-        return out, a_weight
+    def get_attn_hook(self, layer_idx):
+        def attn_hook(module, input, output):
+            out, a_weight = output
+            a_weight = a_weight.detach().cpu().to(torch.bfloat16)
+            if not self.discard: self.attn_probs.append(a_weight)
+            if self.save_path is not None:
+                name = f'{self.save_prefix}_{layer_idx}.pt' if self.save_prefix is not None else f'layer_{layer_idx}.pt'
+                full_path = join(self.save_path, name)
+                torch.save(a_weight, full_path)
+            return out, a_weight
+        return attn_hook

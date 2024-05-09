@@ -218,7 +218,7 @@ class SCConformerXL(BaseModel):
                     length,
                     pad_mask, # pad_mask
                     self.flash_attn,
-                    rotary_emb_fn
+                    rotary_emb_fn,
                 )
             else:
                 audio_signal = layer(

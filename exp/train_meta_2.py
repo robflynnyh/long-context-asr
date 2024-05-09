@@ -217,9 +217,9 @@ def train(
                 print(f'chunk {ix}/{len(chunks)}')
                
                 audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
-                if a_lengths.min() != a_lengths.max():
-                    print('skipping')
-                    continue
+                # if a_lengths.min() != a_lengths.max():
+                #     print('skipping')
+                #     continue
 
                 txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
                 selection_mask = chunk_json['selection_mask']
@@ -255,9 +255,9 @@ def train(
                     cur_probs = out['final_posteriors']
                     #meta_pred = out['meta_pred']
                     B,N,C = cur_probs.shape 
-                    ctc_loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths)
+                    loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
                     
-                    loss = torch.nn.functional.mse_loss(ctc_loss / out['length'], model.grad_preds)
+                   
                     #print(ctc_loss / out['length'], model.grad_preds)
                     
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
@@ -285,8 +285,7 @@ def train(
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
             
-
-                    scaler.scale((backwards_every_loss)).backward()
+                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward()
                   
                     last_kv_set.detach_() if last_kv_set != None else None
                     steps_since_backwards = 0

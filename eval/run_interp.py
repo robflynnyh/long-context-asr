@@ -25,6 +25,35 @@ datasets_functions = {
 }
 
 
+def mask_frames(spec, mask_frames):
+    if mask_frames == 0: return spec
+
+    seq_len = spec.shape[-1]
+    num_to_mask = int(seq_len * mask_frames / 100)
+    mask_value = spec.mean()
+    mask = torch.ones(seq_len)
+    mask[:num_to_mask] = 0
+    mask = mask[torch.randperm(seq_len)]
+    mask = mask.unsqueeze(0).unsqueeze(0)
+    spec = spec * mask + mask_value * (1 - mask)
+
+    return spec
+
+def mask_frequencies(spec, freq_masks):
+    if freq_masks == 0: return spec
+    frequencies = spec.shape[-2]
+    mask_value = spec.mean()
+    mask = torch.ones(frequencies)
+    mask[:freq_masks] = 0
+    mask = mask[torch.randperm(frequencies)]
+    mask = mask.unsqueeze(0).unsqueeze(-1)
+    spec = spec * mask + mask_value * (1 - mask)
+
+
+    return spec
+
+    
+
 def main(args):
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
@@ -33,7 +62,7 @@ def main(args):
     if args.__dict__.get('disable_flash_attention', False): args.config.model.flash_attn = False
 
     eval_fn = moving_average_eval
-    if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'windowed_attention':
+    if args.__dict__.get('evaluation_mode', 'windowed_attention') == 'windowed_attention':
         seq_len = args.seq_len
         subsample_factor = args.config.model.get('subsampling_factor', 8)
         ds_seq_len = seq_len // subsample_factor
@@ -74,6 +103,9 @@ def main(args):
 
         
         audio_spec, gold_text = data[rec]['process_fn'](data[rec])
+
+        audio_spec = mask_frames(audio_spec, args.mask_frames)
+        audio_spec = mask_frequencies(audio_spec, args.mask_freq)
         
         for z in range(args.repeat):
             logits = eval_fn(
@@ -133,6 +165,8 @@ if __name__ == '__main__':
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
     parser.add_argument('-repeat', '--repeat', type=int, default=1, help='number of times to rerun evaluation')
+    parser.add_argument('-mask_frames', '--mask_frames', type=int, default=0, help='percent of frames to mask')
+    parser.add_argument('-mask_freq', '--mask_freq', type=int, default=0, help='percent of frequencies to mask')
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
     args = parser.parse_args()

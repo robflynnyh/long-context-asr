@@ -1,0 +1,220 @@
+global:
+  root_path: /mnt/parscratch/users/acp21rjf/spotify/5kwarmup_rotary_pos_3l_256d_seq_sched/n_seq_sched_
+  name: rb_n_seq_sched
+  overlap_ratio: 0.875
+  checkpoint: step_105360.pt
+  description: "rotary base 10M param 6l 256d model, decoding using windowed attention"
+  
+
+models:
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 1024
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 1024
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 1024
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 4096
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 4096
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 4096
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 8192
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 8192
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 8192
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 16384
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 16384
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 16384
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 32768
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 32768
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 32768
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 65536
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 65536
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description} 
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 65536
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 131072
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 131072
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 131072
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 262144
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 262144
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 262144
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 360000
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 360000
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 360000
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+args:
+  verbose: true
+  model_class: SCConformerXL
+  save_dataframe_path: './results/evals_windowed_9l.csv'
+  evaluation_mode: windowed_attention
+  max_sequence_length: 3600000
+
+datasets:
+  - name: this_american_life
+    splits: [test, dev]
+  - name: tedlium
+    splits: [test, dev]
+    args:
+      single_utterance: false
+      concat: false
+  - name: rev16
+    splits: [test]
+  - name: earnings22
+    splits: [test, dev]
+  - name: earnings22_full
+    splits: [test]

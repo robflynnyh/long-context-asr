@@ -1,5 +1,5 @@
 template_info:
-  create: 30 # number of experiments to create
+  create: 27 # number of experiments to create
   include_keys: [
     'model', 
     'optimizer', 
@@ -69,9 +69,9 @@ sequence_scheduler:
   stop_after: 90000
   start_after: 0
   max_sequence_length: [
-    1024,
-    1024,
-    1024,
+    # 1024,
+    # 1024,
+    # 1024,
     2048,
     2048,
     2048,
@@ -108,9 +108,9 @@ wandb:
   use: true
   project_name: "spotify_long_context"
   name: [
-    'rb_3epoch_n_seq_sched_1024_rp_1',
-    'rb_3epoch_n_seq_sched_1024_rp_2',
-    'rb_3epoch_n_seq_sched_1024_rp_3',
+    # 'rb_3epoch_n_seq_sched_1024_rp_1',
+    # 'rb_3epoch_n_seq_sched_1024_rp_2',
+    # 'rb_3epoch_n_seq_sched_1024_rp_3',
     'rb_3epoch_n_seq_sched_2048_rp_1',
     'rb_3epoch_n_seq_sched_2048_rp_2',
     'rb_3epoch_n_seq_sched_2048_rp_3', 
@@ -144,9 +144,9 @@ wandb:
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3epoch/n_seq_sched_1024_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3epoch/n_seq_sched_1024_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3epoch/n_seq_sched_1024_rp_3',
+    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3epoch/n_seq_sched_1024_rp_1',
+    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3epoch/n_seq_sched_1024_rp_2',
+    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3epoch/n_seq_sched_1024_rp_3',
     '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3epoch/n_seq_sched_2048_rp_1',
     '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3epoch/n_seq_sched_2048_rp_2',
     '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3epoch/n_seq_sched_2048_rp_3',

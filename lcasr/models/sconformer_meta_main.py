@@ -373,7 +373,7 @@ class SCConformerMeta(BaseModel):
         self.output_signal = None
 
         iterations = 1
-        if not self.training: iterations = 2
+        if not self.training: iterations = 1
 
         was_training = self.training
         
@@ -427,7 +427,7 @@ class SCConformerMeta(BaseModel):
                 all_param_grads = torch.autograd.grad(outputs=self.reprs, inputs=param_inputs, grad_outputs=grad_pred, retain_graph=False)
                 initial_signal_grad = all_param_grads[0]
                
-                self.initial_signal = self.initial_signal - initial_signal_grad * 100
+                self.initial_signal = self.initial_signal - initial_signal_grad * 1
 
         # if was_training: audio_signal = self.reprs - meta_pred
         # else: audio_signal = self.reprs   
