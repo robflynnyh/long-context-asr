@@ -45,7 +45,7 @@ class SpecAugment(torch.nn.Module): # taken from https://pytorch.org/audio/main/
 
     ) -> None:
         super(SpecAugment, self).__init__()
-        assert min_p != -1 or time_mask_param != -1, "Either min_p or n_time_masks must be set o:"
+        if n_time_masks != 0: assert (min_p != -1 or time_mask_param != -1), "Either min_p or n_time_masks must be set o:"
         assert min_p == -1 or (min_p >= 0 and min_p <= 1), "min_p must be within range [0.0, 1.0]"
         assert max_p >= 0 and max_p <= 1, "max_p must be within range [0.0, 1.0]"
 

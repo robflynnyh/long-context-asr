@@ -7,8 +7,10 @@ from lcasr.eval.wer import word_error_rate_detail
 #from lcasr.eval.dynamic_eval import dynamic_eval
 from lcasr.decoding.greedy import GreedyCTCDecoder
 from whisper.normalizers import EnglishTextNormalizer
+from lcasr.eval.su_selftrain_wrapper import su_selftrain_wrapper
 normalize = EnglishTextNormalizer()
 from tqdm import tqdm
+import os
 
 from earnings22_full.run import get_text_and_audio as get_text_and_audio_earnings22_full
 from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
@@ -66,6 +68,8 @@ def main(args):
     all_golds = []
     wer_data = []
 
+    model = su_selftrain_wrapper(model, n_iterations = args.self_train_iterations)
+
     pbar = tqdm(range(len(data)), total=len(data)) #if verbose else range(len(data))
     for rec in pbar:
         if verbose: print(f'Processing {rec+1}/{len(data)}')
@@ -121,7 +125,16 @@ def main(args):
         'sub_rate': sub_rate
     })
     return wer_data, model_config
-    
+
+
+def run_evals(args):
+    #checkpoint_folders = os.path.listdir('/mnt/parscratch/acp21rjf/spotify/')
+    iteration_vals = [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+        15, 20, 25, 30,
+        40, 50, 60, 
+        80, 100,
+    ]
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -134,6 +147,8 @@ if __name__ == '__main__':
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
     parser.add_argument('-repeat', '--repeat', type=int, default=1, help='number of times to rerun evaluation')
     parser.add_argument('-eval_mode', '--evaluation_mode', type=str, default='averaged_moving_window', choices=['averaged_moving_window', 'windowed_attention', 'buffered'])
+
+    parser.add_argument('-self_train_iterations', '--self_train_iterations', type=int, default=5, help='number of self training iterations')
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
     args = parser.parse_args()

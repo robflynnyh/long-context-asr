@@ -77,7 +77,7 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
         #print(buffer_end-buffer_start, chunk_end-chunk_start)
         audio_chunk = spec[:, :, buffer_start:buffer_end]
         audio_chunk = audio_chunk.to(model.device)
-        out = model(audio_signal = audio_chunk)
+        out = model(audio_chunk)
         rel_chunk_start, rel_chunk_end = chunk_start - buffer_start, chunk_end - buffer_start # relative to start position of buffer
         buffer_size = audio_chunk.shape[-1]
         logits = out['final_posteriors'].detach().cpu()
