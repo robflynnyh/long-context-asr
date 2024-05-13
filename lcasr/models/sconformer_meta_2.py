@@ -441,7 +441,7 @@ class SCConformerMeta(BaseModel):
                     )
             
             final_pred = decoder(x = decoder.norm(audio_signal[:, audio_signal.size(1) // 2:]) if self.legasee_double_norm else audio_signal[:, audio_signal.size(1) // 2:], logits = True)
-            #final_posts = final_pred.log_softmax(dim=-1)
+            final_posts = final_pred.log_softmax(dim=-1)
             # meta_pred = self.meta_decoder(audio_signal[:, audio_signal.size(1) // 2:])
             # self.grad_preds = meta_pred
          
@@ -449,37 +449,18 @@ class SCConformerMeta(BaseModel):
             #     input_grad = torch.autograd.grad(meta_pred, self.initial_signal)[0]
             #     self.initial_signal = self.initial_signal - input_grad * 100#* 0.01 #* 20000
 
-            # if not was_training and 1==1 and i == iterations - 1:
-            #     a = final_probs_initial
-            #     c = final_pred.softmax(dim=-1)
-          
-            #     meta_grad = a - c
-            #     params = [p for p in self.layers[0].parameters()]
-            #     weight_grad = torch.autograd.grad(final_probs_initial, params, grad_outputs=meta_grad)
-            #     for p, g in zip(params, weight_grad):
-            #         p.data = p.data - g * 1e-3
-                
-                #if meta_pred.item() > 0.0:
-                # params = [p for p in self.layers[0].parameters()]
-                # # get all biases
-                # # for p in self.layers.parameters():
-                # #     if p.dim() == 1:
-                # #         params.append(p) 
-                # #params += [p for p in self.layers[1].parameters()]
-                # #params += [p for p in self.layers[2].parameters()]
-            
-                # weight_grad = torch.autograd.grad(meta_pred, params)
-                # # update weights
-                # for p, g in zip(params, weight_grad):
-                    # p.data = p.data - g * 1e-2
-            
-                
-                #self.initial_signal = self.initial_signal - input_grad * 20000
-            
-        #print('---')
-   
+            if not was_training and 1==1 and i == iterations - 1:
+                a = final_probs_initial
+                c = final_pred.softmax(dim=-1)
+                meta_grad = a - c
+                params = [p for p in self.layers[0].parameters()]
+                weight_grad = torch.autograd.grad(final_probs_initial, params, grad_outputs=meta_grad)
+                for p, g in zip(params, weight_grad):
+                    p.data = p.data - g * 1e-3
+               
+       
         
-        final_posts = final_posts.log_softmax(dim=-1)
+        #final_posts = final_posts.log_softmax(dim=-1)
 
         if self.training and self.rotary_pos_emb is not None:
             self.rotary_pos_emb.reset_if_needed()
