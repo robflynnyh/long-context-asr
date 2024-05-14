@@ -76,6 +76,8 @@ def get_dtype(dtype:str) -> torch.dtype:
         return torch.float32
     else:
         raise ValueError(f'invalid dtype: {dtype}')
+    
+
 
 def train(
         args:argparse.Namespace,
@@ -150,6 +152,7 @@ def train(
             continue
         ################################
 
+        frames_per_batch = chunk_size * batch_size
         audio, audio_lengths, txt, ids = batch
         seen_ids.extend(ids)
         cur_batch_size = audio.shape[0]
@@ -173,6 +176,8 @@ def train(
         last_podcast = cur_podcast
         ###############################
         
+        print(audio.shape)
+        exit()
         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
         txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt] # becomes v slow for v large batch sizes !!
 

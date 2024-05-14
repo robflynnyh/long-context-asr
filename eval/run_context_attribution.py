@@ -9,6 +9,8 @@ from lcasr.decoding.greedy import GreedyCTCDecoder
 from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
 from tqdm import tqdm
+import os
+import pickle as pkl
 
 from earnings22_full.run import get_text_and_audio as get_text_and_audio_earnings22_full
 from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
@@ -65,7 +67,7 @@ def main(args):
 
     pbar = tqdm(range(len(data)), total=len(data)) #if verbose else range(len(data))
     for rec in pbar:
-        if rec != 5: continue 
+        #if rec != 5: continue 
         if verbose: print(f'Processing {rec+1}/{len(data)}')
         
         if verbose: print('\n-------\n'+data[rec]['id']+'\n-------\n')
@@ -93,7 +95,12 @@ def main(args):
         wer_matrix[:, -1] = wer*100
         unharmed_logits = logits
 
+        target_transcript = gold_text
+        unharmed_transcript = out
+        trancript_matrix = []
+
         for i, (start, end) in enumerate(window_starts_and_ends):
+            trancript_matrix.append([])
             for j, (start2, end2) in enumerate(window_starts_and_ends):
                 mask_start, mask_end = start2, end2
                 cur_audio_spec = audio_spec.clone()
@@ -107,20 +114,36 @@ def main(args):
                 out_text = decoder(cur_logits.squeeze(0))
                 out = normalize(out_text).lower()
                 wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
+                trancript_matrix[i].append(out)
                 if i!=j: 
                     print(wer*100)
                     wer_matrix[i, j] = wer*100
                 else: 
                     print(f'-- self-mask: -- {wer*100}')
-                    wer_matrix[i, j] = -1
+                    wer_matrix[i, j] = wer*100
+
+                
+
             print('---')
 
-        print(wer_matrix.shape)
-        print(wer_matrix)
+ 
+
+        if args.save != '':
+                checkpoint_name = args.checkpoint.split('/')[-2]
+                path_wer = os.path.join(args.save, f'{args.dataset}_{checkpoint_name}_{args.split}_recording_{rec}_wers.pt')
+                path_transcripts = os.path.join(args.save, f'{args.dataset}_{checkpoint_name}_{args.split}_recording_{rec}_transcripts.pkl')
+                torch.save(wer_matrix, path_wer)
+                with open(path_transcripts, 'wb') as f:
+                     pkl.dump({
+                          'transcript_matrix': trancript_matrix,
+                          'gold': gold_text,
+                          'unharmed': unharmed_transcript,
+                     }, f)
+            
 
         if args.break_eval: break
 
-        
+  
 
     
 
@@ -135,6 +158,8 @@ if __name__ == '__main__':
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
     parser.add_argument('-repeat', '--repeat', type=int, default=1, help='number of times to rerun evaluation')
     parser.add_argument('-window', '--window_size', type=int, default=2048, help='window size')
+
+    parser.add_argument('-save', '--save', type=str, default='/mnt/parscratch/users/acp21rjf/spotify/context_attribution/')
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
     args = parser.parse_args()
