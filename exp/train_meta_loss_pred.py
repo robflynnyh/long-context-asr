@@ -14,6 +14,8 @@ from lcasr.utils.general import load_model, save_model, load_checkpoint, load_op
 from lcasr.utils.augmentation import SpecAugment
 import resource
 import time
+from lcasr.decoding.greedy import GreedyCTCDecoder
+from lcasr.eval.wer import word_error_rate_detail
 
 from einops import rearrange
 import numpy as np
@@ -77,7 +79,14 @@ def get_dtype(dtype:str) -> torch.dtype:
     else:
         raise ValueError(f'invalid dtype: {dtype}')
     
-
+def calc_wer(ctc_decoder, logits, lengths, targets):
+    text = [ctc_decoder(logits[i, :lengths[i]]) for i in range(logits.shape[0])]
+    wers = []
+    for i in range(len(text)):
+        wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[text[i]], references=[targets[i]])
+        wer = 0 if wer == np.inf else wer
+        wers.append(wer*100)
+    return torch.tensor(wers)
 
 def train(
         args:argparse.Namespace,
@@ -111,7 +120,7 @@ def train(
     batch_size = args.config['training']['batch_size']
     max_cache_length = args.config['training'].get('max_cache_length', 0)
 
-    meta_loss_scale = args.config['training'].get('meta_loss_scale', 1.0)
+    
 
     cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
 
@@ -131,6 +140,8 @@ def train(
     total_recordings = dataloader.total_recordings() * max_epochs
     pbar = tqdm(total = len(dataloader), desc = f'Training - Epoch {epoch}')
     start_spec_augment_after_n_epochs = args.config['training'].get('start_spec_augment_after_n_epochs', -1)
+
+    ctc_decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
 
     while not finished:#################
         try:
@@ -175,40 +186,24 @@ def train(
             podcasts_since_last_save = 0
         last_podcast = cur_podcast
         ###############################
+
+       
+        audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)[:batch_size]
+        audio_lengths = torch.LongTensor([el.shape[-1] for el in audio_chunks_]).to(device)
+        max_length = audio_lengths.max()
+        audio_chunks_ = [torch.nn.functional.pad(el, (0, max_length - el.shape[-1])) for el in audio_chunks_]
+        audio_chunks_ = torch.cat(audio_chunks_, dim=0)
+        txt_chunks_untokenized = chunk_text_json(text = txt[0], chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1])[:batch_size]
+        txt_chunks_tokenized = [torch.LongTensor(tokenizer.encode(el)) for el in txt_chunks_untokenized]
+        txt_lengths = torch.LongTensor([len(el) for el in txt_chunks_tokenized]).to(device)
+        txt_chunks = torch.nn.utils.rnn.pad_sequence(txt_chunks_tokenized, batch_first=True, padding_value=pad_id).to(device)
         
-        print(audio.shape)
-        exit()
-        audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
-        txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt] # becomes v slow for v large batch sizes !!
 
         del audio
         backwards_every_loss, steps_since_backwards = 0.0, 0
-        chunks, culm_lengths_audio, nans_in_a_row = [], torch.zeros_like(audio_lengths), 0
-
         
 
-        ################################
-        for ix, el in enumerate(audio_chunks_):
-
-            remove_mask = ~(culm_lengths_audio > audio_lengths)
-            cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
-            cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
-          
-            enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el[ix])) for i, el in enumerate(txt_chunks) if remove_mask[i]]
-            enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
-            enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
-            if enc_txt_chunks_lengths.max() == 0:
-                continue # skip if none contain text (bad batch)
-            chunks.append({
-                'audio':cur_chunks,
-                'txt':enc_txt_chunks,
-                'txt_lengths':enc_txt_chunks_lengths,
-                'audio_lengths':cur_lengths,
-                'selection_mask':remove_mask,
-                'cur_culm_lengths':cur_culm_lengths,
-            })
-            culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
-
+        
         was_warmup = scheduler.is_warmup
         if was_warmup:
             scheduler.is_warmup = scheduler.is_warming_up()
@@ -218,118 +213,115 @@ def train(
         ################################
  
         try:
-            for ix, chunk_json in enumerate(chunks):
-                print(f'chunk {ix}/{len(chunks)}')
-               
-                audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
-                if a_lengths.min() != a_lengths.max():
-                    print('skipping')
-                    continue
+    
+            audio, a_lengths = audio_chunks_, audio_lengths
+          
 
-                txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
-                selection_mask = chunk_json['selection_mask']
-
-                cur_selection_mask = None
-                if prev_selection_mask != None and not torch.allclose(selection_mask, prev_selection_mask):
-                    cur_selection_mask = selection_mask[prev_selection_mask]
-                    
-
-                audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
-
-                with autocast(device.type, dtype=dtype) if torch.cuda.is_available() else nullcontext():
-                    audio = apply_augmentation(audio=audio, lengths=a_lengths, augmentation=augmentation, start_augment_after_n_epochs=start_spec_augment_after_n_epochs, epoch=epoch, is_warmup=scheduler.is_warmup)
-                    cached_kvs = last_kv_set.clone() if last_kv_set != None else None
-                    cached_kv_lengths = torch.LongTensor([cached_kvs.shape[1]] * cached_kvs.shape[0]).to(device) if cached_kvs != None else None
-
-                    if cur_selection_mask != None and cached_kvs != None:
-                        cached_kvs = cached_kvs[cur_selection_mask]
-                        cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
-                    
-
-                    out = model(
-                        audio_signal = audio, 
-                        length = a_lengths, 
-                        cached_kvs = cached_kvs, 
-                        cached_kv_lengths = cached_kv_lengths
-                    )
-                    
-                    if max_cache_length != 0:
-                        out_kvs = out['kvs_to_cache'].clone()
-                        last_kv_set = out_kvs[:, -max_cache_length:].clone()
-                    
-                    cur_probs = out['final_posteriors']
-                    #meta_pred = out['meta_pred']
-                    B,N,C = cur_probs.shape 
-                    ctc_loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths)
-                    
-                    loss = torch.nn.functional.mse_loss(ctc_loss / out['length'], model.grad_preds)
-                    #print(ctc_loss / out['length'], model.grad_preds)
-                    
-                blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
-                # check for nan in loss
-                if torch.isnan(loss):
-                    print('OH NO! NAN IN LOSS, SKIPPING') # TODO: set kv cache to None here
-                    wandb.log({'nan':True}) if wandb_config['use'] else None
-                    optimizer.zero_grad() # clear gradients
-                    nans_in_a_row += 1
-                    if nans_in_a_row > 100:
-                        print('100 NANS in a row, exiting......')
-                        exit()
-                    continue
-                else:
-                    nans_in_a_row = 0
-
-
-                cur_loss += loss
-
-                backwards_every_loss += loss
-                steps_since_backwards += 1
+            txt, t_lengths = txt_chunks, txt_lengths
+        
                 
-                # cur_tokens_in_loss += B * N
-                cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch
 
-                if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
+            audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
+
+            with autocast(device.type, dtype=dtype) if torch.cuda.is_available() else nullcontext():
+                audio = apply_augmentation(audio=audio, lengths=a_lengths, augmentation=augmentation, start_augment_after_n_epochs=start_spec_augment_after_n_epochs, epoch=epoch, is_warmup=scheduler.is_warmup)
+             
+ 
+
+                out = model(
+                    audio_signal = audio, 
+                    length = a_lengths,
+                )
+                
+               
+                
+                cur_probs = out['final_posteriors']
+                #meta_pred = out['meta_pred']
+                B,N,C = cur_probs.shape 
+                ctc_loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths)
+
+                #wers = calc_wer(ctc_decoder, cur_probs, out['length'], txt_chunks_untokenized)
+                #loss_pred, wer_pred = model.grad_preds_1.unbind(dim=-1)
+                ctc_loss = (ctc_loss / out['length']).squeeze()
+
+                scaler.scale((ctc_loss.sum() / batch_size)).backward(inputs=model.reprs, retain_graph=True)
+                inv_scale = 1./scaler.get_scale()
+                repr_grads = (model.reprs.grad * inv_scale).detach()
+                grad_loss = torch.nn.functional.mse_loss(repr_grads, model.grad_preds_2, reduction='none')
+                grad_loss = grad_loss.sum() / (batch_size * grad_loss.shape[-1] * grad_loss.shape[-2])
+               
+                model.reprs.grad = None
+
+                # loss_loss = torch.nn.functional.mse_loss(ctc_loss, loss_pred.squeeze(), reduction='sum') / (batch_size)
+                # loss_wer = torch.nn.functional.mse_loss(wers.to(device), wer_pred.squeeze(), reduction='none').sum() / (batch_size)
+                loss = grad_loss
+                #loss = (loss_loss + loss_wer + grad_loss) / 3
+                #print(ctc_loss / out['length'], model.grad_preds)
+                
+            blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
+            # check for nan in loss
+            if torch.isnan(loss):
+                print('OH NO! NAN IN LOSS, SKIPPING') # TODO: set kv cache to None here
+                wandb.log({'nan':True}) if wandb_config['use'] else None
+                optimizer.zero_grad() # clear gradients
+                nans_in_a_row += 1
+                if nans_in_a_row > 100:
+                    print('100 NANS in a row, exiting......')
+                    exit()
+                continue
+            else:
+                nans_in_a_row = 0
+
+
+            cur_loss += loss
+
+            backwards_every_loss += loss
+            steps_since_backwards += 1
+            
+            # cur_tokens_in_loss += B * N
+            cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch
+
+         
+            scaler.scale((backwards_every_loss)).backward()
+            
+            last_kv_set.detach_() if last_kv_set != None else None
+            steps_since_backwards = 0
+            backwards_every_loss = 0
+
+            full_loss = cur_loss 
+         
+            loss_to_log = full_loss.item()
+            print(f'loss: {full_loss}')
+            
+            backwards_pass(
+                model = model,
+                clip_value = clip_value,
+                optimizer = optimizer,
+                scheduler = scheduler,
+                scaler = scaler
+            )
+            learning_rate = scheduler.get_last_lr()[0]
             
 
-                    scaler.scale((backwards_every_loss)).backward()
-                  
-                    last_kv_set.detach_() if last_kv_set != None else None
-                    steps_since_backwards = 0
-                    backwards_every_loss = 0
-
-                if (ix+1) % backprop_every == 0 or (ix+1) == len(chunks): 
-                    full_loss = cur_loss 
-                    full_loss /= cur_tokens_in_loss
-                    full_loss *= 100
-                    loss_to_log = full_loss.item()
-                    print(f'loss: {full_loss}')
-                    
-                    backwards_pass(
-                        model = model,
-                        clip_value = clip_value,
-                        optimizer = optimizer,
-                        scheduler = scheduler,
-                        scaler = scaler
-                    )
-                    learning_rate = scheduler.get_last_lr()[0]
-                 
-
-                    if wandb_config['use']:
-                        wandb.log({
-                            #'repr_csim': meta_csim.item(),
-                            # 'repr_norm': repr_grad_norm.item(),
-                            # 'meta_loss': meta_loss.item() * (1/meta_loss_scale),
-                            'loss': loss_to_log,
-                            'blank_p': blank_prob,
-                            'learning_rate': learning_rate,
-                            'sequence_length': chunk_size,
-                            'batch_size': batch_size,
-                            'epoch': epoch,
-                            'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
-                        })
-                    
-                    cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
-                prev_selection_mask = selection_mask.clone()
+            if wandb_config['use']:
+                wandb.log({
+                    #'repr_csim': meta_csim.item(),
+                    # 'repr_norm': repr_grad_norm.item(),
+                    # 'meta_loss': meta_loss.item() * (1/meta_loss_scale),
+                    # 'grad_loss': grad_loss.item(),
+                    # 'loss_wer': loss_wer.item(),
+                    # 'loss_loss': loss_loss.item(),
+                    'loss': loss_to_log,
+                    'blank_p': blank_prob,
+                    'learning_rate': learning_rate,
+                    'sequence_length': chunk_size,
+                    'batch_size': batch_size,
+                    'epoch': epoch,
+                    'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
+                })
+            
+            cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
+       
 
         except RuntimeError as e: 
             if 'an illegal memory access was encountered' in str(e): 
@@ -348,16 +340,12 @@ def train(
                 args.config['audio_chunking']['size'] = new_seq_len
                 chunk_size = new_seq_len
                 batch_size = new_bs
-                dataloader.update(
-                    batch_size = batch_size,
-                    seen_ids = seen_ids,
-                )
+       
                 if args.config['model']['use_rotary'] and args.config['sequence_scheduler'].get('interpolate_rotary', False):
                     model.rotary_pos_emb.rotary_interpolation_factor = model.rotary_pos_emb.rotary_interpolation_factor * sequence_scheduler.increase_by_multiplier
                 dataloader_iter = iter(dataloader)
                 pbar.total = len(dataloader) # update total of tqdm
                 
-        del chunks
         
     save_model( # save final model
         model = model, 
@@ -413,9 +401,9 @@ def main(args):
 
     for param in model.meta_layers.parameters():
         param.requires_grad = True
-
     for param in model.combine.parameters():
         param.requires_grad = True
+
 
     optimizer, scheduler = load_optimizer(args.config, model)
 
@@ -452,7 +440,7 @@ def main(args):
     dataloader = VariableBatchSimpleDataloader(
         pairs = paired_data, 
         tokenizer = tokenizer, 
-        batch_size = args.config['training']['batch_size'],
+        batch_size = 1,
         chunk_size = args.config.audio_chunking['size'],
         chunk_overlap = args.config.audio_chunking['overlap'],
         num_workers = args.num_workers,
@@ -471,9 +459,7 @@ def main(args):
         logger = partial(wandb.log, commit=False)
         add_debug_backwards_hooks(model = model, logger = logger)
     
-    if sequence_scheduler and dataloader.batch_size != sequence_scheduler.cur_batch_size:
-        print('WARNING: dataloader batch size does not match sequence scheduler batch size, updating dataloader batch size')
-        dataloader.update(batch_size = sequence_scheduler.cur_batch_size, seen_ids = seen_ids)
+
 
     final_model = train(
         args = args, 

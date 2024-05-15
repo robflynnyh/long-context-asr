@@ -38,10 +38,10 @@ optimizer:
 scheduler:
   warmup_steps: 3500
 audio_chunking:
-  size: 36000
+  size: 2048
   overlap: 0
 wandb:
-  use: false
+  use: true
   project_name: spotify_long_context
   name: test
   id: ""
@@ -54,7 +54,7 @@ data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
 training:
   start_spec_augment_after_n_epochs: -1
-  batch_size: 4
+  batch_size: 176
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
@@ -69,7 +69,7 @@ sequence_scheduler:
   increase_every: 5000
   stop_after: 90000
   start_after: 0
-  max_sequence_length: 360000
+  max_sequence_length: 16384
   increase_by_multiplier: 2
   batch_size_multiplier: 0.5
   interpolate_rotary: false

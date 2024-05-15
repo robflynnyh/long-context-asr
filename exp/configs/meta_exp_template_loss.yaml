@@ -1,5 +1,5 @@
 template_info:
-  create: 2 # number of experiments to create
+  create: 1 # number of experiments to create
   include_keys: [
     'model', 
     'optimizer', 
@@ -53,12 +53,12 @@ model:
   checkpoint_every_n_layers: 0
   rotary_base_freq: 1500000 # https://arxiv.org/pdf/2309.16039.pdf
   load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_2048_rp_1/step_105360.pt"
-  n_meta_layers: [2, 3]
+  n_meta_layers: [3]
 
 optimizer:
   name: 'madgrad'
   args:
-    lr: 1e-3
+    lr: 9e-5
 
 scheduler:
   warmup_steps: 5500
@@ -80,8 +80,8 @@ wandb:
   use: true
   project_name: "spotify_long_context"
   name: [
-    'meta__on_vocab2_2meta_l',
-    'meta__on_vocab2_3meta_l',
+    'meta__on_loss_3l_9e5',
+    # 'meta__on_vocab2_3meta_l',
     
       #'meta_scale_ppppp1',
   ]
@@ -90,8 +90,8 @@ wandb:
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__on_vocab2_2meta_l',
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__on_vocab2_3meta_l',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__on_loss_3l_9e5',
+    # '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__on_vocab2_3meta_l',
     #'/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_scale_ppppp1',
   ]
   save_every_n_steps: 2000
@@ -121,7 +121,7 @@ training:
   max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
-  random_seed: 6431
+  random_seed: 64312
   #meta_loss_scale: 1.0
   #loss: ['cosine', 'l2']
 

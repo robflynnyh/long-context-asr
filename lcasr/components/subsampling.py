@@ -28,6 +28,12 @@ import torch.nn.functional as F
 
 Conv2d = torch.nn.Conv2d
 
+# class MergeSubsampling(torch.nn.Module):
+#     def __init__(self, subsampling_factor, feat_in, feat_out, norm=False, default_norm=LayerNorm, norm_out=False):
+#         super(MergeSubsampling, self).__init__()
+
+#         self.subsampling_factor = subsampling_factor
+
 class StackingSubsampling(torch.nn.Module):
     """Stacking subsampling which simply stacks consecutive frames to reduce the sampling rate
     Args:
