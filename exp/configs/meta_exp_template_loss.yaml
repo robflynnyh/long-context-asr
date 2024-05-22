@@ -1,5 +1,5 @@
 template_info:
-  create: 1 # number of experiments to create
+  create: 3 # number of experiments to create
   include_keys: [
     'model', 
     'optimizer', 
@@ -17,7 +17,7 @@ template_info:
   template_keys: [
     'checkpointing.dir', 
     'wandb.name',
-    'model.n_meta_layers',
+    'optimizer.args.lr',
     #'training.loss',
   ] # keys to use to create experiments
 
@@ -53,15 +53,19 @@ model:
   checkpoint_every_n_layers: 0
   rotary_base_freq: 1500000 # https://arxiv.org/pdf/2309.16039.pdf
   load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_2048_rp_1/step_105360.pt"
-  n_meta_layers: [3]
+  n_meta_layers: 1
 
 optimizer:
   name: 'madgrad'
   args:
-    lr: 9e-5
+    lr: [
+      4e-5,
+      4e-4,
+      1e-3,
+    ]
 
 scheduler:
-  warmup_steps: 5500
+  warmup_steps: 10000
 
 audio_chunking: # 360000 (max = 1 hour)
   size: 2048
@@ -80,7 +84,9 @@ wandb:
   use: true
   project_name: "spotify_long_context"
   name: [
-    'meta__on_loss_3l_9e5',
+    'meta_delta_soft_select_4e5',
+    'meta_delta_soft_select_4e4',
+    'meta_delta_soft_select_1e3',
     # 'meta__on_vocab2_3meta_l',
     
       #'meta_scale_ppppp1',
@@ -90,7 +96,9 @@ wandb:
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__on_loss_3l_9e5',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_delta_soft_select_4e5',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_delta_soft_select_4e4',
+    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_delta_soft_select_1e3',
     # '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__on_vocab2_3meta_l',
     #'/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_scale_ppppp1',
   ]
@@ -105,7 +113,7 @@ data:
 spec_augment:
   n_time_masks: 0 # Number of time masks. If its value is zero, no time masking will be applied 
   time_mask_param: 0 # Maximum possible length of the time mask if it is set to -1, min_p is used
-  n_freq_masks: 2 # Number of frequency masks. If its value is zero, no frequency masking will be applied
+  n_freq_masks: 3 # Number of frequency masks. If its value is zero, no frequency masking will be applied
   freq_mask_param: 18 # Maximum possible length of the frequency mask
   iid_masks: true # Applies iid masks to each of the examples in the batch dimension.
   min_p: 0.0 # minimum proportion of time steps that can be masked. Must be within range [0.0, 1.0]. (Default: -1 which means use fixed number of masks)
@@ -114,7 +122,7 @@ spec_augment:
 
 
 training:
-  start_spec_augment_after_n_epochs: -1 # -1 to disable
+  start_spec_augment_after_n_epochs: 0 # -1 to disable
   batch_size: 176
   backprop_every: 1
   backwards_every: 1
@@ -122,6 +130,7 @@ training:
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
   random_seed: 64312
+  dtype: float32
   #meta_loss_scale: 1.0
   #loss: ['cosine', 'l2']
 

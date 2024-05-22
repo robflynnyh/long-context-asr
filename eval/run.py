@@ -75,7 +75,7 @@ def main(args):
         
         audio_spec, gold_text = data[rec]['process_fn'](data[rec])
         
-        for z in range(args.repeat):
+        for z in range(args.__dict__.get('repeat', 1)):
             logits = eval_fn(
                 args = args, 
                 model = model, 

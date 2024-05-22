@@ -19,69 +19,25 @@ import warnings
 from lcasr.components.batchrenorm import BatchRenorm1d
 import os
 from contextlib import nullcontext
-from vector_quantize_pytorch import VectorQuantize
 
 class metadecoder(nn.Module):
-    def __init__(self, d_model, norm=nn.LayerNorm, **kwargs):
+    def __init__(self, d_model, vocab_size, norm=nn.LayerNorm, **kwargs):
         super().__init__()
         self.d_model = d_model
+  
         self.norm = norm(d_model)
+        self.pred = nn.Sequential(nn.Linear(d_model, d_model), nn.SiLU(), nn.Linear(d_model, 1))
+        self.embedding_pred = nn.Embedding(4, d_model)
 
-        #self.glu = nn.Sequential(*[ConformerFeedForward(d_model) for _ in range(kwargs.get('meta_glu_layers', 0))])
-        self.ff = nn.Linear(d_model, d_model, bias=False)
-
-        bank_size = kwargs.get('gradient_memory_bank_size', 128)
-        self.bank_size = bank_size
-        self.k_bank = torch.nn.Parameter(torch.randn(bank_size, d_model))
-        #self.v_bank = torch.nn.Parameter(torch.randn(bank_size, d_model))
-
-        self.v_bank = VectorQuantize(
-            kmeans_init = True,
-            dim = 768,
-            codebook_size = bank_size - 1,     # codebook size
-            decay = 0.95,             # the exponential moving average decay, lower means the dictionary will change faster
-            commitment_weight = 0.   # the weight on the commitment loss
-        )
-        # init params
-
-        #torch.nn.init.normal_(self.v_bank, mean=0, std=0.1)
-        torch.nn.init.xavier_uniform_(self.k_bank)
-        self.temp = self.d_model ** -0.5
-       
-        # self.v_bank.register_hook(lambda grad: grad.clamp_(-1e-5, 1e-5))
-        # self.k_bank.register_hook(lambda grad: grad.clamp_(-1e-5, 1e-5))
-
+    def get_embedding(self):
+        return self.embedding_pred(torch.tensor(0).to(self.embedding_pred.weight.device))
 
     def forward(self, x):
-        x = self.norm(x)
-        x = self.ff(x)
-        #x = x / (torch.linalg.norm(x, ord=2, dim=-1, keepdim=True) + 1e-6)
-        #k_bank = self.k_bank / (torch.linalg.norm(self.k_bank, ord=2, dim=-1, keepdim=True) + 1e-6)
-        attn = (torch.einsum('bnd,md->bnm', x, self.k_bank) * (self.temp)).softmax(dim=-1)
-        print(attn[0, 0])
-        vbank = torch.cat([self.v_bank.codebook.detach(), torch.zeros(1, self.d_model).to(self.v_bank.codebook.device)], dim=0)
-        x = torch.einsum('bnm,md->bnd', attn, vbank)
-        return x
-    
-
-class combiner(nn.Module):
-    def __init__(self, d_model, norm=nn.LayerNorm, **kwargs):
-        super().__init__()
-        self.d_model = d_model
-        # module to combine two representations
-        self.norm1 = norm(d_model)
-        self.norm2 = norm(d_model)
-        self.ff = nn.Sequential(
-            nn.Linear(d_model*2, d_model*2),
-            nn.SiLU(),
-            nn.Linear(d_model*2, d_model)
-        )
-
-    def forward(self, x1, x2):
-        x1 = self.norm1(x1)
-        x2 = self.norm2(x2)
-        x = torch.cat([x1, x2], dim=-1)
-        return self.ff(x)
+        e = x[:, :4]
+        e = self.norm(e)
+        e = self.pred(e).abs()
+        return e.squeeze(-1)
+      
 
 
 class EMAGradModule(nn.Module):
@@ -99,6 +55,20 @@ class EMAGradModule(nn.Module):
             self.current_val = self.current_val.to(x.device)
             self.current_val = self.ema_decay * self.current_val + (1 - self.ema_decay) * x
         return self.current_val
+
+class Combine(nn.Module):
+    def __init__(self, d_model, vocab_size):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.ff1 = nn.Linear(d_model, d_model)
+        self.ff2 = nn.Linear(d_model, d_model)
+        self.ff3 = nn.Linear(d_model, d_model)
+        self.embedding = nn.Linear(vocab_size, d_model)
+        self.act = nn.SiLU()
+    def forward(self, x1, x2):
+        x = self.ff3(self.act(self.ff1(self.norm1(x1))) + self.act(self.ff2(self.norm2(x2))))
+        return x
 
 
 class SCConformerMeta(BaseModel): 
@@ -156,7 +126,7 @@ class SCConformerMeta(BaseModel):
 
 
         self.inference_iterations = kwargs.get('inference_iterations',10)
-        self.inference_lr = kwargs.get('inference_lr', 0.05)
+        
 
         self.legasee_double_norm = legasee_double_norm
 
@@ -222,7 +192,6 @@ class SCConformerMeta(BaseModel):
         self.output_signal = None
 
         self.meta_mode = kwargs.get('meta_mode', 1)
-        #self.combiner = combiner(d_model)
 
         for i in range(n_layers):
             l = ConformerLayer(
@@ -253,11 +222,12 @@ class SCConformerMeta(BaseModel):
                 self.load_state_dict(checkpoint['model'])
                 print(f"Loaded model from {load_pretrained_from} !")
 
-
-        self.meta_decoder = metadecoder(d_model, **kwargs)
-
+        self.meta_decoder = metadecoder(d_model, vocab_size=vocab_size+1, **kwargs)
+   
+        
+     
         self.meta_layers = nn.ModuleList()
-        for i in range(kwargs.get('n_meta_layers', 1)):
+        for i in range(kwargs.get('n_meta_layers', 2)):
             l = ConformerLayer(
                 d_model = d_model,
                 conv_kernel_size = conv_kernel_size,
@@ -272,23 +242,27 @@ class SCConformerMeta(BaseModel):
                 default_norm = default_norm,
                 sandwich_norm = sandwich_norm,
                 bias_in_ff = bias_in_ff,
-                transformer = transformer,
+                transformer = True,
                 conv_expansion_factor = conv_expansion_factor,
                 **kwargs
             )
             self.meta_layers.append(l)
 
+        self.combine = Combine(d_model, vocab_size+1)
+
         #PreNorm(d_model, ConformerFeedForward(d_model), norm = default_norm)
-        for param in self.parameters():
-            param.requires_grad = False
+        # for param in self.parameters():
+        #     param.requires_grad = False
             
-        for param in self.meta_decoder.parameters():
-            param.requires_grad = True
+        # for param in self.meta_decoder.parameters():
+        #     param.requires_grad = True
 
-        for param in self.meta_layers.parameters():
-            param.requires_grad = True
+        # for param in self.meta_layers.parameters():
+        #     param.requires_grad = True
 
-        
+        # for param in self.combine.parameters():
+        #     param.requires_grad = True
+
 
         #self.emas = [EMAGradModule(ema_decay=0.99, init_val=p.data) for p in self.layers[0].parameters()]
 
@@ -305,7 +279,8 @@ class SCConformerMeta(BaseModel):
                     length,
                     pad_mask, # pad_mask
                     self.flash_attn,
-                    rotary_emb_fn
+                    rotary_emb_fn,
+                    use_reentrant = False
                 )
             else:
                 audio_signal = layer(
@@ -347,6 +322,8 @@ class SCConformerMeta(BaseModel):
                 param.requires_grad = True
             for param in self.meta_layers.parameters():
                 param.requires_grad = True
+            for param in self.combine.parameters():
+                param.requires_grad = True
         else:
             for param in self.parameters():
                 param.requires_grad = True
@@ -365,6 +342,7 @@ class SCConformerMeta(BaseModel):
 
         with torch.no_grad():
             audio_signal, length = self.subsampling(audio_signal, lengths = length) if not self.checkpoint_subsampling else checkpoint(self.create_custom_forward(self.subsampling), audio_signal, length)
+        audio_signal.requires_grad = True
 
         max_audio_length = audio_signal.size(1)
         ## create masks
@@ -401,93 +379,99 @@ class SCConformerMeta(BaseModel):
         self.grad_preds = None
         self.output_signal = None
 
-        iterations = 1
-        if not self.training:
-            audio_signal.requires_grad = True 
-            iterations = 1
-
         was_training = self.training
+
+        iterations = 1
+        if not self.training: 
+            iterations = 1
         
+   
         
-        self.static_initial_signal = audio_signal.clone()
+        self.constant_initial_signal = audio_signal.clone()
         self.initial_signal = audio_signal.clone()
         for i in range(iterations):
-            #print(i)
-            #no_grad = was_training and i < iterations - 1
-         
+
             audio_signal = self.initial_signal.clone()
             
-            with torch.no_grad() if was_training else nullcontext():
+            with torch.no_grad() if self.training else nullcontext():
                 audio_signal = self.main_layers(audio_signal, att_mask, length, pad_mask, rotary_emb_fn)
-            
             if was_training:
-                audio_signal = audio_signal.detach()
                 audio_signal.requires_grad = True
-            # if was_training: audio_signal = audio_signal.detach()
-            # if was_training: audio_signal.requires_grad = True
-    
 
-            self.reprs = audio_signal.clone()
-            if self.training:
-                self.reprs.retain_grad()
-            audio_signal = self.reprs
+            self.reprs = audio_signal
 
-            self.original_probs = decoder(x = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal, logits = return_logits)
+            final_posts = decoder(x = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal, logits = True)
+            final_probs = final_posts.softmax(dim=-1)
+
+            self.original_probs = final_probs.detach().log().clone()
+
+            #if i < iterations - 1:
+            # convert softmax to embeddings
+            final_probs_emb = self.combine.embedding(final_probs)
+            audio_signal = final_probs_emb
+            audio_signal = self.combine(audio_signal, self.constant_initial_signal.detach())
+            
+            embedding = self.meta_decoder.get_embedding()[None]
+            # repeat embedding to match (B, 1, D)
+            embedding = embedding.expand(audio_signal.size(0), -1, -1)
+            audio_signal = torch.cat([embedding, audio_signal], dim=1)
+
+            new_length = length + 1
+            new_pad_mask = torch.arange(audio_signal.size(1), device=audio_signal.device).expand(audio_signal.size(0), audio_signal.size(1)) >= new_length.unsqueeze(1)
+            if self.use_rotary:
+                max_seq_len = new_length.max()
+                cos, sin = self.rotary_pos_emb(max_seq_len, audio_signal.device)
+                new_rotary_emb_fn = apply_rotary(cos = cos, sin = sin, q_offset = 0, learned = self.rotary_pos_emb.learned_freq)
+
+            if new_length.max() == new_length.min():
+                new_att_mask, new_pad_mask = None, None
+            else:
+                full_kv_mask = torch.arange(new_length.max(), device=audio_signal.device).expand(audio_signal.size(0), new_length.max()) >= new_length.unsqueeze(1)
+                if audio_signal.device.type == 'cuda' and self.flash_attn:
+                    new_att_mask = ~full_kv_mask
+                else:
+                    qmask = torch.arange(audio_signal.size(1), device=audio_signal.device).expand(audio_signal.size(0), audio_signal.size(1)) >= new_length.unsqueeze(1) 
+                    kmask = ~full_kv_mask
+                    att_mask = ~(rearrange(qmask, 'b n -> b () n ()') * rearrange(kmask, 'b n -> b () () n'))
+                    new_att_mask = att_mask.to(audio_signal.dtype) * -torch.finfo(audio_signal.dtype).max
+          
 
             for lth, layer in enumerate(self.meta_layers):
                 if self.checkpoint_every_n_layers > 0 and lth % self.checkpoint_every_n_layers == 0:
                     audio_signal = checkpoint(
                         self.create_custom_forward(layer), 
                         audio_signal, # x
-                        att_mask, # att_mask
-                        length,
-                        pad_mask, # pad_mask
+                        new_att_mask, # att_mask
+                        new_length,
+                        new_pad_mask, # pad_mask
                         self.flash_attn,
-                        rotary_emb_fn
+                        new_rotary_emb_fn
                     )
                 else:
                     audio_signal = layer(
                         x = audio_signal, 
-                        attn_mask = att_mask, 
-                        length = length,
-                        pad_mask = pad_mask,
+                        attn_mask = new_att_mask, 
+                        length = new_length,
+                        pad_mask = new_pad_mask,
                         flash_attn = self.flash_attn,
-                        rotary_emb_fn = rotary_emb_fn
+                        rotary_emb_fn = new_rotary_emb_fn
                     )
-            
-            meta_pred = self.meta_decoder(audio_signal)
-            self.grad_pred = meta_pred
-            
-            
-            # if i < iterations - 1 and not was_training:
-            #     grad_pred = meta_pred
-            #     param_inputs = [self.initial_signal]
-            #     all_param_grads = torch.autograd.grad(outputs=self.reprs, inputs=param_inputs, grad_outputs=grad_pred, retain_graph=False)
-            #     initial_signal_grad = all_param_grads[0]
-            #     print(initial_signal_grad*1000)
-            #     self.initial_signal = self.initial_signal - initial_signal_grad * 100
 
-            # if i == iterations - 1 and not was_training:
+            metric_preds = self.meta_decoder(audio_signal)
+            self.metric_preds = metric_preds
 
+            # if not was_training:      
             #     params = [p for p in self.layers[0].parameters()]
-            #     weight_grad = torch.autograd.grad(outputs=self.reprs, inputs=params, grad_outputs=meta_pred, retain_graph=False)
+            #     weight_grad = torch.autograd.grad(inputs = params, outputs = final_probs, grad_outputs = grad_pred)
             #     for p, g in zip(params, weight_grad):
-            #         p.data = p.data - g * 1e-6
-
-        # if was_training: audio_signal = self.reprs - meta_pred
-        # else: audio_signal = self.reprs   
-        audio_signal = self.reprs - meta_pred   
-        #final_posts = decoder(x = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal, logits = True)
-
-        # print entropy of the final posteriors
-        #posts = final_posts.softmax(dim=-1)
-       # entropy = -(posts * posts.log()).sum(dim=-1).mean()
-        #print(entropy)
-
-        final_posts = decoder(x = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal, logits = return_logits)
+            #         p.data = p.data - g * 1e-4 * self.meta_decoder.lr
+                #print(self.meta_decoder.lr)
+                # input_grad = torch.autograd.grad(inputs = self.initial_signal, outputs = final_probs, grad_outputs = grad_pred)[0]
+                # self.initial_signal = self.initial_signal - input_grad * self.meta_decoder.lr * 1
+           
         
-        
-
+        final_posts = final_probs.log()
+     
         if self.training and self.rotary_pos_emb is not None:
             self.rotary_pos_emb.reset_if_needed()
 

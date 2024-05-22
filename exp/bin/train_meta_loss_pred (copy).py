@@ -14,6 +14,11 @@ from lcasr.utils.general import load_model, save_model, load_checkpoint, load_op
 from lcasr.utils.augmentation import SpecAugment
 import resource
 import time
+from lcasr.decoding.greedy import GreedyCTCDecoder
+from lcasr.eval.wer import word_error_rate_detail
+from bert_score import score
+import lmppl
+
 
 from einops import rearrange
 import numpy as np
@@ -51,11 +56,11 @@ def backwards_pass(
         scaler:GradScaler,
     ):
     
-    scaler.unscale_(optimizer) if exists(scaler) else None
+    scaler.unscale_(optimizer)
     torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value) if clip_value > 0 else None
-    scaler.step(optimizer) if exists(scaler) else optimizer.step()
-    scaler.update() if exists(scaler) else None
-    optimizer.zero_grad() 
+    scaler.step(optimizer)
+    scaler.update()
+    optimizer.zero_grad()
 
     if scheduler.is_warmup:
         scheduler.step()
@@ -76,6 +81,27 @@ def get_dtype(dtype:str) -> torch.dtype:
         return torch.float32
     else:
         raise ValueError(f'invalid dtype: {dtype}')
+    
+def calc_wer(ctc_decoder, logits, lengths, targets, lm_scorer):
+    text = [ctc_decoder(logits[i, :lengths[i]]) for i in range(logits.shape[0])]
+    empty = [i for i, el in enumerate(targets) if len(el.strip()) == 0]
+    empty_preds = [i for i, el in enumerate(text) if len(el.strip()) == 0]
+    # with torch.no_grad():
+    #     #P, R, F1 = score(text, targets, lang='en', verbose=False, model_type="albert-base-v1")
+    #     ppl = lm_scorer.get_perplexity(text)
+
+    # for el in empty:
+    #     F1[el] = 1.0
+    # for el in empty_preds:
+    #     ppl[el] = torch.nan
+    #F1 = 1 - F1
+    
+    wers = []
+    for i in range(len(text)):
+        wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[text[i]], references=[targets[i]])
+        wer = 0 if wer == np.inf else wer
+        wers.append(wer)
+    return torch.tensor(wers), None, None 
 
 def train(
         args:argparse.Namespace,
@@ -90,7 +116,7 @@ def train(
         epoch:int = 0,
         augmentation:SpecAugment = None,
     ):
-    #scaler = GradScaler() 
+    scaler = GradScaler() 
     clip_value = args.config['training'].get('clip_value', 0.8) 
     random.seed(args.config['training'].get('random_seed', 12345))
     wandb_config = args.config['wandb']
@@ -98,17 +124,18 @@ def train(
     rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
     resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
 
-    meta_loss_fn = lambda a, b: torch.norm(a - b, dim=1, p=2)
     model.train()
 
     model_dtype = next(model.parameters()).dtype
-    ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
+    ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='none')
 
     backprop_every, backwards_every = args.config['training']['backprop_every'], args.config['training'].get('backwards_every', 1)
     assert backprop_every >= backwards_every, f'backprop_every ({backprop_every}) must be >= backwards_every ({backwards_every})'
     
     batch_size = args.config['training']['batch_size']
     max_cache_length = args.config['training'].get('max_cache_length', 0)
+
+    lm_scorer =  lmppl.LM('gpt2')
 
     cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
 
@@ -128,6 +155,8 @@ def train(
     total_recordings = dataloader.total_recordings() * max_epochs
     pbar = tqdm(total = len(dataloader), desc = f'Training - Epoch {epoch}')
     start_spec_augment_after_n_epochs = args.config['training'].get('start_spec_augment_after_n_epochs', -1)
+
+    ctc_decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
 
     while not finished:#################
         try:
@@ -149,6 +178,7 @@ def train(
             continue
         ################################
 
+        frames_per_batch = chunk_size * batch_size
         audio, audio_lengths, txt, ids = batch
         seen_ids.extend(ids)
         cur_batch_size = audio.shape[0]
@@ -171,36 +201,24 @@ def train(
             podcasts_since_last_save = 0
         last_podcast = cur_podcast
         ###############################
+
+       
+        audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)[:batch_size]
+        audio_lengths = torch.LongTensor([el.shape[-1] for el in audio_chunks_]).to(device)
+        max_length = audio_lengths.max()
+        audio_chunks_ = [torch.nn.functional.pad(el, (0, max_length - el.shape[-1])) for el in audio_chunks_]
+        audio_chunks_ = torch.cat(audio_chunks_, dim=0)
+        txt_chunks_untokenized = chunk_text_json(text = txt[0], chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1])[:batch_size]
+        txt_chunks_tokenized = [torch.LongTensor(tokenizer.encode(el)) for el in txt_chunks_untokenized]
+        txt_lengths = torch.LongTensor([len(el) for el in txt_chunks_tokenized]).to(device)
+        txt_chunks = torch.nn.utils.rnn.pad_sequence(txt_chunks_tokenized, batch_first=True, padding_value=pad_id).to(device)
         
-        audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
-        txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt] # becomes v slow for v large batch sizes !!
 
         del audio
         backwards_every_loss, steps_since_backwards = 0.0, 0
-        chunks, culm_lengths_audio, nans_in_a_row = [], torch.zeros_like(audio_lengths), 0
+        
 
-        ################################
-        for ix, el in enumerate(audio_chunks_):
-
-            remove_mask = ~(culm_lengths_audio > audio_lengths)
-            cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
-            cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
-          
-            enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el[ix])) for i, el in enumerate(txt_chunks) if remove_mask[i]]
-            enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
-            enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
-            if enc_txt_chunks_lengths.max() == 0:
-                continue # skip if none contain text (bad batch)
-            chunks.append({
-                'audio':cur_chunks,
-                'txt':enc_txt_chunks,
-                'txt_lengths':enc_txt_chunks_lengths,
-                'audio_lengths':cur_lengths,
-                'selection_mask':remove_mask,
-                'cur_culm_lengths':cur_culm_lengths,
-            })
-            culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
-
+        
         was_warmup = scheduler.is_warmup
         if was_warmup:
             scheduler.is_warmup = scheduler.is_warming_up()
@@ -208,120 +226,118 @@ def train(
                 scheduler.set_cosine_schedule(total_recordings=total_recordings, cur_podcast=cur_podcast)
         prev_selection_mask, last_kv_set = None, None # selection mask from previous chunk
         ################################
-
-        # shuffle chunks
-        random.shuffle(chunks)
-        
+ 
         try:
-            for ix, chunk_json in enumerate(chunks):
-                print(f'chunk {ix}/{len(chunks)}')
-                if ix > 10: break
-               
-                audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
-                txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
-                selection_mask = chunk_json['selection_mask']
+    
+            audio, a_lengths = audio_chunks_, audio_lengths
+          
 
-                cur_selection_mask = None
-                if prev_selection_mask != None and not torch.allclose(selection_mask, prev_selection_mask):
-                    cur_selection_mask = selection_mask[prev_selection_mask]
-                    
-
-                audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
-
-            
-                audio = apply_augmentation(audio=audio, lengths=a_lengths, augmentation=augmentation, start_augment_after_n_epochs=start_spec_augment_after_n_epochs, epoch=epoch, is_warmup=scheduler.is_warmup)
-                cached_kvs = last_kv_set.clone() if last_kv_set != None else None
-                cached_kv_lengths = torch.LongTensor([cached_kvs.shape[1]] * cached_kvs.shape[0]).to(device) if cached_kvs != None else None
-
-                if cur_selection_mask != None and cached_kvs != None:
-                    cached_kvs = cached_kvs[cur_selection_mask]
-                    cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
+            txt, t_lengths = txt_chunks, txt_lengths
+        
                 
 
+            audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
+
+            with autocast(device.type, dtype=dtype) if torch.cuda.is_available() else nullcontext():
+                audio = apply_augmentation(audio=audio, lengths=a_lengths, augmentation=augmentation, start_augment_after_n_epochs=start_spec_augment_after_n_epochs, epoch=epoch, is_warmup=scheduler.is_warmup)
+             
                 out = model(
                     audio_signal = audio, 
                     length = a_lengths,
                 )
                 
-                if max_cache_length != 0:
-                    out_kvs = out['kvs_to_cache'].clone()
-                    last_kv_set = out_kvs[:, -max_cache_length:].clone()
-                
                 cur_probs = out['final_posteriors']
+                #meta_pred = out['meta_pred']
                 B,N,C = cur_probs.shape 
                 loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
-                original_loss = ctc_loss_fn(model.original_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
-                    
-                blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
-                # check for nan in loss
-                if torch.isnan(loss):
-                    print('OH NO! NAN IN LOSS, SKIPPING') # TODO: set kv cache to None here
-                    wandb.log({'nan':True}) if wandb_config['use'] else None
-                    optimizer.zero_grad() # clear gradients
-                    nans_in_a_row += 1
-                    if nans_in_a_row > 100:
-                        print('100 NANS in a row, exiting......')
-                        exit()
-                    continue
-                else:
-                    nans_in_a_row = 0
+                original_loss = ctc_loss_fn(model.original_probs.transpose(0,1), txt, out['length'], t_lengths)
+                #print(model.metric_preds.shape)
+                loss_pred, wer_pred, F1_pred, ppl_pred = model.metric_preds.unbind(dim=-1)
+                print(loss_pred.squeeze(-1), original_loss / a_lengths)
+                loss_loss = torch.nansum(torch.nn.functional.mse_loss(loss_pred.squeeze(-1), original_loss / a_lengths, reduction='none')) / (batch_size)
+                print('----')
+                wer, F1, ppl = calc_wer(ctc_decoder, cur_probs, a_lengths, txt_chunks_untokenized, lm_scorer)
+                # print(ppl_pred.squeeze(-1), ppl)
+                print(wer_pred.squeeze(-1), wer)
+                wer_loss = torch.nansum(torch.nn.functional.mse_loss(wer_pred.squeeze(-1), wer.to(device), reduction='none'))/ (batch_size)
+                #f1_loss = torch.nansum(torch.nn.functional.mse_loss(F1_pred.squeeze(-1), F1.to(device), reduction='none')) / (batch_size)
+                #ppl_loss = torch.nansum(torch.nn.functional.mse_loss(ppl_pred.squeeze(-1), ppl.to(device), reduction='none')) / (batch_size)
+                original_loss = original_loss.sum()
+               
+
+            blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
+            # check for nan in loss
+            if torch.isnan(loss):
+                print('OH NO! NAN IN LOSS, SKIPPING') # TODO: set kv cache to None here
+                wandb.log({'nan':True}) if wandb_config['use'] else None
+                optimizer.zero_grad() # clear gradients
+                nans_in_a_row += 1
+                if nans_in_a_row > 100:
+                    print('100 NANS in a row, exiting......')
+                    exit()
+                continue
+            else:
+                nans_in_a_row = 0
 
 
-                cur_loss += loss
+            cur_loss += loss
+            
+            # cur_tokens_in_loss += B * N
+            cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch
 
-                backwards_every_loss += loss
-                steps_since_backwards += 1
-                
-                # cur_tokens_in_loss += B * N
-                cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch
+            # main_loss = ((loss) / (chunk_size*batch_size)) * 100
+            all_loss = (loss_loss + wer_loss ) / 2
+            scaler.scale(all_loss).backward()
 
-                repr_grads = torch.autograd.grad(original_loss, model.reprs, create_graph=False, retain_graph=False)[0].to(model.grad_pred.dtype).detach()
-                meta_grad_pred = model.grad_pred
-                meta_grad_pred_1, meta_grad_pred_2 = meta_grad_pred, meta_grad_pred.detach()
-                meta_loss_1 = meta_loss_fn(rearrange(repr_grads, 'b n v -> (b n) v'), rearrange(meta_grad_pred_1, 'b n v -> (b n) v')).sum() / (batch_size*chunk_size)
-                meta_loss_2 = meta_loss_fn(rearrange(repr_grads[torch.randperm(repr_grads.shape[0])], 'b n v -> (b n) v'), rearrange(meta_grad_pred_2, 'b n v -> (b n) v')).sum() / (batch_size*chunk_size)
-                cosim = (torch.nn.functional.cosine_similarity(repr_grads, meta_grad_pred_1, dim=-1) * -1 + 1).mean()
-                
-                _,_,_=model.meta_decoder.v_bank(repr_grads)
+            # meta_grad_pred = model.grad_pred
+            # inv_scale = 1./scaler.get_scale()
+            # repr_grads = ((model.reprs.grad * inv_scale).detach()).to(meta_grad_pred.dtype)
+            
+            # #print(torch.nn.functional.cosine_similarity(repr_grads, meta_grad_pred, dim=-1))
+            # #meta_loss = ((((repr_grads - meta_grad_pred) ** 2).sum(-1)) ** 0.5).mean()
+            # #print(repr_grads.dtype, meta_grad_pred.dtype)
+            # meta_csim = (torch.nn.functional.cosine_similarity(repr_grads, meta_grad_pred, dim=-1) * -1 + 1).mean()
+            # meta_mse = torch.nn.functional.mse_loss(repr_grads, meta_grad_pred, reduction='mean')
+            # meta_loss = (meta_csim + meta_mse) / 2
+            # scaler.scale(meta_loss).backward()
+            
+    
+            full_loss = cur_loss 
+            full_loss /= cur_tokens_in_loss
+            full_loss *= 100
+            loss_to_log = full_loss.item()
 
-                (((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
-                last_kv_set.detach_() if last_kv_set != None else None
-                steps_since_backwards = 0
-                backwards_every_loss = 0
+            original_loss = ((original_loss / cur_tokens_in_loss) * 100).item()
+            print(f'loss: {loss_to_log}')
+            
+            backwards_pass(
+                model = model,
+                clip_value = clip_value,
+                optimizer = optimizer,
+                scheduler = scheduler,
+                scaler = scaler
+            )
+            learning_rate = scheduler.get_last_lr()[0]
+            
 
-                full_loss = cur_loss 
-                full_loss /= cur_tokens_in_loss
-                full_loss *= 100
-                loss_to_log = full_loss.item()
-                print(f'loss: {full_loss}')
-                
-                backwards_pass(
-                    model = model,
-                    clip_value = clip_value,
-                    optimizer = optimizer,
-                    scheduler = scheduler,
-                    scaler = None
-                )
-                learning_rate = scheduler.get_last_lr()[0]
-                
-
-                if wandb_config['use']:
-                    wandb.log({
-                        'meta_loss_1': meta_loss_1.item(),
-                        'meta_loss_2': meta_loss_2.item(),
-                        'cosim': (cosim).item(),
-                        'original_loss': ((original_loss / cur_tokens_in_loss) * 100).item(),
-                        'loss': loss_to_log,
-                        'blank_p': blank_prob,
-                        'learning_rate': learning_rate,
-                        'sequence_length': chunk_size,
-                        'batch_size': batch_size,
-                        'epoch': epoch,
-                        'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
-                    })
-                
-                cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
-                prev_selection_mask = selection_mask.clone()
+            if wandb_config['use']:
+                wandb.log({
+                    #'ppl_loss': ppl_loss.item(),
+                    'wer_loss': wer_loss.item(),
+                    'loss_loss': loss_loss.item(),
+                    #'f1_loss': f1_loss.item(),
+                    'original_loss': original_loss,
+                    'loss': all_loss.item(),
+                    'blank_p': blank_prob,
+                    'learning_rate': learning_rate,
+                    'sequence_length': chunk_size,
+                    'batch_size': batch_size,
+                    'epoch': epoch,
+                    'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
+                })
+            
+            cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
+       
 
         except RuntimeError as e: 
             if 'an illegal memory access was encountered' in str(e): 
@@ -340,16 +356,12 @@ def train(
                 args.config['audio_chunking']['size'] = new_seq_len
                 chunk_size = new_seq_len
                 batch_size = new_bs
-                dataloader.update(
-                    batch_size = batch_size,
-                    seen_ids = seen_ids,
-                )
+       
                 if args.config['model']['use_rotary'] and args.config['sequence_scheduler'].get('interpolate_rotary', False):
                     model.rotary_pos_emb.rotary_interpolation_factor = model.rotary_pos_emb.rotary_interpolation_factor * sequence_scheduler.increase_by_multiplier
                 dataloader_iter = iter(dataloader)
                 pbar.total = len(dataloader) # update total of tqdm
                 
-        del chunks
         
     save_model( # save final model
         model = model, 
@@ -387,7 +399,7 @@ def main(args):
     if wandb_config['use']:
         project_name, w_id = wandb_config['project_name'], wandb_config['id']
         run_name = None if 'name' not in wandb_config else wandb_config['name']
-        wandb_dir = args.config['wandb'].get('dir', './wandb')
+        wandb_dir = args.config['wandb'].get('dir', './')
         wandb.init(project=project_name, config=args.config, name=run_name, dir=wandb_dir) if w_id == '' else wandb.init(project=project_name, id=w_id, resume="must", config=args.config, allow_val_change=True, dir=wandb_dir)
         wandb.watch(model, log="all") # sometimes this causes a crash ):
         wandb.config.update({'total_params': tparams}, allow_val_change=True)
@@ -397,7 +409,6 @@ def main(args):
 
     model = model.to(device)
 
-
     for param in model.parameters():
         param.requires_grad = False
         
@@ -406,10 +417,11 @@ def main(args):
 
     for param in model.meta_layers.parameters():
         param.requires_grad = True
+    for param in model.combine.parameters():
+        param.requires_grad = True
+
 
     optimizer, scheduler = load_optimizer(args.config, model)
-
-
 
     sequence_scheduler = None
     if 'sequence_scheduler' in args.config:
@@ -444,7 +456,7 @@ def main(args):
     dataloader = VariableBatchSimpleDataloader(
         pairs = paired_data, 
         tokenizer = tokenizer, 
-        batch_size = args.config['training']['batch_size'],
+        batch_size = 1,
         chunk_size = args.config.audio_chunking['size'],
         chunk_overlap = args.config.audio_chunking['overlap'],
         num_workers = args.num_workers,
@@ -463,9 +475,7 @@ def main(args):
         logger = partial(wandb.log, commit=False)
         add_debug_backwards_hooks(model = model, logger = logger)
     
-    if sequence_scheduler and dataloader.batch_size != sequence_scheduler.cur_batch_size:
-        print('WARNING: dataloader batch size does not match sequence scheduler batch size, updating dataloader batch size')
-        dataloader.update(batch_size = sequence_scheduler.cur_batch_size, seen_ids = seen_ids)
+
 
     final_model = train(
         args = args, 
@@ -492,7 +502,7 @@ if __name__ == '__main__':
     parser.add_argument('-anomaly', '--anomaly', action='store_true', help='turn on anomaly detection')
     parser.add_argument('-num_workers', '--num_workers', type=int, default=0, help='number of workers for dataloader')
     parser.add_argument('-pin_memory', '--pin_memory', action='store_true', help='pin memory for dataloader')
-    parser.add_argument('-prefetch', '--prefetch_factor', type=int, default=1, help='prefetch factor for dataloader')
+    parser.add_argument('-prefetch', '--prefetch_factor', type=int, default=4, help='prefetch factor for dataloader')
 
     parser.add_argument('-debug_hooks', '--debug_hooks', action='store_true', help='add hooks to log gradient/activation info')
 

@@ -10,7 +10,7 @@ from lcasr.utils.dataloading import VariableBatchSimpleDataloader, chunk_spectog
 from lcasr.utils.hooks import add_debug_backwards_hooks
 from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager
 from lcasr.utils.helpers import exists
-from lcasr.utils.general import load_model, save_model, load_checkpoint, load_optimizer
+from lcasr.utils.general import load_model, save_model, load_checkpoint, load_optimizer, get_model_class
 from lcasr.utils.augmentation import SpecAugment
 import resource
 import time
@@ -361,7 +361,7 @@ def main(args):
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
     # set random seed for initialization
     torch.manual_seed(12345), torch.cuda.manual_seed(12345)
-    model = load_model(args.config, tokenizer.vocab_size())
+    model = load_model(args.config, tokenizer.vocab_size(), get_model_class(config = args.config))
     tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
 

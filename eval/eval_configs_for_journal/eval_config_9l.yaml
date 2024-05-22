@@ -1,5 +1,5 @@
 global:
-  root_path: /mnt/parscratch/users/acp21rjf/spotify/5kwarmup_rotary_pos_3l_256d_seq_sched/n_seq_sched_
+  root_path: /mnt/parscratch/users/acp21rjf/spotify/!!!!/n_seq_sched_
   name: rb_n_seq_sched
   overlap_ratio: 0.875
   checkpoint: step_105360.pt

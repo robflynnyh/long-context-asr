@@ -334,8 +334,9 @@ class SCConformerMeta(BaseModel):
             length = torch.tensor([max_audio_length] * audio_signal.size(0), device=audio_signal.device)
             
         audio_signal = torch.transpose(audio_signal, 1, 2)
-    
-        audio_signal, length = self.subsampling(audio_signal, lengths = length) if not self.checkpoint_subsampling else checkpoint(self.create_custom_forward(self.subsampling), audio_signal, length)
+
+        with torch.no_grad():
+            audio_signal, length = self.subsampling(audio_signal, lengths = length) if not self.checkpoint_subsampling else checkpoint(self.create_custom_forward(self.subsampling), audio_signal, length)
 
         max_audio_length = audio_signal.size(1)
         ## create masks
@@ -373,9 +374,12 @@ class SCConformerMeta(BaseModel):
         self.output_signal = None
 
         iterations = 1
-        if not self.training: iterations = 1
+        if not self.training:
+            audio_signal.requires_grad = True 
+            iterations = 2
 
         was_training = self.training
+        
         
         self.static_initial_signal = audio_signal.clone()
         self.initial_signal = audio_signal.clone()
@@ -385,17 +389,22 @@ class SCConformerMeta(BaseModel):
          
             audio_signal = self.initial_signal.clone()
             
-            audio_signal = self.main_layers(audio_signal, att_mask, length, pad_mask, rotary_emb_fn)
+            with torch.no_grad() if was_training else nullcontext():
+                audio_signal = self.main_layers(audio_signal, att_mask, length, pad_mask, rotary_emb_fn)
             
-            if was_training and i == iterations - 1:
+            if was_training:
                 audio_signal = audio_signal.detach()
                 audio_signal.requires_grad = True
             # if was_training: audio_signal = audio_signal.detach()
             # if was_training: audio_signal.requires_grad = True
-        
+    
 
             self.reprs = audio_signal.clone()
+            if self.training:
+                self.reprs.retain_grad()
             audio_signal = self.reprs
+
+            self.original_probs = decoder(x = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal, logits = return_logits)
 
             for lth, layer in enumerate(self.meta_layers):
                 if self.checkpoint_every_n_layers > 0 and lth % self.checkpoint_every_n_layers == 0:
@@ -419,7 +428,8 @@ class SCConformerMeta(BaseModel):
                     )
             
             meta_pred = self.meta_decoder(audio_signal)
-            self.grad_preds = meta_pred
+            self.grad_pred = meta_pred
+            
             
             if i < iterations - 1 and not was_training:
                 grad_pred = meta_pred
@@ -429,12 +439,12 @@ class SCConformerMeta(BaseModel):
                
                 self.initial_signal = self.initial_signal - initial_signal_grad * 10
 
-            if i == iterations - 1 and not was_training:
+            # if i == iterations - 1 and not was_training:
 
-                params = [p for p in self.layers[0].parameters()]
-                weight_grad = torch.autograd.grad(outputs=self.reprs, inputs=params, grad_outputs=meta_pred, retain_graph=False)
-                for p, g in zip(params, weight_grad):
-                    p.data = p.data - g * 1e-6
+            #     params = [p for p in self.layers[0].parameters()]
+            #     weight_grad = torch.autograd.grad(outputs=self.reprs, inputs=params, grad_outputs=meta_pred, retain_graph=False)
+            #     for p, g in zip(params, weight_grad):
+            #         p.data = p.data - g * 1e-6
 
         # if was_training: audio_signal = self.reprs - meta_pred
         # else: audio_signal = self.reprs   
