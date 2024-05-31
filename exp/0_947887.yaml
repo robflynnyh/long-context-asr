@@ -7,11 +7,11 @@ model:
   dropout_ff: 0.0
   dropout_attn: 0.0
   dropout_conv: 0.0
-  subsampling_factor: 8
+  subsampling_factor: 16    
+  upsampling_factor: 2
   subsampling: dw_striding
   subsampling_act: silu
   subsampling_conv_channels: 256
-  self_condition_subsampling: false
   subsampling_norm_out: false
   conv_kernel_size: 9
   qk_rms_norm: false
@@ -27,15 +27,16 @@ model:
   checkpoint_every_n_layers: 0
   rotary_base_freq: 1500000
   flash_attn: true
-  load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_2048_rp_1/step_105360.pt"
-  n_meta_layers: 1
+  # load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_2048_rp_1/step_105360.pt"
+  # n_meta_layers: 2
+  # gradient_memory_bank_size: 2048
 
   #multi_frame_prediction: true
 
 optimizer:
   name: madgrad
   args:
-    lr: 1e-3
+    lr: 1e-4
 scheduler:
   warmup_steps: 2500
 audio_chunking:
@@ -49,20 +50,23 @@ wandb:
   dir: /mnt/parscratch/users/acp21rjf/wandb_log/
   update_config_with_wandb_id: false
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/test3
-  save_every_n_steps: 2000
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/test_hourglass
+  save_every_n_steps: 200000
 data:
-  path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
+  path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json # /mnt/parscratch/users/acp21rjf/spotify_utterances/
 training:
   start_spec_augment_after_n_epochs: 0
-  batch_size: 176
+  batch_size: 120
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
   random_seed: 6433
-  dtype: float32
+  #dtype: float32
+  #num_workers: 4
+  #prefetch_factor: 8
+
   #loss: 'l2'
   #dtype: float32
 sequence_scheduler:
@@ -74,11 +78,11 @@ sequence_scheduler:
   batch_size_multiplier: 0.5
   interpolate_rotary: false
 description: Looking at meta learning arch
-model_class: SCConformerMeta
+model_class: HourGlassConformer
 spec_augment:
   n_time_masks: 0
   time_mask_param: 0
-  n_freq_masks: 4
+  n_freq_masks: 2
   freq_mask_param: 18
   iid_masks: true
   min_p: 0.0

@@ -5,10 +5,12 @@ from tqdm import tqdm
 from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
 from omegaconf.omegaconf import OmegaConf
-from lcasr.eval.utils import fetch_logits, decode_beams_lm
+from lcasr.eval.utils import fetch_logits as moving_average_eval
+from lcasr.eval.buffered_transcription import fetch_logits as buffered_eval
+from lcasr.eval.utils import  decode_beams_lm
 
 from lcasr.utils.audio_tools import processing_chain, total_seconds, total_frames
-
+from lcasr.decoding.greedy import GreedyCTCDecoder
 from lcasr.utils.general import load_model, get_model_class
 from pyctcdecode import build_ctcdecoder
 
@@ -36,7 +38,7 @@ def open_stm(path:str) -> List[str]:
     return lines
 
 
-def fetch_data(items=24, seed=41):
+def fetch_data(items=24, seed=57):
     all_data = load_pairs()
     data_items = all_data.items()
     audio_paths = []
@@ -47,7 +49,7 @@ def fetch_data(items=24, seed=41):
     random.shuffle(data_items)
     i=0
     while len(audio_paths) < items:
-        if data_items[i][1]['duration'] / 60 >= 60:
+        if data_items[i][1]['duration'] / 60 >= 20:
             sample = data_items[i][1]
             audio_path = sample['audio']
             text = sample['txt']
@@ -69,15 +71,42 @@ def load_text(text_path:str):
     return txt
 
 
+def preprocess_transcript(text:str):
+    return normalize(text).lower()
+
+def process_text_and_audio_fn(rec_dict): return rec_dict['audio'], preprocess_transcript(rec_dict['text'])
+
+def get_text_and_audio(split):
+    audio_files, text_files = fetch_data()
+  
+    return_data = []
+    for rec in range(len(audio_files)):
+        return_data.append({
+            'text': load_text(text_files[rec]), 
+            'audio': load_audio(audio_files[rec]), 
+            "process_fn": process_text_and_audio_fn,
+            "id": text_files[rec],
+        })
+    return return_data
+
 def main(args):
 
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
     args.config = model_config
     
+    eval_fn = moving_average_eval
+    if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'windowed_attention':
+        seq_len = args.seq_len
+        subsample_factor = args.config.model.get('subsampling_factor', 8)
+        ds_seq_len = seq_len // subsample_factor
+        args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
+        args.seq_len = args.__dict__.get('max_sequence_length', 3600000) # 10 hours
+    if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'buffered': eval_fn = buffered_eval
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
-    model = load_model(args.config, tokenizer.vocab_size(), model_class=get_model_class(config=args.config, args=args))
+    model = load_model(args.config, tokenizer.vocab_size(), model_class=get_model_class({'model_class': args.config.get('model_class', args.model_class)}))
+
     tparams = model.print_total_params()
     model.load_state_dict(checkpoint['model'], strict=False)
     print(f'Loaded model from {args.checkpoint}')
@@ -86,8 +115,7 @@ def main(args):
     model = model.to(device)
     model.eval()
 
-    vocab = [tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""]
-    decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
+    decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
 
 
     audio_files, text_files = fetch_data()
@@ -100,18 +128,56 @@ def main(args):
 
         audio_spec = load_audio(rec)
         gold_text = load_text(tex)
-       
-        logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
-       
-        ds_factor = audio_spec.shape[-1] / logits.shape[0]
-        decoded, bo = decode_beams_lm([logits], decoder, beam_width=1, ds_factor=ds_factor)
+        CTC_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
+        meta_loss_fn = lambda a, b, d: (torch.nn.functional.cross_entropy(b, a, reduction='mean'))
 
-        all_text = normalize(decoded[0]['text']).lower()
+        #with torch.set_grad_enabled(True):
+        for repeat in range(args.__dict__.get('repeat', 1)):
+            audio_spec = audio_spec.to(device)
+            audio_spec.requires_grad = True
+            logits = model(audio_spec)['final_posteriors']
+            #   print(logits)
+            probs = torch.as_tensor(logits)
+            
+            tokens = torch.as_tensor(tokenizer.encode(gold_text))[None]
+            
+            cosine_loss_fn = torch.nn.CosineSimilarity(dim=-1)
+            
+            loss = CTC_loss_fn(
+                log_probs=probs.transpose(0,1), 
+                targets=tokens, 
+                input_lengths = torch.LongTensor([probs.shape[1]]),
+                target_lengths = torch.LongTensor([tokens.shape[1]])
+            ) 
+            #print(loss)
+            update = torch.autograd.grad(loss, inputs = model.reprs, retain_graph=True)[0]
+            #print(update.shape)
+            q, vq_indices, _ = model.grad_vq(update)
+            layer1_params = [p for p in model.layers[0].parameters()]
+            weight_grads = torch.autograd.grad(outputs=model.reprs, inputs=layer1_params, grad_outputs=q)
+            for p, g in zip(layer1_params, weight_grads):
+                p.data = p.data - g * 1e-3
+            
+            vals, indices = model.grad_pred.softmax(dim=-1).max(dim=-1)
+            print(vq_indices, indices)
+            #print(vq_indices.shape, model.grad_pred.shape)
+            ce_loss = meta_loss_fn(vq_indices.squeeze(0), model.grad_pred.squeeze(0), None)
+            print(ce_loss, 'ce_loss')
+    
+            # for p, u in zip(d_inputs, update):
+                #     p.data.add_(-1e-2 * u)
+       
+        out_text = decoder(logits.squeeze(0))
+
+        all_text = normalize(out_text).lower()
         gold_text = normalize(gold_text).lower()    
         print(gold_text) if args.verbose else None
         print(all_text) if args.verbose else None
         all_texts.append(all_text)
         all_golds.append(gold_text)
+
+        if args.__dict__.get('break_eval', False):
+            break
  
 
         
@@ -141,6 +207,12 @@ if __name__ == '__main__':
     parser.add_argument('-single_utt', '--single_utterance', action='store_true', help='single utterance decoding')
     parser.add_argument('-nv', '--not_verbose', action='store_true', help='verbose')
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
+
+
+    parser.add_argument('-repeat', '--repeat', type=int, default=1, help='number of times to rerun evaluation')
+    parser.add_argument('-break', '--break_eval', action='store_true', help='break after each evaluation')
+    parser.add_argument('-eval_mode', '--evaluation_mode', type=str, default='averaged_moving_window', choices=['averaged_moving_window', 'windowed_attention', 'buffered'])
+
 
     parser.add_argument('-log', '--log', type=str, default='')
 

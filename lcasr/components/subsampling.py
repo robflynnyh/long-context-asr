@@ -21,6 +21,7 @@ import logging
 from .causal_convs import CausalConv2D
 from torch import Tensor
 from lcasr.components.fused_dense import FusedMLP
+from lcasr.components.batchrenorm import BatchRenorm1d
 
 import torch.nn.functional as F
 
@@ -94,6 +95,69 @@ class PreNorm(nn.Module): # applies normalization before fn
         x = self.norm(x)
         x = self.fn(x, **kwargs)
         return x
+
+class Conv1DSubsampling(torch.nn.Module):
+    def __init__(
+            self, 
+            subsampling_factor, 
+            feat_in, 
+            feat_out, 
+            conv_channels, 
+            conv_groups=1,
+            batch_norm=False,
+        ):
+        super(Conv1DSubsampling, self).__init__()
+        self.subsampling_factor = subsampling_factor
+    
+        self.out = torch.nn.Linear(conv_channels, feat_out, bias = False)
+        if subsampling_factor % 2 != 0:
+            raise ValueError("Sampling factor should be a multiply of 2!")
+        self._sampling_num = int(math.log(subsampling_factor, 2))
+        self._kernel_size = 3
+        self._left_padding = (self._kernel_size - 1) // 2
+        self._right_padding = (self._kernel_size - 1) // 2
+        self.subsample = torch.nn.Sequential(
+            nn.Conv1d(
+                in_channels = feat_in,
+                out_channels = conv_channels,
+                kernel_size = 3,
+                padding = 'same',
+                stride = 1
+            ),
+            nn.SiLU(),
+            *[
+                torch.nn.Sequential( 
+                    nn.Conv1d(
+                        in_channels = conv_channels,
+                        out_channels = conv_channels,
+                        kernel_size = self._kernel_size,
+                        stride = 2,
+                        padding = self._left_padding,
+                        groups = conv_groups
+                    ),
+                    BatchRenorm1d(conv_channels) if batch_norm else nn.Identity(),
+                    nn.SiLU(),
+                )
+                for _ in range(self._sampling_num)
+            ]
+        )
+
+    def forward(self, x, lengths):
+        lengths = calc_length(
+            lengths,
+            all_paddings=self._left_padding + self._right_padding,
+            kernel_size=self._kernel_size,
+            stride=2,
+            ceil_mode=False,
+            repeat_num=self._sampling_num,
+        )
+        x = x.transpose(1, 2)
+        x = self.subsample(x)
+        x = self.out(x.transpose(1, 2))
+        return x, lengths
+
+            
+        
 
 class ConvSubsampling(torch.nn.Module):
     """Convolutional subsampling which supports VGGNet and striding approach introduced in:

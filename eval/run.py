@@ -15,13 +15,15 @@ from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
 from tedlium.run import get_text_and_audio as get_text_and_audio_tedlium
 from rev16.run import get_text_and_audio as get_text_and_audio_rev16
 from this_american_life.run import get_text_and_audio as get_text_and_audio_this_american_life
+from spotify.run import get_text_and_audio as get_text_and_audio_spotify
 
 datasets_functions = {
     'earnings22_full': get_text_and_audio_earnings22_full,
     'earnings22': get_text_and_audio_earnings22,
     'tedlium': get_text_and_audio_tedlium,
     'rev16': get_text_and_audio_rev16,
-    'this_american_life': get_text_and_audio_this_american_life
+    'this_american_life': get_text_and_audio_this_american_life,
+    'spotify': get_text_and_audio_spotify
 }
 
 
@@ -104,7 +106,7 @@ def main(args):
                 'sub_rate': sub_rate
             })
 
-        if args.break_eval: break
+        if args.__dict__.get('break_eval', False): break
 
         
 

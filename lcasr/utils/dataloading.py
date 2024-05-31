@@ -156,6 +156,83 @@ def reset_seen_ids(seen_ids:List[str], epoch:int):
     seen_ids = [f'epoch_{epoch}_{el}' if 'epoch_' not in el else el for el in seen_ids]
     return seen_ids
 
+### for presegmented data
+class Utterance_Dataset(torch.utils.data.Dataset):
+    def __init__(
+            self, 
+            utterance_folder:str,
+            seen_ids:List[str] = [], # remove ids from dataset (i.e already trained on)
+    ):
+        super().__init__()
+        self.utterance_folder = utterance_folder
+        files = [el for el in os.listdir(utterance_folder) if el.endswith('.pt')]
+        files_set = set(files)
+        seen_ids_set = set([el + '.pt' for el in seen_ids])
+        files = list(files_set - seen_ids_set) # remove seen_ids
+        self.files = sorted([os.path.join(utterance_folder, el) for el in files])
+
+    def __len__(self):
+        return len(self.files)
+    
+    def __getitem__(self, idx):
+        data = torch.load(self.files[idx])
+        return data['id'], data['audio'], data['txt'], data['txt_lengths'], data['audio_lengths']
+
+def utterance_collate_fn(batch):
+    ids, audio, txt, txt_lengths, audio_lengths = zip(*batch)
+    txt_lengths = torch.cat(txt_lengths)
+    audio_lengths = torch.cat(audio_lengths)
+    max_audio_length = audio_lengths.max()
+    max_txt_length = txt_lengths.max()
+    
+    pad_amount = max_audio_length - audio_lengths
+    audio = torch.cat([torch.nn.functional.pad(el, (0, pad_amount[i]), value=0) for i, el in enumerate(audio)], dim=0)
+    pad_amount = max_txt_length - txt_lengths
+    txt = torch.cat([torch.nn.functional.pad(el, (0, pad_amount[i]), value=0) for i, el in enumerate(txt)], dim=0)
+
+    return {
+        'ids':ids,
+        'audio':audio,
+        'text':txt,
+        'text_lengths':txt_lengths,
+        'audio_lengths':audio_lengths
+    }
+    
+
+class Utterance_Dataloader(torch.utils.data.DataLoader):
+    def __init__(
+            self,
+            utterance_folder:str,
+            batch_size:int = 176,
+            num_workers:int = 4,
+            prefetch:int = 4,
+            pin_memory:bool = True,
+            shuffle:bool = True,
+            seen_ids:List[str] = [],
+            random_seed:int = 1234,
+        ):
+        torch.manual_seed(random_seed)
+        self.dataset = Utterance_Dataset(utterance_folder, seen_ids = seen_ids)
+        super().__init__(
+            dataset = self.dataset,
+            batch_size = batch_size,
+            shuffle = shuffle,
+            num_workers = num_workers,
+            pin_memory = pin_memory,
+            prefetch_factor = prefetch,
+            collate_fn = utterance_collate_fn,
+        )
+
+
+    def total_recordings(self):
+        return len(self.dataset.files)
+
+    def __len__(self):
+        return len(self.dataset) 
+
+### for presegmented data
+
+
 class SimpleDataset(torch.utils.data.Dataset):
     def __init__(
             self, 

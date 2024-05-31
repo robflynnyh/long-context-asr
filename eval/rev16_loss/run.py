@@ -1,9 +1,12 @@
 import torch, argparse, lcasr, os, re, json
 from tqdm import tqdm
 from typing import Tuple
+from lcasr.eval.utils import fetch_logits as moving_average_eval
+from lcasr.eval.buffered_transcription import fetch_logits as buffered_eval
+
 from lcasr.utils.audio_tools import processing_chain
-from lcasr.eval.utils import fetch_logits, decode_beams_lm
-from lcasr.utils.general import load_model
+from lcasr.eval.utils import decode_beams_lm
+from lcasr.utils.general import load_model, get_model_class
 from pyctcdecode import build_ctcdecoder
 from lcasr.eval.wer import word_error_rate_detail 
 from whisper.normalizers import EnglishTextNormalizer
@@ -48,10 +51,19 @@ def main(args):
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
     args.config = model_config
+
+    eval_fn = moving_average_eval
+    if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'windowed_attention':
+        seq_len = args.seq_len
+        subsample_factor = args.config.model.get('subsampling_factor', 8)
+        ds_seq_len = seq_len // subsample_factor
+        args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
+        args.seq_len = args.__dict__.get('max_sequence_length', 3600000) # 10 hours
+    if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'buffered': eval_fn = buffered_eval
     
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
-    model = load_model(args.config, tokenizer.vocab_size())
+    model = load_model(args.config, tokenizer.vocab_size(), model_class=get_model_class({'model_class': args.config.get('model_class', args.model_class)}))
     tparams = model.print_total_params()
     model.load_state_dict(checkpoint['model'], strict=False)
     print(f'Loaded model from {args.checkpoint}')
@@ -74,6 +86,7 @@ def main(args):
     losses = []
     target_lengths = []
     for rec in tqdm(range(len(meetings_keys)), total=len(audio_files)):
+        #if rec == 0: continue
         print(f'Processing {rec+1}/{len(audio_files)}')
         cur_meetings = meetings_keys[rec]
         cur_audio = audio_files[rec]['path']
@@ -86,7 +99,8 @@ def main(args):
         audio_spec = processing_chain(cur_audio)
         print('\n-------\n'+cur_meetings+'\n-------\n')
         
-        logprobs = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
+        for repeat in range(args.__dict__.get('repeat', 1)):
+            logprobs = eval_fn(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
 
         ds_factor = audio_spec.shape[-1] / logprobs.shape[0]
         decoded, bo = decode_beams_lm([logprobs], decoder, beam_width=1, ds_factor=ds_factor)
@@ -122,6 +136,8 @@ def main(args):
         target_lengths.append(targets.shape[1])
         print(f'loss: {loss.item() / targets.shape[1]}')
 
+        if args.break_eval:
+            break
         
     final_loss = sum(losses) / sum(target_lengths)
 
@@ -141,7 +157,11 @@ if __name__ == '__main__':
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-cache_len', '--cache_len', type=int, default=-1, help='cache length for decoding')
     parser.add_argument('-log', '--log', type=str, default='')
-    #parser.add_argument('-pad_to', '--pad_to', default=0, type=int, help='pad sequence to pad_to')
+    parser.add_argument('-break', '--break_eval', action='store_true', help='break after each evaluation')
+    parser.add_argument('-eval_mode', '--evaluation_mode', type=str, default='averaged_moving_window', choices=['averaged_moving_window', 'windowed_attention', 'buffered'])
+    parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')#
+    parser.add_argument('-pad_to', '--pad_to', default=0, type=int, help='pad sequence to pad_to')
+    parser.add_argument('-repeat', '--repeat', type=int, default=1, help='number of times to rerun evaluation')
 
     args = parser.parse_args()
     main(args)
