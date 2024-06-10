@@ -1,4 +1,4 @@
-# Code for the paper: How Much Context Does My Attention-Based ASR System Need?
+# Code for the paper: How Much Context Does My Attention-Based ASR System Need? (Interspeech 2024)
 - Pre-Print Available on [arXiv](https://arxiv.org/abs/2310.15672) (currently an old pre-print! from prior ICASSP submission)
 - Code for the old 2023 preprint is in the 2023-preprint branch
 - Repository is continually being updated with more intstructions, eventually I hope to have a colab that can be used to run some of the pretrained models
