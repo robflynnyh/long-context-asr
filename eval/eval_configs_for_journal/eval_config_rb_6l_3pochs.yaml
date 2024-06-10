@@ -1,30 +1,30 @@
 global:
-  root_path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_
+  root_path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3epoch/n_seq_sched_
   name: rb_n_seq_sched
   overlap_ratio: 0.875
-  checkpoint: step_105360.pt
-  description: "rotary 1.5M 445M param, 18L 1024D, decoding using windowed attention"
+  checkpoint: step_316080.pt
+  description: "standard 6l 90M param model but trained for 3 epochs decoding using windowed attention"
   
 
 models:
-  - name: ${global.name}
-    repeat: 1
-    seq_len: 1024
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-  - name: ${global.name}
-    repeat: 2
-    seq_len: 1024
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-  - name: ${global.name}
-    repeat: 3
-    seq_len: 1024
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 1
+  #   seq_len: 1024
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 2
+  #   seq_len: 1024
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 3
+  #   seq_len: 1024
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
 
   - name: ${global.name}
     repeat: 1
@@ -60,35 +60,35 @@ models:
   - name: ${global.name}
     repeat: 3
     seq_len: 4096
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-
-  - name: ${global.name}
-    repeat: 1
-    seq_len: 8192
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-  - name: ${global.name}
-    repeat: 2
-    seq_len: 8192
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-  - name: ${global.name}
-    repeat: 3
-    seq_len: 8192
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
 
   # - name: ${global.name}
   #   repeat: 1
-  #   seq_len: 16384
+  #   seq_len: 8192
   #   overlap_ratio: ${global.overlap_ratio}
   #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
   #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 8192
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 8192
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 16384
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   - name: ${global.name}
     repeat: 2
     seq_len: 16384
@@ -200,7 +200,7 @@ models:
 args:
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_windowed_18l_1024D.csv'
+  save_dataframe_path: './results/evals_windowed_rb_3epoch.csv'
   evaluation_mode: windowed_attention
   max_sequence_length: 3600000
 

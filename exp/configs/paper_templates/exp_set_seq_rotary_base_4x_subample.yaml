@@ -1,0 +1,248 @@
+template_info:
+  create: 1 # number of experiments to create
+  include_keys: [
+    'model', 
+    'optimizer', 
+    'scheduler', 
+    'audio_chunking', 
+    'wandb', 
+    'checkpointing', 
+    'data', 
+    'training', 
+    'sequence_scheduler', 
+    'description',
+    'model_class',
+    'spec_augment'
+  ] # keys to include in experiments config
+  template_keys: [
+    'checkpointing.dir', 
+    'wandb.name', 
+    'sequence_scheduler.max_sequence_length',
+    'training.random_seed'
+  ] # keys to use to create experiments
+
+model_class: 'SCConformerXL'
+description: "Looking at using less subsampling"
+
+model:
+  feat_in: 80
+  n_layers: 6
+  d_model: 768
+  n_heads: 6
+  head_dim: 128
+  dropout_ff: 0.0 # dropout parameters
+  dropout_attn: 0.0
+  dropout_conv: 0.0
+  subsampling_factor: 4 # subsampling parameters
+  subsampling: 'dw_striding'
+  subsampling_act: 'silu'
+  subsampling_conv_channels: 256
+  self_condition_subsampling: false
+  subsampling_norm_out: false
+  conv_kernel_size: 9
+  qk_rms_norm: false 
+  shift_kvs: false
+  self_conditioning: true
+  gated_sc: false
+  decoder_norm: true
+  use_rotary: true
+  encoder_mode: 'conformer'
+  default_norm: 'layer_norm'
+  sandwich_norm: false
+  bias_in_ff: false
+  checkpoint_every_n_layers: 0
+  ff_checkpoint_lvl: 2
+  rotary_base_freq: 10000000 # https://arxiv.org/pdf/2309.16039.pdf
+
+optimizer:
+  name: 'madgrad'
+  args:
+    lr: 3e-3
+
+scheduler:
+  warmup_steps: 5000
+
+audio_chunking: # 360000 (max = 1 hour)
+  size: 512
+  overlap: 0 # not using currently...
+
+sequence_scheduler:
+  increase_every: 5000
+  stop_after: 90000
+  start_after: 0
+  max_sequence_length: [
+    1024,
+    1024,
+    1024,
+    2048,
+    2048,
+    2048,
+    4096,
+    4096,
+    4096,
+    8192,
+    8192,
+    8192,
+    16384,
+    16384,
+    16384,
+    32768,
+    32768,
+    32768,
+    65536,
+    65536,
+    65536,
+    131072,
+    131072,
+    131072,
+    # 262144,
+    # 262144,
+    # 262144,
+    # 360000,
+    # 360000,
+    # 360000,
+  ]
+  increase_by_multiplier: 2
+  batch_size_multiplier: 0.5
+  interpolate_rotary: false
+
+wandb:
+  use: true
+  project_name: "spotify_long_context_freq_exeriments"
+  name: [
+    'rb_4x_ss__1024_rp_1',
+    'rb_4x_ss__1024_rp_2',
+    'rb_4x_ss__1024_rp_3',
+    'rb_4x_ss__2048_rp_1',
+    'rb_4x_ss__2048_rp_2',
+    'rb_4x_ss__2048_rp_3', 
+    'rb_4x_ss__4096_rp_1',
+    'rb_4x_ss__4096_rp_2',
+    'rb_4x_ss__4096_rp_3',
+    'rb_4x_ss__8192_rp_1',
+    'rb_4x_ss__8192_rp_2',
+    'rb_4x_ss__8192_rp_3',
+    'rb_4x_ss__16384_rp_1',
+    'rb_4x_ss__16384_rp_2',
+    'rb_4x_ss__16384_rp_3',
+    'rb_4x_ss__32768_rp_1',
+    'rb_4x_ss__32768_rp_2',
+    'rb_4x_ss__32768_rp_3',
+    'rb_4x_ss__65536_rp_1',
+    'rb_4x_ss__65536_rp_2',
+    'rb_4x_ss__65536_rp_3',
+    'rb_4x_ss__131072_rp_1',
+    'rb_4x_ss__131072_rp_2',
+    'rb_4x_ss__131072_rp_3',
+    # 'rb_n_seq_sched_262144_rp_1',
+    # 'rb_n_seq_sched_262144_rp_2',
+    # 'rb_n_seq_sched_262144_rp_3',
+    # 'rb_n_seq_sched_360000_rp_1',
+    # 'rb_n_seq_sched_360000_rp_2',
+    # 'rb_n_seq_sched_360000_rp_3',
+  ]
+  id: "" # leave empty if not resuming a previous run
+
+checkpointing:
+  dir: [
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_1024_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_1024_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_1024_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_2048_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_2048_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_2048_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_4096_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_4096_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_4096_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_8192_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_8192_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_8192_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_16384_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_16384_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_16384_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_32768_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_32768_rp_2',  
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_32768_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_65536_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_65536_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_65536_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_131072_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_131072_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_ss_4x/n_seq_sched_131072_rp_3',
+    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_262144_rp_1',
+    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_262144_rp_2',
+    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_262144_rp_3',
+    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_1',
+    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_2',
+    # '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_3',
+  ]
+  save_every_n_steps: 2000
+
+# full data: #'/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
+# 25% of corpus: '/users/acp21rjf/long-context-asr/reduced_pairs.json'
+data:
+  path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
+
+
+spec_augment:
+  n_time_masks: 0 # Number of time masks. If its value is zero, no time masking will be applied 
+  time_mask_param: 0 # Maximum possible length of the time mask if it is set to -1, min_p is used
+  n_freq_masks: 2 # Number of frequency masks. If its value is zero, no frequency masking will be applied
+  freq_mask_param: 18 # Maximum possible length of the frequency mask
+  iid_masks: true # Applies iid masks to each of the examples in the batch dimension.
+  min_p: 0.0 # minimum proportion of time steps that can be masked. Must be within range [0.0, 1.0]. (Default: -1 which means use fixed number of masks)
+  max_p: 0.0 # maximum proportion of time steps that can be masked. Must be within range [0.0, 1.0]. (Default: 1.0)
+  zero_masking: false # If true, masked values will be set to zero, otherwise they will be set to the mean value of the input spectrogram
+
+
+training:
+  start_spec_augment_after_n_epochs: -1 # -1 to disable
+  batch_size: 704
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
+  clip_value: 0.8
+  intermediate_loss_weighting: 0.0
+  random_seed: [
+    1234,
+    6432,
+    9876, #1
+    9643,
+    4321,
+    6789, #2
+    8241,
+    1233,
+    4322, #3
+    1235,
+    9877,
+    4323, #4
+    4232,
+    9547,
+    1123, #5
+    7472,
+    1236,
+    4324, #6
+    32562,
+    3252,
+    122778,
+    443211,
+    432423,
+    542234,
+    335211,
+    34324,
+    67765,
+    54444,
+    422345,
+  ]
+
+
+
+# size: 512 = batch size 704
+# size: 1024 = batch size 352
+# size: 2048 = batch size 176
+# size: 4096 = batch size 88
+# size: 8192 = batch size 44
+# size: 16384 = batch size 22
+# size: 65536 = batch size 5 
+# size: 131072 = batch size 2
+# size: 360000 (1 hour) =  batch size 1

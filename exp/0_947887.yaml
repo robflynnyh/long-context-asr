@@ -7,8 +7,7 @@ model:
   dropout_ff: 0.0
   dropout_attn: 0.0
   dropout_conv: 0.0
-  subsampling_factor: 16    
-  upsampling_factor: 2
+  subsampling_factor: 4    
   subsampling: dw_striding
   subsampling_act: silu
   subsampling_conv_channels: 256
@@ -24,9 +23,11 @@ model:
   default_norm: layer_norm
   sandwich_norm: false
   bias_in_ff: false
-  checkpoint_every_n_layers: 0
+  checkpoint_every_n_layers: 1
+  ff_checkpoint_lvl: 2
   rotary_base_freq: 1500000
   flash_attn: true
+
   # load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_2048_rp_1/step_105360.pt"
   # n_meta_layers: 2
   # gradient_memory_bank_size: 2048
@@ -36,7 +37,7 @@ model:
 optimizer:
   name: madgrad
   args:
-    lr: 1e-4
+    lr: 1e-3
 scheduler:
   warmup_steps: 2500
 audio_chunking:
@@ -56,7 +57,7 @@ data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json # /mnt/parscratch/users/acp21rjf/spotify_utterances/
 training:
   start_spec_augment_after_n_epochs: 0
-  batch_size: 120
+  batch_size: 176
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
@@ -78,7 +79,7 @@ sequence_scheduler:
   batch_size_multiplier: 0.5
   interpolate_rotary: false
 description: Looking at meta learning arch
-model_class: HourGlassConformer
+#model_class: HourGlassConformer
 spec_augment:
   n_time_masks: 0
   time_mask_param: 0
