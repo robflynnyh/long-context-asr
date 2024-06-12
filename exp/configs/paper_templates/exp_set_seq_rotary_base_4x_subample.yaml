@@ -1,5 +1,5 @@
 template_info:
-  create: 1 # number of experiments to create
+  create: 3 # number of experiments to create
   include_keys: [
     'model', 
     'optimizer', 
@@ -18,7 +18,8 @@ template_info:
     'checkpointing.dir', 
     'wandb.name', 
     'sequence_scheduler.max_sequence_length',
-    'training.random_seed'
+    'training.random_seed',
+    'optimizer.args.lr',
   ] # keys to use to create experiments
 
 model_class: 'SCConformerXL'
@@ -36,7 +37,7 @@ model:
   subsampling_factor: 4 # subsampling parameters
   subsampling: 'dw_striding'
   subsampling_act: 'silu'
-  subsampling_conv_channels: 256
+  subsampling_conv_channels: -1
   self_condition_subsampling: false
   subsampling_norm_out: false
   conv_kernel_size: 9
@@ -50,17 +51,21 @@ model:
   default_norm: 'layer_norm'
   sandwich_norm: false
   bias_in_ff: false
-  checkpoint_every_n_layers: 0
+  checkpoint_every_n_layers: 1
   ff_checkpoint_lvl: 2
   rotary_base_freq: 10000000 # https://arxiv.org/pdf/2309.16039.pdf
 
 optimizer:
   name: 'madgrad'
   args:
-    lr: 3e-3
+    lr: [
+      3e-3,
+      5e-3,
+      8e-3,
+    ]
 
 scheduler:
-  warmup_steps: 5000
+  warmup_steps: 7500
 
 audio_chunking: # 360000 (max = 1 hour)
   size: 512
@@ -204,7 +209,9 @@ training:
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
   random_seed: [
-    1234,
+    9643,
+    9643,
+    9643,
     6432,
     9876, #1
     9643,

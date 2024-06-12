@@ -14,7 +14,7 @@ import os
 from tqdm import tqdm
 
 from apex.optimizers import FusedAdam
-from torch.optim import Adam
+from torch.optim import Adam, AdamW
 from lcasr.optim import madgrad
 import argparse
 import warnings
@@ -79,6 +79,8 @@ def load_optimizer(config:Dict, model:torch.nn.Module):
 
     if optim_type == 'adam':
         optimizer = Adam(param_groups, **optim_args) if model_device == 'cpu' else FusedAdam(model.parameters(), **optim_args)
+    elif optim_type == 'adamw':
+        optimizer = AdamW(param_groups, **optim_args)
     elif optim_type == 'madgrad':
         optimizer = madgrad.MADGRAD(param_groups, **optim_args) # best
     elif optim_type == 'mirrormadgrad':
