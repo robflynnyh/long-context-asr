@@ -1,5 +1,5 @@
 template_info:
-  create: 3 # number of experiments to create
+  create: 24 # number of experiments to create
   include_keys: [
     'model', 
     'optimizer', 
@@ -19,7 +19,6 @@ template_info:
     'wandb.name', 
     'sequence_scheduler.max_sequence_length',
     'training.random_seed',
-    'optimizer.args.lr',
   ] # keys to use to create experiments
 
 model_class: 'SCConformerXL'
@@ -58,14 +57,10 @@ model:
 optimizer:
   name: 'madgrad'
   args:
-    lr: [
-      3e-3,
-      5e-3,
-      8e-3,
-    ]
+    lr: 1e-3
 
 scheduler:
-  warmup_steps: 7500
+  warmup_steps: 5000
 
 audio_chunking: # 360000 (max = 1 hour)
   size: 512
@@ -209,8 +204,6 @@ training:
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
   random_seed: [
-    9643,
-    9643,
     9643,
     6432,
     9876, #1
