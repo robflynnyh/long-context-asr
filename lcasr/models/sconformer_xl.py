@@ -16,6 +16,8 @@ except:
     from lcasr.components.normalisation import RMSNorm as RMSNorm, RMSNorm as DEFAULT_NORM
     from torch.nn import LayerNorm as LayerNorm
 
+try: import flash_attn as flash_attn_installed
+except: flash_attn_installed = None 
 
 PreNorm, Scale = wrappers.PreNorm, wrappers.Scale
 
@@ -91,6 +93,10 @@ class SCConformerXL(BaseModel):
         subsampling_act = get_act(subsampling_act)
 
         self.flash_attn = kwargs.get('flash_attn', True)
+        if not flash_attn_installed:
+            warnings.warn('flash_attn not installed, reverting to normal attention')
+            self.flash_attn = False
+            
         self.checkpoint_every_n_layers = checkpoint_every_n_layers
 
         self.dropout_ff = dropout_ff
