@@ -11,6 +11,7 @@
 - Install fused_dense_lib for fused MLP layers from https://github.com/Dao-AILab/flash-attention/tree/main/csrc/fused_dense_lib
 - [Apex](https://github.com/NVIDIA/apex/tree/master) is used for fused rms/layer norm (and fused Adam if not using madgrad)
 TODO: setup code to work without fused layers installed for easier usage
+- clone and run pip install ./ 
 
 ## Data
 - <del>For training models you must request access to receive the spotify training data which can be done via the following:</del> [link](https://podcastsdataset.byspotify.com/) (unfortunatly spotify are no longer maintaining this dataset)
