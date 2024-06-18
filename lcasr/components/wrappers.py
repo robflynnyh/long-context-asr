@@ -1,5 +1,6 @@
 import torch.nn as nn, torch.nn.functional as F
-from apex.normalization import FusedRMSNorm as DEFAULT_NORM
+try: from apex.normalization import FusedRMSNorm as DEFAULT_NORM
+except: from lcasr.components.normalisation import RMSNorm as DEFAULT_NORM
 
 class PreNorm(nn.Module): # applies normalization before fn
     def __init__(self, d_model, fn, norm = DEFAULT_NORM, sandwich_norm = False):
