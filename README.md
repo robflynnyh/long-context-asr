@@ -15,8 +15,7 @@ TODO: setup code to work without fused layers installed for easier usage
 ## Data
 - <del>For training models you must request access to receive the spotify training data which can be done via the following:</del> [link](https://podcastsdataset.byspotify.com/) (unfortunatly spotify are no longer maintaining this dataset)
 - For training models this code will work with any set of data where you have unsegmented (not segmented into utterances) precomputed spectrograms and corresponding transcriptions (with word level alignment). Word level alignement is needed to be able to chunk files into arbitrary sequence lengths.
-- Evaluation dev/test splits for Earnings-22 and Tedlium can be found in [/data](https://github.com/robflynnyh/long-context-asr/tree/main/data)
-- Alternatively the full datasets can be found via the following links: [Earnings-22](https://github.com/revdotcom/speech-datasets/tree/main/earnings22) [Tedlium](https://www.openslr.org/51/) 
+- Earnings-22 and Tedlium datasets can be found via the following links: [Earnings-22](https://github.com/revdotcom/speech-datasets/tree/main/earnings22) [Tedlium](https://www.openslr.org/51/) 
 
 ## Checkpoints
 Config files for all pretrained models are provided within the checkpoint file
