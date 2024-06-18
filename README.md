@@ -7,7 +7,7 @@
 
 ## Installation
 - Requires Pytorch 2.0 or greater
-- Install Flash Attention 2.0 https://github.com/Dao-AILab/flash-attention and fused_dense_lib for fused MLP layers from https://github.com/Dao-AILab/flash-attention/tree/main/csrc/fused_dense_lib for best performance
+- For best performance, install Flash Attention 2.0 https://github.com/Dao-AILab/flash-attention and fused_dense_lib for fused MLP layers from https://github.com/Dao-AILab/flash-attention/tree/main/csrc/fused_dense_lib 
 - [Apex](https://github.com/NVIDIA/apex/tree/master) is used for fused rms/layer norm (and fused Adam if not using madgrad) - if it's not installed we will default to pytorch !
 - clone and run pip install ./ 
 
