@@ -17,7 +17,7 @@ from lcasr.components.wrappers import PreNorm
 try:
     from causal_conv1d import causal_conv1d_fn, causal_conv1d_update
 except ImportError:
-    causal_conv1d_fn, causal_conv1d_update = None
+    causal_conv1d_fn, causal_conv1d_update = None, None
 
 try:
     from mamba_ssm.ops.selective_scan_interface import selective_scan_fn, mamba_inner_fn
