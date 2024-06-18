@@ -13,3 +13,5 @@ source activate a100
 echo "Running eval_manager.py with config $CONFIG"
 
 python eval_manager.py -config $CONFIG
+
+# example use: sbatch --export=CONFIG='./eval_configs_for_journal/...' ./run_eval_a100.sh
