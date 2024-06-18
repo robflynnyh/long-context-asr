@@ -12,9 +12,12 @@ from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler
 import os
 from tqdm import tqdm
 
-from apex.optimizers import FusedAdam
 from torch.optim import Adam, AdamW
 from lcasr.optim import madgrad
+
+try: from apex.optimizers import FusedAdam
+except: FusedAdam = Adam
+
 import argparse
 import warnings
 
@@ -74,7 +77,7 @@ def load_optimizer(config:Dict, model:torch.nn.Module):
         raise NotImplementedError(f'Unknown weight_decay_groups {config["optimizer"]["weight_decay_groups"]}, must be one of [default, none]')  
 
     if optim_type == 'adam':
-        optimizer = Adam(param_groups, **optim_args) if model_device == 'cpu' else FusedAdam(model.parameters(), **optim_args)
+        optimizer = Adam(param_groups, **optim_args) if model_device == 'cpu' else FusedAdam(param_groups, **optim_args)
     elif optim_type == 'adamw':
         optimizer = AdamW(param_groups, **optim_args)
     elif optim_type == 'madgrad':
