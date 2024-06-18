@@ -16,7 +16,10 @@ import math
 
 import torch
 import torch.nn as nn
-from apex.normalization import FusedRMSNorm as LayerNorm
+
+try: from apex.normalization import FusedLayerNorm as LayerNorm
+except: from torch.nn import LayerNorm as LayerNorm
+
 import logging
 from .causal_convs import CausalConv2D
 from torch import Tensor
