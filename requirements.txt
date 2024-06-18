@@ -2,4 +2,5 @@ tqdm
 torch
 torchaudio
 numpy
-!!! preliminary
+einops
+omegaconf
