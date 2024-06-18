@@ -24,7 +24,10 @@ import warnings
 from lcasr.components.batchrenorm import BatchRenorm1d
 import os
 from contextlib import nullcontext
-from vector_quantize_pytorch import VectorQuantize
+
+try: from vector_quantize_pytorch import VectorQuantize
+except: VectorQuantize = None
+
 from torch.func import functional_call
 
 
@@ -126,6 +129,8 @@ class SCConformerMeta(BaseModel):
         **kwargs
     ):
         super().__init__()
+
+        assert VectorQuantize is not None, 'VectorQuantize module must be installed to use this model (pip install vector_quantize_pytorch)'
         
         self.feat_in = feat_in
         self.n_layers = n_layers
