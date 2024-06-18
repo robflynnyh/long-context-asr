@@ -13,8 +13,10 @@ from torch.distributed import ProcessGroup
 from torch.cuda.amp import custom_bwd, custom_fwd
 
 #import fused_dense_cuda  # from apex
-import fused_dense_lib as fused_dense_cuda
+try: import fused_dense_lib as fused_dense_cuda
+except: fused_dense_cuda = None; print('fused_dense_cuda not available. Install from https://github.com/Dao-AILab/flash-attention/tree/main/csrc/fused_dense_lib for better performance!')
 
+from lcasr.utils.helpers import exists
 from flash_attn.ops.activations import gelu_bwd, relu_bwd, sqrelu_fwd, sqrelu_bwd
 from flash_attn.utils.distributed import all_gather_raw, reduce_scatter_raw, all_reduce_raw
 from flash_attn.utils.distributed import reduce_scatter, all_reduce
@@ -117,7 +119,7 @@ def fused_dense_func(x: Tensor, weight: Tensor, bias: Optional[Tensor] = None,
                      sequence_parallel: bool = True):
     dtype_eligible = (x.dtype in [torch.float16, torch.bfloat16]
                       or (x.dtype == torch.float32 and torch.is_autocast_enabled()))
-    if x.is_cuda and weight.is_cuda and (bias is None or bias.is_cuda) and dtype_eligible:
+    if x.is_cuda and weight.is_cuda and (bias is None or bias.is_cuda) and dtype_eligible and exists(fused_dense_cuda):
         return FusedDenseFunc.apply(x, weight, bias, return_residual, process_group,
                                     sequence_parallel)
     else:
@@ -397,7 +399,7 @@ def fused_mlp_func(
     # If we save pre-activation, dimension must be divisible by 128 (relu) or 8 (gelu)
     dim_eligible = not save_pre_act or (x.shape[-1] % (128 if activation == 'relu' else 8) == 0)
     if (x.is_cuda and weight1.is_cuda and weight2.is_cuda and (bias1 is None or bias1.is_cuda)
-        and (bias2 is None or bias2.is_cuda) and dtype_eligible and dim_eligible):
+        and (bias2 is None or bias2.is_cuda) and dtype_eligible and dim_eligible) and exists(fused_dense_cuda):
         return FusedMLPFunc.apply(
             x, weight1, bias1, weight2, bias2, activation, save_pre_act, return_residual,
             checkpoint_lvl, heuristic, process_group, sequence_parallel
@@ -460,7 +462,7 @@ class FusedMLP(nn.Module):
         return output2 if not self.return_residual else (output2, x)
 
     def forward(self, x, process_group=None):
-        if x.device.type == 'cpu':
+        if x.device.type == 'cpu' or not exists(fused_dense_cuda):
             return self.cpu_forward(x)
             
         dtype = x.dtype if not torch.is_autocast_enabled() else torch.get_autocast_gpu_dtype()
