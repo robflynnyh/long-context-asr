@@ -2,8 +2,11 @@ import torch, numpy as np, pickle as pkl, os
 from typing import List, Dict, Tuple, Optional, Union
 from importlib import reload as rl
 from tqdm import tqdm
-from lming.utils.helpers import exists
-from lming.models.transformer import transformer_lm
+from lcasr.utils.helpers import exists
+
+try: from lming.models.transformer import transformer_lm
+except: transformer_lm = None
+
 import time, heapq
 from multiprocessing import Pool
 import math
