@@ -1,5 +1,8 @@
 import torch, torch.nn as nn
-from apex.normalization import FusedRMSNorm, FusedLayerNorm
+try: from apex.normalization import FusedRMSNorm as DEFAULT_NORM, FusedRMSNorm as RMSNorm, FusedLayerNorm as LayerNorm
+except: 
+    from lcasr.components.normalisation import RMSNorm as RMSNorm, RMSNorm as DEFAULT_NORM
+    from torch.nn import LayerNorm as LayerNorm
 import warnings
 
 # base class for all models

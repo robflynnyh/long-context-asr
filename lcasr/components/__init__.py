@@ -9,5 +9,6 @@ from . import (
     helpers,
     wrappers, 
     dynamicpos,
-    attention
+    attention,
+    normalisation
 )

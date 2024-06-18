@@ -1,5 +1,5 @@
 import torch, torch.nn as nn, torch.nn.functional as F
-import apex
+
 from torch.utils.checkpoint import checkpoint # # gradient/activation checkpointing
 from einops import rearrange, repeat
 from typing import Dict, List, Tuple
@@ -12,7 +12,10 @@ from lcasr.utils.lm_tools import add_eos, token_lens_to_mask, mark_padding
 ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
-DEFAULT_NORM, RMSNorm, LayerNorm = apex.normalization.FusedRMSNorm, apex.normalization.FusedRMSNorm, apex.normalization.FusedLayerNorm
+try: from apex.normalization import FusedRMSNorm as DEFAULT_NORM, FusedRMSNorm as RMSNorm, FusedLayerNorm as LayerNorm
+except: 
+    from lcasr.components.normalisation import RMSNorm as RMSNorm, RMSNorm as DEFAULT_NORM
+    from torch.nn import LayerNorm as LayerNorm
 PreNorm, Scale = wrappers.PreNorm, wrappers.Scale
 # from flash_attn.flash_attention import FlashAttention
 # from flash_attn.modules.mha import FlashCrossAttention

@@ -1,5 +1,5 @@
 import torch, torch.nn as nn, torch.nn.functional as F
-import apex
+
 from torch.utils.checkpoint import checkpoint # # gradient/activation checkpointing
 from einops import rearrange, einsum
 from functools import partial
@@ -10,7 +10,12 @@ from lcasr.components.helpers import get_act
 ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
-DEFAULT_NORM, RMSNorm, LayerNorm = apex.normalization.FusedRMSNorm, apex.normalization.FusedRMSNorm, apex.normalization.FusedLayerNorm
+
+try: from apex.normalization import FusedRMSNorm as DEFAULT_NORM, FusedRMSNorm as RMSNorm, FusedLayerNorm as LayerNorm
+except: 
+    from lcasr.components.normalisation import RMSNorm as RMSNorm, RMSNorm as DEFAULT_NORM
+    from torch.nn import LayerNorm as LayerNorm
+
 PreNorm, Scale = wrappers.PreNorm, wrappers.Scale
 import random
 from lcasr.components.attention import Attention

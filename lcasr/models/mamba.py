@@ -1,5 +1,5 @@
 import torch, torch.nn as nn, torch.nn.functional as F
-import apex
+
 from torch.utils.checkpoint import checkpoint # # gradient/activation checkpointing
 from einops import rearrange
 from functools import partial
@@ -7,7 +7,11 @@ from lcasr.components import fused_dense, subsampling, decoder, wrappers
 from lcasr.components.rotary_emb import RotaryPositionalEmbedding, apply_rotary
 from lcasr.utils.helpers import exists
 from lcasr.components.bidirectional_mamba import MambaBlock
-DEFAULT_NORM, RMSNorm, LayerNorm = apex.normalization.FusedRMSNorm, apex.normalization.FusedRMSNorm, apex.normalization.FusedLayerNorm
+
+try: from apex.normalization import FusedRMSNorm as DEFAULT_NORM, FusedRMSNorm as RMSNorm, FusedLayerNorm as LayerNorm
+except: 
+    from lcasr.components.normalisation import RMSNorm as RMSNorm, RMSNorm as DEFAULT_NORM
+    from torch.nn import LayerNorm as LayerNorm
 import math
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
 from lcasr.models.base import BaseModel
