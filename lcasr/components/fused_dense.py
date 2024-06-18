@@ -17,9 +17,17 @@ try: import fused_dense_lib as fused_dense_cuda
 except: fused_dense_cuda = None; print('fused_dense_cuda not available. Install from https://github.com/Dao-AILab/flash-attention/tree/main/csrc/fused_dense_lib for better performance!')
 
 from lcasr.utils.helpers import exists
-from flash_attn.ops.activations import gelu_bwd, relu_bwd, sqrelu_fwd, sqrelu_bwd
-from flash_attn.utils.distributed import all_gather_raw, reduce_scatter_raw, all_reduce_raw
-from flash_attn.utils.distributed import reduce_scatter, all_reduce
+
+try:
+    from flash_attn.ops.activations import gelu_bwd, relu_bwd, sqrelu_fwd, sqrelu_bwd
+    from flash_attn.utils.distributed import all_gather_raw, reduce_scatter_raw, all_reduce_raw
+    from flash_attn.utils.distributed import reduce_scatter, all_reduce
+except:
+    print('flash attention not installed. Install from: github.com/Dao-AILab/flash-attention for best performance!')
+    fused_dense_cuda = None
+    gelu_bwd, relu_bwd, sqrelu_fwd, sqrelu_bwd = None, None, None, None
+    all_gather_raw, reduce_scatter_raw, all_reduce_raw = None, None, None
+    reduce_scatter, all_reduce = None, None
 
 
 class FusedDenseFunc(torch.autograd.Function):
