@@ -22,17 +22,18 @@ Config files for all pretrained models are provided within the checkpoint file
 ### Acoustic Model
 All checkpoints from the paper are currently hosted on huggingface.co/rjflynn2/ I will be adding a table to this README with specific links to each checkpoint and the checkpoints performance ASAP.  
 
-| D_model | Layers | Params (M) | Attn head dim | Epochs | Pos Enc | SpecAugment | Subsampling | Tedlium (WER) | Earnings-22 (WER) | Download |
-| 768 | 9 | ~120 | 128 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | 6.8/6.0/5.9 | 26.6/23.1/22.7 | [here](https://huggingface.co/rjflynn2/lcasr-9L-768D-6H-RB-1p5M)
-| 768 | 6 | 90 | 128 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | 6.8/6.4/6.2 | 27.7/24.6/24.4 | [here](https://huggingface.co/rjflynn2/lcasr-6L-768D-6H-RB-1p5M)
-| 768 | 6 | 90 | 64 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | ... | 27.5/24.8/24.4 | [here](https://huggingface.co/rjflynn2/lcasr-6L-768D-12H-RB-1p5M)
-| 768 | 6 | 90 | 32 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | 6.8/6.4/6.4 |  26.7/24.6/24.8| [here](https://huggingface.co/rjflynn2/lcasr-6L-768D-24H-RB-1p5M)
-| 768 | 6 | 90 | 128 | 1 | Rotary (\theta=10K)  | No | 8X Depthwise 256D | ... | 27.2/24.9/25.0* | [see 2023-preprint branch](https://github.com/robflynnyh/long-context-asr/tree/2023-preprint)
-| 768 | 6 | 90 | 128 | 1 | Sine | No | 8X Depthwise 256D | 7.2/6.7/6.6 | 27.8/25.3/25.3 | [here](https://huggingface.co/rjflynn2/lcasr-6L-768D-6H-SinePos)
-| 768 | 6 | 90 | 128 | 1 | None | No | 8X Depthwise 256D | 7.7/6.8/6.6 | 27.5/25.3/25.2 | [here](rjflynn2/lcasr-6L-768D-6H-NoPos)
-| 2048 | 3 | 315 | 128 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | ... | 28.7/26.1/26.1 | [here](https://huggingface.co/rjflynn2/lcasr-3L-2048D-16H-RB-1p5M)
-| 768 | 3 | ~50 | 128 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | 8.2/7.8/7.4 | 32.3/29.6/30.2 | [here](https://huggingface.co/rjflynn2/lcasr-3L-768D-6H-RB-1p5M)
-| 256 | 12 | ~20 | 32 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | 7.6/6.9/6.9 | 28.6/26.3/26.4 | [here](https://huggingface.co/rjflynn2/lcasr-12L-256D-8H-RB-1p5M)
-| 256 | 6 | ~10 | 32 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | 8.8/8.0/8.2 | 32.2/29.8/29.9 | [here](https://huggingface.co/rjflynn2/lcasr-6L-256D-8H-RB-1p5M)
+| Download | D_model | Layers | Params (M) | Attn head dim | Epochs | Pos Enc | SpecAugment | Subsampling | Tedlium (WER) | Earnings-22 (WER) | 
+|----------|---------|--------|------------|---------------|--------|---------|-------------|-------------|---------------|-------------------|
+| [here](https://huggingface.co/rjflynn2/lcasr-9L-768D-6H-RB-1p5M) | 768 | 9 | ~120 | 128 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | 6.8/6.0/5.9 | 26.6/23.1/22.7 |
+| [here](https://huggingface.co/rjflynn2/lcasr-6L-768D-6H-RB-1p5M) | 768 | 6 | 90 | 128 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | 6.8/6.4/6.2 | 27.7/24.6/24.4 | 
+| [here](https://huggingface.co/rjflynn2/lcasr-6L-768D-12H-RB-1p5M)| 768 | 6 | 90 | 64 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | ... | 27.5/24.8/24.4 | 
+| [here](https://huggingface.co/rjflynn2/lcasr-6L-768D-24H-RB-1p5M)| 768 | 6 | 90 | 32 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | 6.8/6.4/6.4 |  26.7/24.6/24.8| 
+| [see 2023-preprint branch](https://github.com/robflynnyh/long-context-asr/tree/2023-preprint) | 768 | 6 | 90 | 128 | 1 | Rotary (\theta=10K)  | No | 8X Depthwise 256D | ... | 27.2/24.9/25.0* | 
+| [here](https://huggingface.co/rjflynn2/lcasr-6L-768D-6H-SinePos) | 768 | 6 | 90 | 128 | 1 | Sine | No | 8X Depthwise 256D | 7.2/6.7/6.6 | 27.8/25.3/25.3 | 
+| [here](rjflynn2/lcasr-6L-768D-6H-NoPos) | 768 | 6 | 90 | 128 | 1 | None | No | 8X Depthwise 256D | 7.7/6.8/6.6 | 27.5/25.3/25.2 | 
+| [here](https://huggingface.co/rjflynn2/lcasr-3L-2048D-16H-RB-1p5M) | 2048 | 3 | 315 | 128 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | ... | 28.7/26.1/26.1 | 
+| [here](https://huggingface.co/rjflynn2/lcasr-3L-768D-6H-RB-1p5M) | 768 | 3 | ~50 | 128 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | 8.2/7.8/7.4 | 32.3/29.6/30.2 | 
+| [here](https://huggingface.co/rjflynn2/lcasr-12L-256D-8H-RB-1p5M) | 256 | 12 | ~20 | 32 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | 7.6/6.9/6.9 | 28.6/26.3/26.4 | 
+| [here](https://huggingface.co/rjflynn2/lcasr-6L-256D-8H-RB-1p5M) | 256 | 6 | ~10 | 32 | 1 | Rotary (\theta=1.5M) | No | 8X Depthwise 256D | 8.8/8.0/8.2 | 32.2/29.8/29.9 |
 
 *@1hour
