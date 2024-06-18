@@ -464,13 +464,17 @@ class Attention(nn.Module):
         #print(get_window_size(kwargs, direction=None))
         # softmax_scale is set to None but will default to 1/sqrt(d_k) in FlashAttention
         self.left_window, self.right_window = get_window_size(kwargs, direction='left'), get_window_size(kwargs, direction='right')
-        self.flash_attn_fn = FlashSelfAttention(
-            softmax_scale = None, 
-            attention_dropout = dropout, 
-            causal = kwargs.get('causal', False),
-            window_size=(self.left_window, self.right_window),
-            alibi_slopes=None
-        )
+        if (flash_attn_varlen_qkvpacked_func is None) or (flash_attn_qkvpacked_func is None):
+            self.flash_attn_fn = None
+        else:
+            self.flash_attn_fn = FlashSelfAttention(
+                softmax_scale = None, 
+                attention_dropout = dropout, 
+                causal = kwargs.get('causal', False),
+                window_size=(self.left_window, self.right_window),
+                alibi_slopes=None
+            )
+
         self.causal = kwargs.get('causal', False)
      
         self.return_attention_weights = kwargs.get('return_attention_weights', False)
@@ -512,7 +516,7 @@ class Attention(nn.Module):
         q, kv = self.apply_rotary(q, kv, rotary_emb_fn)
      
         ### Flash attention stuff 
-        if x.device.type == 'cuda' and flash_attn and not self.return_attention_weights:
+        if x.device.type == 'cuda' and flash_attn and not self.return_attention_weights and self.flash_attn_fn is not None:
             q, kv = q.contiguous(), kv.contiguous()
             if q.dtype == torch.float32:
                 q, kv = q.half(), kv.half()
