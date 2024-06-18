@@ -23,8 +23,13 @@ Config files for all pretrained models are provided within the checkpoint file
 ### Acoustic Model
 All checkpoints from the paper are currently hosted on [huggingface](https://huggingface.co/rjflynn2) below is a table that provides links for each model type aswell as there configuration in performance.
 checkpoints for each sequence length and repeat are contained inside folders in each repository that is linked for example a model with 10s of context and repeat 1 (out of 3) would be in the folder: n_seq_sched_1024_rp_1. 1024 represents the spectrogram length, 1024/100 =10.24 seconds, rp_1 = repeat 1. 
+
+WERs in the table are given for 10s/2.7min/20min context lengths 
+
 All models from this table/paper use [this](https://github.com/robflynnyh/long-context-asr/blob/main/lcasr/models/sconformer_xl.py) model class.
 If anything is unclear let me know!
+
+
 
 | Download | D_model | Layers | Params (M) | Attn head dim | Epochs | Pos Enc | SpecAugment | Subsampling | Tedlium (WER) | Earnings-22 (WER) | 
 |----------|---------|--------|------------|---------------|--------|---------|-------------|-------------|---------------|-------------------|
