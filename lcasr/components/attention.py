@@ -465,7 +465,6 @@ class Attention(nn.Module):
         # softmax_scale is set to None but will default to 1/sqrt(d_k) in FlashAttention
         self.left_window, self.right_window = get_window_size(kwargs, direction='left'), get_window_size(kwargs, direction='right')
         if flash_attn_varlen_qkvpacked_func is not None and flash_attn_qkvpacked_func is not None:
-            print(flash_attn_varlen_qkvpacked_func, flash_attn_qkvpacked_func)
             self.flash_attn_fn = FlashSelfAttention(
                 softmax_scale = None, 
                 attention_dropout = dropout, 
@@ -474,6 +473,7 @@ class Attention(nn.Module):
                 alibi_slopes=None
             )
         else:
+            print(flash_attn_varlen_qkvpacked_func, flash_attn_qkvpacked_func)
             self.flash_attn_fn = None
 
         self.causal = kwargs.get('causal', False)
