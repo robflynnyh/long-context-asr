@@ -1,5 +1,6 @@
 import apex, torch.nn as nn, torch.nn.functional as F, torch
-DEFAULT_NORM = apex.normalization.FusedRMSNorm
+try: from apex.normalization import FusedRMSNorm as DEFAULT_NORM
+except: from lcasr.components.normalisation import RMSNorm as DEFAULT_NORM
 from einops import rearrange
 
 class ASRLinearSCDecoder(nn.Module):
