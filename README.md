@@ -2,7 +2,6 @@
 ![figure 1.0 from paper](https://github.com/robflynnyh/long-context-asr/blob/main/eval/results/IS_paper/weracross_data.png)
 - Current Pre-Print accepted at Interspeech 2024 available on [arXiv](https://arxiv.org/abs/2310.15672) 
 - Code for the old 2023 preprint is in the 2023-preprint branch
-- Repository is continually being updated with more intstructions, eventually I hope to have a colab that can be used to run some of the pretrained models
 - As repo is w.i.p if you cannot figure out how to use anything please feel free to contact me by creating an issue!
 
 ## Installation
