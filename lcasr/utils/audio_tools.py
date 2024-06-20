@@ -189,7 +189,7 @@ def train_tokenizer(
     os.system(f'mv tokenizer.vocab {save_path}')
 
 def load_tokenizer(
-        tokenizer_path:str = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../artifacts/tokenizer.model') # relative path to tokenizer
+        tokenizer_path:str = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../artifacts/tokenizer.model') # relative path to tokenizer
     ):
     return spm.SentencePieceProcessor(model_file=tokenizer_path)
 
