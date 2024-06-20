@@ -2,7 +2,6 @@
 ![figure 1.0 from paper](https://github.com/robflynnyh/long-context-asr/blob/main/eval/results/IS_paper/weracross_data.png)
 - Current Pre-Print accepted at Interspeech 2024 available on [arXiv](https://arxiv.org/abs/2310.15672) 
 - Code for the old 2023 preprint is in the 2023-preprint branch
-- Repository is continually being updated with more intstructions, eventually I hope to have a colab that can be used to run some of the pretrained models
 - As repo is w.i.p if you cannot figure out how to use anything please feel free to contact me by creating an issue!
 
 ## Installation
@@ -10,7 +9,8 @@
 - For best performance, install Flash Attention 2.0 https://github.com/Dao-AILab/flash-attention and fused_dense_lib for fused MLP layers from https://github.com/Dao-AILab/flash-attention/tree/main/csrc/fused_dense_lib 
 - [Apex](https://github.com/NVIDIA/apex/tree/master) is used for fused rms/layer norm (and fused Adam if not using madgrad) - if it's not installed we will default to pytorch !
 - clone and run pip install ./ 
-
+- [Here is a colab](https://colab.research.google.com/drive/1QnFqDJ3z0fq5VrNs9Dh3nDBE4JrfB-Wq?usp=sharing) that outlines basic installation and demonstrates how to load and transcriber with a pretrained model!
+  
 ## Data
 - <del>For training models you must request access to receive the spotify training data which can be done via the following:</del> [link](https://podcastsdataset.byspotify.com/) (unfortunatly spotify are no longer maintaining this dataset)
 - For training models this code will work with any set of data where you have unsegmented (not segmented into utterances) precomputed spectrograms and corresponding transcriptions (with word level alignment). Word level alignement is needed to be able to chunk files into arbitrary sequence lengths.
