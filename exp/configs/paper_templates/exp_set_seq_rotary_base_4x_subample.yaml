@@ -60,7 +60,7 @@ optimizer:
     lr: 1e-3
 
 scheduler:
-  warmup_steps: 5000
+  warmup_steps: 9000
 
 audio_chunking: # 360000 (max = 1 hour)
   size: 512

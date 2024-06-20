@@ -1,9 +1,9 @@
 global:
-  root_path: /mnt/parscratch/users/acp21rjf/lcasr-6L-768D-6H-SinePos/n_seq_sched_
+  root_path: /mnt/parscratch/users/acp21rjf/lcasr-6L-768D-6H-NoPos/n_seq_sched_
   name: rb_n_seq_sched
   overlap_ratio: 0.875
   checkpoint: step_105360.pt
-  description: "sinusoidal 90M param model, decoding using windowed attention"
+  description: "NoPos 90M param model, decoding using windowed attention"
   
 
 models:
@@ -200,7 +200,7 @@ models:
 args:
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_sinusoidal_post_windowed_attn.csv'
+  save_dataframe_path: './results/evals_NoPos_post_windowed_attn.csv'
   evaluation_mode: windowed_attention
   max_sequence_length: 3600000
 
