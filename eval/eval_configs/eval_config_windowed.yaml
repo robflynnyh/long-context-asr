@@ -274,9 +274,24 @@ models:
 
 
 args:
-  splits: [test, dev]
-  datasets: [tedlium, earnings22, rev16, earnings22_full]
-  single_utterance: false # only used on some datasets i.e tedlium
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_rotary_windowed.csv'
+  save_dataframe_path: './results/evals_rotary_prewindowed.csv'
+  evaluation_mode: windowed_attention
+  max_sequence_length: 3600000
+
+datasets:
+  - name: this_american_life
+    splits: [test, dev]
+  - name: tedlium
+    splits: [test, dev]
+    args:
+      single_utterance: false
+      concat: false
+  - name: rev16
+    splits: [test]
+  - name: earnings22
+    splits: [test, dev]
+  - name: earnings22_full
+    splits: [test]
+

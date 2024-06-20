@@ -1,18 +1,18 @@
 global:
-  root_path: /mnt/parscratch/users/acp21rjf/spotify/5kwarmup_rotary_pos_3l_256d_seq_sched/n_seq_sched_
-  name: rb_n_seq_sched
+  root_path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_
+  name: rb_n_seq_sched_6l_256d
   overlap_ratio: 0.875
   checkpoint: step_105360.pt
-  description: "rotary base 10M param 6l 256d model, decoding using windowed attention"
+  description: "rotary base 1.5M, 6l 256d model, decoding using windowed attention"
   
 
 models:
-  # - name: ${global.name}
-  #   repeat: 1
-  #   seq_len: 1024
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 1024
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   - name: ${global.name}
     repeat: 2
     seq_len: 1024
@@ -89,12 +89,12 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  # - name: ${global.name}
-  #   repeat: 2
-  #   seq_len: 16384
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 16384
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   - name: ${global.name}
     repeat: 3
     seq_len: 16384
@@ -114,19 +114,19 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  # - name: ${global.name}
-  #   repeat: 3
-  #   seq_len: 32768
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 32768
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
 
-  # - name: ${global.name}
-  #   repeat: 1
-  #   seq_len: 65536
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 65536
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   - name: ${global.name}
     repeat: 2
     seq_len: 65536
@@ -200,7 +200,7 @@ models:
 args:
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_windowed_256d_6l_5kwarmup.csv'
+  save_dataframe_path: './results/evals_windowed_256d_6l.csv'
   evaluation_mode: windowed_attention
   max_sequence_length: 3600000
 
