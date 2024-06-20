@@ -1,1 +1,1 @@
-include ./lcasr/artifacts/tokenizer.model
+include lcasr/artifacts/tokenizer.model
