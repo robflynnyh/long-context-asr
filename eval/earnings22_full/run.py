@@ -59,7 +59,7 @@ def preprocess_transcript(text:str):
 
 def process_text_and_audio_fn(rec_dict): return processing_chain(rec_dict['audio']), preprocess_transcript(rec_dict['text'])
 
-def get_text_and_audio(split):
+def get_text_and_audio(split, **kwargs):
     assert split in ['test'], f'Split must be test (got {args.split})'
     data_path = TEST_PATH 
     audio_files, text_files = fetch_data(audio_path=data_path, txt_path=ALL_TEXT_PATH)

@@ -89,8 +89,8 @@ def process_text_and_audio_fn(rec_dict):
     audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
     return audio_spec, normalize(gold_text).lower()
 
-def get_text_and_audio(split):
-    assert split in ['test', 'dev', 'train'], f'Split must be either test or dev train (got {args.split})'
+def get_text_and_audio(split, **kwargs):
+    assert split in ['test', 'dev', 'train'], f'Split must be either test or dev train (got {split})'
     data_path = TEST_PATH if split == 'test' else DEV_PATH
     
     audio_files, text_files = fetch_data(path=data_path)

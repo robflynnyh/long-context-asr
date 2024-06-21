@@ -76,7 +76,7 @@ def get_text_and_audio(split):
         })
     return return_data
 
-def main(args):
+def main(args, **kwargs):
     assert args.split in ['test', 'dev'], 'Split must be either test or dev'
     data_path = TEST_PATH if args.split == 'test' else DEV_PATH
     

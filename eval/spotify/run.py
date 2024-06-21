@@ -76,7 +76,7 @@ def preprocess_transcript(text:str):
 
 def process_text_and_audio_fn(rec_dict): return rec_dict['audio'], preprocess_transcript(rec_dict['text'])
 
-def get_text_and_audio(split):
+def get_text_and_audio(split, **kwargs):
     audio_files, text_files = fetch_data()
   
     return_data = []

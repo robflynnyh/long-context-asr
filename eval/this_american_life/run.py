@@ -45,7 +45,7 @@ def preprocess_transcript(text:str): return normalize(text).lower()
 
 def process_text_and_audio_fn(rec_dict): return processing_chain(rec_dict['audio']), preprocess_transcript(rec_dict['text'])
 
-def get_text_and_audio(split):
+def get_text_and_audio(split, **kwargs):
     if split == 'train':
         data_path = TRAIN_PATH
     elif split == 'dev':
