@@ -8,6 +8,7 @@ from lcasr.eval.utils import zero_out_spectogram, fetch_logits, decode_beams_lm
 from lcasr.eval.wer import word_error_rate_detail 
 from pyctcdecode import build_ctcdecoder
 import time
+from functools import partial
 
 TEST_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/test/'
 DEV_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/dev/'
@@ -82,16 +83,24 @@ def fetch_data(path:str = TEST_PATH):
     return audio_files, text_files
 
 
-def process_text_and_audio_fn(rec_dict):
+def process_text_and_audio_fn(rec_dict, single_utterance=False):
     audio, text = rec_dict['audio'], rec_dict['text']
-    gold_text, _, remove_timings = proc_stm_and_timings(stm_path=text)
     audio_spec = processing_chain(audio)
-    audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
-    return audio_spec, normalize(gold_text).lower()
+
+    if not single_utterance:
+        gold_text, _, remove_timings = proc_stm_and_timings(stm_path=text)
+        audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
+        return audio_spec, normalize(gold_text).lower()
+    else:
+        utterances, gold_text = fetch_utterances(stm_path=text, spectogram=audio_spec)
+        return utterances, gold_text
+
+
 
 def get_text_and_audio(split, **kwargs):
     assert split in ['test', 'dev', 'train'], f'Split must be either test or dev train (got {split})'
     data_path = TEST_PATH if split == 'test' else DEV_PATH
+    single_utterance = kwargs.get('single_utterance', False)
     
     audio_files, text_files = fetch_data(path=data_path)
     return_data = []
@@ -100,7 +109,7 @@ def get_text_and_audio(split, **kwargs):
             'id': audio_files[rec],
             'text': text_files[rec], 
             'audio': audio_files[rec], 
-            "process_fn": process_text_and_audio_fn
+            "process_fn": partial(process_text_and_audio_fn, single_utterance=single_utterance)
         })
 
     return return_data
