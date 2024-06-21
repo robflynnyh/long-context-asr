@@ -90,10 +90,10 @@ def process_text_and_audio_fn(rec_dict, single_utterance=False):
     if not single_utterance:
         gold_text, _, remove_timings = proc_stm_and_timings(stm_path=text)
         audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings)
-        return audio_spec, normalize(gold_text).lower()
+        return audio_spec, normalize(gold_text).lower().strip()
     else:
         utterances, gold_text = fetch_utterances(stm_path=text, spectogram=audio_spec)
-        return utterances, gold_text
+        return utterances, normalize(gold_text).lower().strip()
 
 
 
