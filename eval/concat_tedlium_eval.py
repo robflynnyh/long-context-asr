@@ -11,6 +11,7 @@ normalize = EnglishTextNormalizer()
 from tqdm import tqdm
 import math
 import random
+from einops import rearrange
 
 from earnings22_full.run import get_text_and_audio as get_text_and_audio_earnings22_full
 from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
@@ -23,7 +24,7 @@ datasets_functions = {
     'tedlium': get_text_and_audio_tedlium,
 }
 
-
+@torch.inference_mode()
 def main(args):
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
@@ -36,6 +37,7 @@ def main(args):
         args.config.model.flash_attn = False
     
     seq_len = args.seq_len
+    
     subsample_factor = args.config.model.get('subsampling_factor', 8)
     ds_seq_len = seq_len // subsample_factor
     args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
@@ -54,7 +56,7 @@ def main(args):
     model.device = device
     model = model.to(device)
     model.eval()
-
+    concat_from = args.__dict__.get('concat_from', 'middle')
     decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
 
     data = datasets_functions[args.dataset](args.split)
@@ -86,18 +88,18 @@ def main(args):
             recordings = [i for i in range(len(data)) if i != rec]
             random.shuffle(recordings)
             all_specs_cur = [all_specs[i] for i in recordings]
-            if args.concat_from == 'middle':
+            if concat_from == 'middle':
                 left = all_specs_cur[:len(all_specs_cur)//2]
                 right = all_specs_cur[len(all_specs_cur)//2:]
-            elif args.concat_from == 'left':
+            elif concat_from == 'left':
                 left = all_specs_cur
                 right = []
-            elif args.concat_from == 'right':
+            elif concat_from == 'right':
                 left = []
                 right = all_specs_cur
             specs = left + [audio_spec] + right
             specs = torch.cat(specs, dim=-1) 
-            print(specs.shape)
+          
             logits = model(specs.to(device))['final_posteriors']
             downsampled_by = specs.shape[-1] / logits.shape[-2]
             left_in_len = sum([el.shape[-1] for el in left])
@@ -105,13 +107,14 @@ def main(args):
             cur_spec_in_len = audio_spec.shape[-1]
             ds_cur_spec_len = int(cur_spec_in_len / downsampled_by)
             logits = logits[:, ds_left_len:ds_left_len+ds_cur_spec_len, :].clone()
-    
             all_logits.append(torch.as_tensor(logits))
+
         logits = torch.zeros_like(all_logits[0])
         for logit in all_logits:
             logits += logit.exp()
         logits = torch.log(logits / args.__dict__.get('repeats', 1))
-        out_text = decoder(logits)
+   
+        out_text = decoder(rearrange(logits, '() n v -> n v'))
 
         out = normalize(out_text).lower()
         
@@ -154,7 +157,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-r', '--repeats', type=int, default=1, help='repeat evaluation n times')
     parser.add_argument('--dataset', '-d', type=str, default='tedlium', choices=datasets_functions.keys())
-    parser.add_argument('-cf' '--concat_from', type=str, default='middle', choices=['middle', 'left', 'right'], help='concat from middle, left or right')
+    parser.add_argument('--concat_from', '-cf', type=str, default='middle', choices=['middle', 'left', 'right'], help='concat from middle, left or right')
 
     parser.add_argument('-c', '--checkpoint', type=str, default='../../exp/model.pt', help='path to checkpoint')
     parser.add_argument('-split', '--split', type=str, default='test', help='test or dev split')
@@ -164,6 +167,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
     args = parser.parse_args()
+
     main(args)
     
 
