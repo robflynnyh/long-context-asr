@@ -1,0 +1,281 @@
+global:
+  root_path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_
+  name: rb_n_seq_sched
+  overlap_ratio: 0.875
+  window_len: 2048
+  seq_len: 360000
+  within_recording: false
+
+  checkpoint: step_105360.pt
+  description: "rotary base 90M param model, decoding using windowed attention"
+  
+
+models:
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 1
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 512
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 2
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 512
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 3
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 512
+
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 1
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 1024
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 2
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 1024
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 3
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 1024
+
+  
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 1
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 2048
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 2
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 2048
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 3
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 2048
+
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 1
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 4096
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 2
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 4096
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 3
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 4096
+
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 1
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 8192
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 2
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 8192
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 3
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 8192
+
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 1
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 8192
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 2
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 8192
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 3
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 8192
+
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 1
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 16384
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 2
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 16384
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 3
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 16384
+
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 1
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 32768
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 2
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 32768
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 3
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 32768
+
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 1
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 65536
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 2
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args: 
+      buffer_len: 65536
+
+  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+    repeat: 3
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+    args:
+      buffer_len: 65536
+
+args:
+  verbose: true
+  model_class: SCConformerXL
+  save_dataframe_path: './results/shuffled_with_no_context_evals_rb_post_windowed_attn.csv'
+  evaluation_mode: windowed_attention
+  max_sequence_length: 3600000
+  distracter_len: 2048
+  window_len: ${global.window_len}
+  within_recording: ${global.within_recording}
+  run_eval_with: shuffle_eval
+  
+datasets:
+  - name: earnings22
+    splits: [test]
+    args:
+      distracter_dataset: no_context

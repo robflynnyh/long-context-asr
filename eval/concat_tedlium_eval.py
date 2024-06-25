@@ -10,6 +10,7 @@ from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
 from tqdm import tqdm
 import math
+import random
 
 from earnings22_full.run import get_text_and_audio as get_text_and_audio_earnings22_full
 from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
@@ -20,12 +21,6 @@ from spotify.run import get_text_and_audio as get_text_and_audio_spotify
 
 datasets_functions = {
     'tedlium': get_text_and_audio_tedlium,
-    'earnings22_full': get_text_and_audio_earnings22_full,
-    'earnings22': get_text_and_audio_earnings22,
-    'rev16': get_text_and_audio_rev16,
-    'this_american_life': get_text_and_audio_this_american_life,
-    'spotify': get_text_and_audio_spotify,
-    'no_context': lambda split: [None] # dummy function to simplify code
 }
 
 
@@ -70,6 +65,8 @@ def main(args):
     all_golds = []
     wer_data = []
 
+    all_specs = [data[i]['process_fn'](data[i])[0] for i in range(len(data))]
+
     pbar = tqdm(range(len(data)), total=len(data)) #if verbose else range(len(data))
     for rec in pbar:
         if verbose: print(f'Processing {rec+1}/{len(data)}')
@@ -81,44 +78,39 @@ def main(args):
         #args, model:SCConformerXL, spec:torch.Tensor, distracter_spec:torch.Tensor, distracter_spec_chunks_len:int, seq_len:int, window_len:int, buffer_len:int, tokenizer, use_tqdm=True
         
         #recordings = [i for i in range(len(data)) if i != rec]
-        distracter_data = datasets_functions[args.distracter_dataset]('test')
-
-        if args.within_recording:
-            assert args.dataset == args.distracter_dataset, 'within_recording only makes sense when dataset and distracter_dataset are the same'
+        
+        
 
         all_logits = []
         for i in range(args.__dict__.get('repeats', 1)):
-            if args.dataset == args.distracter_dataset and not args.within_recording:
-                recordings = [i for i in range(len(distracter_data)) if i != rec]
-            elif args.dataset == args.distracter_dataset and args.within_recording:
-                recordings = [rec]
-            else:
-                recordings = [i for i in range(len(distracter_data))]
-
-            # pick a random recording
-            if args.args.distracter_dataset != 'no_context':
-                distracter_rec_id = recordings[math.floor(torch.rand(1)*len(recordings))]
-                distracter_spec, _ = distracter_data[distracter_rec_id]['process_fn'](distracter_data[distracter_rec_id])
-            else:
-                distracter_spec = torch.zeros_like(audio_spec)
-
-            logits = shuffled_eval(
-                args = args, 
-                model = model, 
-                spec = audio_spec,
-                distracter_spec = distracter_spec, 
-                distracter_spec_chunks_len = args.distracter_len,
-                seq_len = args.seq_len,
-                window_len = args.window_len,
-                buffer_len = args.buffer_len,
-                tokenizer = tokenizer,
-                use_tqdm = True
-            ) 
+            recordings = [i for i in range(len(data)) if i != rec]
+            random.shuffle(recordings)
+            all_specs_cur = [all_specs[i] for i in recordings]
+            if args.concat_from == 'middle':
+                left = all_specs_cur[:len(all_specs_cur)//2]
+                right = all_specs_cur[len(all_specs_cur)//2:]
+            elif args.concat_from == 'left':
+                left = all_specs_cur
+                right = []
+            elif args.concat_from == 'right':
+                left = []
+                right = all_specs_cur
+            specs = left + [audio_spec] + right
+            specs = torch.cat(specs, dim=-1) 
+            print(specs.shape)
+            logits = model(specs.to(device))['final_posteriors']
+            downsampled_by = specs.shape[-1] / logits.shape[-2]
+            left_in_len = sum([el.shape[-1] for el in left])
+            ds_left_len = int(left_in_len / downsampled_by)
+            cur_spec_in_len = audio_spec.shape[-1]
+            ds_cur_spec_len = int(cur_spec_in_len / downsampled_by)
+            logits = logits[:, ds_left_len:ds_left_len+ds_cur_spec_len, :].clone()
+    
             all_logits.append(torch.as_tensor(logits))
         logits = torch.zeros_like(all_logits[0])
         for logit in all_logits:
             logits += logit.exp()
-        logits = torch.log(logits / 3)
+        logits = torch.log(logits / args.__dict__.get('repeats', 1))
         out_text = decoder(logits)
 
         out = normalize(out_text).lower()
@@ -162,13 +154,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-r', '--repeats', type=int, default=1, help='repeat evaluation n times')
     parser.add_argument('--dataset', '-d', type=str, default='tedlium', choices=datasets_functions.keys())
-    parser.add_argument('--distracter_dataset', '-dd', type=str, default='earnings22_full', choices=datasets_functions.keys())
-    parser.add_argument('-wr', '--within_recording', action='store_true', help='sample distracter from within recording')
+    parser.add_argument('-cf' '--concat_from', type=str, default='middle', choices=['middle', 'left', 'right'], help='concat from middle, left or right')
 
-    parser.add_argument('-window_len', '--window_len', type=int, default=2048, help='window length')
-    parser.add_argument('-buffer_len', '--buffer_len', type=int, default=2048, help='buffer length')
-    parser.add_argument('-distracter_len', '--distracter_len', type=int, default=2048, help='distracter length')
-    
     parser.add_argument('-c', '--checkpoint', type=str, default='../../exp/model.pt', help='path to checkpoint')
     parser.add_argument('-split', '--split', type=str, default='test', help='test or dev split')
     parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
