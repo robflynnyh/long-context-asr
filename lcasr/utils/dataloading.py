@@ -308,6 +308,7 @@ class SimpleDataloader(torch.utils.data.DataLoader):
         random_seed=1234,
         subgroup_shuffle_size:int = 2000,
         seen_ids:List[str] = [],
+        **kwargs
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -328,7 +329,7 @@ class SimpleDataloader(torch.utils.data.DataLoader):
                 shuffle = False, 
                 num_workers = num_workers, 
                 pin_memory = pin_memory, 
-                collate_fn = collate_fn(),
+                collate_fn = kwargs.get('collate_fn', collate_fn()),
                 prefetch_factor = prefetch if num_workers > 0 else None,
             )
             
@@ -347,7 +348,8 @@ class VariableBatchSimpleDataloader():
         prefetch:int = None,
         random_seed=1234,
         subgroup_shuffle_size:int = 2000,
-        seen_ids:List[str] = []
+        seen_ids:List[str] = [],
+        **kwargs
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -373,6 +375,7 @@ class VariableBatchSimpleDataloader():
             subgroup_shuffle_size = subgroup_shuffle_size,
             random_seed = random_seed,
             seen_ids = seen_ids,
+            **kwargs
         )
 
     def update(

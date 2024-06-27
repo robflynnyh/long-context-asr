@@ -135,7 +135,7 @@ models:
 args:
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_windowed_rotary_10K.csv'
+  save_dataframe_path: './results/evals_concat_windowed_rotary_10K.csv'
   evaluation_mode: windowed_attention
   max_sequence_length: 3600000
   run_eval_with: concat_tedlium_eval

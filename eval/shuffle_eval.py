@@ -96,7 +96,7 @@ def main(args):
                 recordings = [i for i in range(len(distracter_data))]
 
             # pick a random recording
-            if args.args.distracter_dataset != 'no_context':
+            if args.distracter_dataset != 'no_context':
                 distracter_rec_id = recordings[math.floor(torch.rand(1)*len(recordings))]
                 distracter_spec, _ = distracter_data[distracter_rec_id]['process_fn'](distracter_data[distracter_rec_id])
             else:

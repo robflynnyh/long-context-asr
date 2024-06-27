@@ -1,0 +1,297 @@
+global:
+  root_path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_3pochs/rb_window_size_
+  name: rotary_pos_6l_768d_pre_windowed
+  seq_len: 360000
+  checkpoint: step_105360.pt
+  overlap_ratio: 0.875
+  description: "training + eval with windowed attention at fixed seq len and varying window sizes"
+
+models:
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 32
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 2
+  #   window_size: 32
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 32
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 64
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 2
+  #   window_size: 64
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: 
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 64
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 128
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 2
+  #   window_size: 128
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name} 
+  #   repeat: 3
+  #   window_size: 128
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 256
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 2
+  #   window_size: 256
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 256
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 512
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 512
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+
+  # - name: ${global.name} # Not finished!!
+  #   repeat: 1
+  #   window_size: 1024
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 2
+    window_size: 1024
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    window_size: 1024
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 2048
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 2048
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 4096
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    window_size: 4096
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 4096
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 8192
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  # - name: ${global.name} # Not finished!!
+  #   repeat: 3
+  #   window_size: 8192
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 16384
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    window_size: 16384
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  # - name: ${global.name} # Not finished!!
+  #   repeat: 3
+  #   window_size: 16384
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 32768
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  # - name: ${global.name} # Not finished!!
+  #   repeat: 3
+  #   window_size: 32768
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+  # - name: ${global.name}
+  #   repeat: 1
+  #   window_size: 360000
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    window_size: 360000
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 3
+  #   window_size: 360000
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: 0.875
+  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+  #   description: "here we half the number of layers to look at its effect on context"
+
+
+args:
+  verbose: true
+  model_class: SCConformerXL
+  save_dataframe_path: './results/3epoch_pre_windowed.csv'
+  evaluation_mode: windowed_attention
+  max_sequence_length: 3600000
+
+datasets:
+  - name: this_american_life
+    splits: [test, dev]
+  - name: tedlium
+    splits: [test, dev]
+    args:
+      single_utterance: false
+      concat: false
+  - name: rev16
+    splits: [test]
+  - name: earnings22_full
+    splits: [test]
+  - name: earnings22
+    splits: [test, dev]

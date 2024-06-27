@@ -59,7 +59,7 @@ sequence_scheduler:
 
 
 wandb:
-  use: true
+  use: false
   project_name: spotify_long_context
   name: 'conformer2x'
   id: '' #zhmi8ijr
@@ -74,7 +74,7 @@ data:
 training:
   start_spec_augment_after_n_epochs: -1 # -1 to disable
   max_epochs: 1
-  batch_size: 88
+  batch_size: 10
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0

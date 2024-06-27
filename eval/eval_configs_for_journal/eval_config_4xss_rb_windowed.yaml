@@ -121,7 +121,7 @@ models:
   #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
   #   description: ${global.description}
 
-  - name: ${global.name}
+  - name: ${global.name} # DELETE FROM RESULTS !!
     repeat: 1
     seq_len: 65536
     overlap_ratio: ${global.overlap_ratio}
@@ -152,7 +152,7 @@ models:
   #   overlap_ratio: ${global.overlap_ratio}
   #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
   #   description: ${global.description}
-  - name: ${global.name}
+  - name: ${global.name} # !! DELETE FROM EVALS!!
     repeat: 3
     seq_len: 131072
     overlap_ratio: ${global.overlap_ratio}
