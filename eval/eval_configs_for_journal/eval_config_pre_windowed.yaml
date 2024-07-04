@@ -18,14 +18,14 @@ models:
   - name: ${global.name}
     repeat: 2
     window_size: 32
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 3
     window_size: 32
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
@@ -33,21 +33,21 @@ models:
   - name: ${global.name}
     repeat: 1
     window_size: 64
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 64
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: 
   - name: ${global.name}
     repeat: 3
     window_size: 64
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
@@ -55,21 +55,21 @@ models:
   - name: ${global.name}
     repeat: 1
     window_size: 128
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 128
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}  
     repeat: 3
     window_size: 128
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: 0.875
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: "here we half the number of layers to look at its effect on context"
@@ -77,21 +77,21 @@ models:
   - name: ${global.name}
     repeat: 1
     window_size: 256
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 256
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 3
     window_size: 256
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
@@ -99,21 +99,21 @@ models:
   - name: ${global.name}
     repeat: 1
     window_size: 512
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 512
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: 0.875
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: "here we half the number of layers to look at its effect on context"
   - name: ${global.name} ## !! double check wers are reasonable as wanb stopped logging loss for some reason..
     repeat: 3
     window_size: 512
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
@@ -121,21 +121,21 @@ models:
   - name: ${global.name}
     repeat: 1
     window_size: 1024
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: 0.875
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: "here we half the number of layers to look at its effect on context"
   - name: ${global.name}
     repeat: 2
     window_size: 1024
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 3
     window_size: 1024
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
@@ -143,21 +143,21 @@ models:
   - name: ${global.name}
     repeat: 1
     window_size: 2048
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 2048
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 3
     window_size: 2048
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
@@ -165,21 +165,21 @@ models:
   - name: ${global.name}
     repeat: 1
     window_size: 4096
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 4096
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 3
     window_size: 4096
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
@@ -188,21 +188,21 @@ models:
   - name: ${global.name}
     repeat: 1
     window_size: 8192
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 8192
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name} # Not finished!!
     repeat: 3
     window_size: 8192
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: 0.875
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: "here we half the number of layers to look at its effect on context"
@@ -211,21 +211,21 @@ models:
   - name: ${global.name}  
     repeat: 1
     window_size: 16384
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 16384
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name} # Not finished!!
     repeat: 3
     window_size: 16384
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: 0.875
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: "here we half the number of layers to look at its effect on context"
@@ -233,21 +233,21 @@ models:
   - name: ${global.name}
     repeat: 1
     window_size: 32768
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 32768
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name} # Not finished!!
     repeat: 3
     window_size: 32768
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: 0.875
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: "here we half the number of layers to look at its effect on context"
@@ -255,21 +255,21 @@ models:
   - name: ${global.name}
     repeat: 1
     window_size: 360000
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 360000
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
   - name: ${global.name}
     repeat: 3
     window_size: 360000
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: 0.875
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: "here we half the number of layers to look at its effect on context"

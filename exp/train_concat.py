@@ -114,9 +114,8 @@ def train(
     tokenizer = dataloader.tokenizer
     chunk_size, chunk_overlap = args.config.audio_chunking['size'], 0 # previously args.config.audio_chunking['overlap'] though this is not used anymore
 
-    if exists(sequence_scheduler):
-        chunk_size = sequence_scheduler.cur_sequence_length
-        batch_size = sequence_scheduler.cur_batch_size
+    chunk_size = sequence_scheduler.cur_sequence_length
+    batch_size = sequence_scheduler.cur_batch_size
 
     pad_id = tokenizer.pad_id()
     last_podcast, cur_podcast, podcasts_since_last_save = step, step, 0
@@ -171,41 +170,23 @@ def train(
         last_podcast = cur_podcast
         ###############################
         
-        batch_size, channels, n = audio.shape
-        audio = rearrange(audio, 'b c n -> () c (b n)')
-   
-        print(audio_lengths)
+        
+        
+      
+ 
         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
-        print(len(txt))
-        txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = n) for el in txt] # becomes v slow for v large batch sizes !!
-        print([el.shape[-1] for el in audio_chunks_])
-        print(len(txt_chunks), len(audio_chunks_))
-        exit()
+        txt_chunks = chunk_text_json(text = txt[0], chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) # becomes v slow for v large batch sizes !!
+        # print(([(el['word'], el['startTime']) for el in txt[0]]))
+
+        # print(audio.shape, audio_chunks_[0].shape, len(txt_chunks), len(audio_chunks_))
+        # exit()
         del audio
         backwards_every_loss, steps_since_backwards = 0.0, 0
         chunks, culm_lengths_audio, nans_in_a_row = [], torch.zeros_like(audio_lengths), 0
 
-        ################################
-        for ix, el in enumerate(audio_chunks_):
+        # randomise order of auido chunks and text chunks using same order for text and audio
+        audio_chunks_, txt_chunks = list(zip(*random.sample(list(zip(audio_chunks_, txt_chunks)), len(audio_chunks_))))
 
-            remove_mask = ~(culm_lengths_audio > audio_lengths)
-            cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
-            cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
-          
-            enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el[ix])) for i, el in enumerate(txt_chunks) if remove_mask[i]]
-            enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
-            enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
-            if enc_txt_chunks_lengths.max() == 0:
-                continue # skip if none contain text (bad batch)
-            chunks.append({
-                'audio':cur_chunks,
-                'txt':enc_txt_chunks,
-                'txt_lengths':enc_txt_chunks_lengths,
-                'audio_lengths':cur_lengths,
-                'selection_mask':remove_mask,
-                'cur_culm_lengths':cur_culm_lengths,
-            })
-            culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
 
         was_warmup = scheduler.is_warmup
         if was_warmup:
@@ -215,18 +196,28 @@ def train(
         prev_selection_mask, last_kv_set = None, None # selection mask from previous chunk
         ################################
 
-
+        ix = 0
         try:
-            for ix, chunk_json in enumerate(chunks):
-                print(f'chunk {ix}/{len(chunks)}')
-               
-                audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
-                txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
-                selection_mask = chunk_json['selection_mask']
+            while ix < len(audio_chunks_):
+                print(f'chunk {ix}/{len(audio_chunks_)}')
+                audio = audio_chunks_[ix:ix+batch_size]
+                cur_txt = txt_chunks[ix:ix+batch_size]
+                ix += batch_size
 
-                cur_selection_mask = None
-                if prev_selection_mask != None and not torch.allclose(selection_mask, prev_selection_mask):
-                    cur_selection_mask = selection_mask[prev_selection_mask]
+                a_lengths = [el.shape[-1] for el in audio]
+                a_lengths = torch.LongTensor(a_lengths)
+                if min(a_lengths) == max(a_lengths):
+                    audio = torch.cat(audio, dim=0)
+                else:
+                    audio = [rearrange(el, '() c n -> n c') for el in audio]
+                    audio = torch.nn.utils.rnn.pad_sequence(audio, batch_first=True, padding_value=0)
+                    audio = rearrange(audio, 'b n c -> b c n')
+                         
+                
+                enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el)) for el in cur_txt]
+                t_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
+                if sum(t_lengths) == 0: continue # bad batch
+                txt = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
                     
 
                 audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
@@ -236,22 +227,14 @@ def train(
                     cached_kvs = last_kv_set.clone() if last_kv_set != None else None
                     cached_kv_lengths = torch.LongTensor([cached_kvs.shape[1]] * cached_kvs.shape[0]).to(device) if cached_kvs != None else None
 
-                    if cur_selection_mask != None and cached_kvs != None:
-                        cached_kvs = cached_kvs[cur_selection_mask]
-                        cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
                     
-
                     out = model(
                         audio_signal = audio, 
                         length = a_lengths, 
                         cached_kvs = cached_kvs, 
                         cached_kv_lengths = cached_kv_lengths
                     )
-                    
-                    if max_cache_length != 0:
-                        out_kvs = out['kvs_to_cache'].clone()
-                        last_kv_set = out_kvs[:, -max_cache_length:].clone()
-                    
+   
                     cur_probs = out['final_posteriors']
                     B,N,C = cur_probs.shape 
                     loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
@@ -314,7 +297,6 @@ def train(
                         })
                     
                     cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
-                prev_selection_mask = selection_mask.clone()
 
         except RuntimeError as e: 
             if 'an illegal memory access was encountered' in str(e): 
@@ -333,14 +315,9 @@ def train(
                 args.config['audio_chunking']['size'] = new_seq_len
                 chunk_size = new_seq_len
                 batch_size = new_bs
-                dataloader.update(
-                    batch_size = batch_size,
-                    seen_ids = seen_ids,
-                )
+          
                 if args.config['model']['use_rotary'] and args.config['sequence_scheduler'].get('interpolate_rotary', False):
                     model.rotary_pos_emb.rotary_interpolation_factor = model.rotary_pos_emb.rotary_interpolation_factor * sequence_scheduler.increase_by_multiplier
-                dataloader_iter = iter(dataloader)
-                pbar.total = len(dataloader) # update total of tqdm
                 
         del chunks
         
@@ -357,7 +334,25 @@ def train(
     return model
             
             
+def concat_collate_fn():
+    def collate_fn(batch):
+        audio, txt, ids = zip(*batch)
+    
+        audio_lengths = torch.LongTensor([el.shape[0] for el in audio])
+        
+        audio = rearrange(torch.cat(audio, dim=0), 'n c -> () c n')
+        audio_lengths_seconds = audio_lengths / 100
+        audio_lengths_seconds_culm = torch.cumsum(audio_lengths_seconds, dim=0) - audio_lengths_seconds
+        concat_txt = [[]]
+        #print(audio_lengths_seconds_culm)
+        for i, fi in enumerate(txt):
+            for el in fi:
+                el['startTime'] = str(float(el['startTime'][:-1]) + audio_lengths_seconds_culm[i].item()) + 's'
+                el['endTime'] = str(float(el['endTime'][:-1]) + audio_lengths_seconds_culm[i].item()) + 's'
+                concat_txt[0].append(el)
 
+        return audio, audio_lengths, concat_txt, ids
+    return collate_fn
 
 def main(args):
     args.config_path = args.config
@@ -433,6 +428,7 @@ def main(args):
         prefetch = args.prefetch_factor,
         seen_ids = seen_ids,
         random_seed = random_seed,
+        collate_fn = concat_collate_fn(),
     )
 
     # None if start_spec_augment_after_n_epochs == -1 or epoch < start_spec_augment_after_n_epochs else 
@@ -444,9 +440,6 @@ def main(args):
         logger = partial(wandb.log, commit=False)
         add_debug_backwards_hooks(model = model, logger = logger)
     
-    if sequence_scheduler and dataloader.batch_size != sequence_scheduler.cur_batch_size:
-        print('WARNING: dataloader batch size does not match sequence scheduler batch size, updating dataloader batch size')
-        dataloader.update(batch_size = sequence_scheduler.cur_batch_size, seen_ids = seen_ids)
 
     final_model = train(
         args = args, 

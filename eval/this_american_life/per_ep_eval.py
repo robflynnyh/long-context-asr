@@ -8,7 +8,7 @@ from pyctcdecode import build_ctcdecoder
 from lcasr.eval.wer import word_error_rate_detail 
 from whisper.normalizers import EnglishTextNormalizer
 import warnings
-from omegaconf import OmegaConf
+from lcasr.utils.omegaconf import OmegaConf
 normalize = EnglishTextNormalizer()
 import pandas as pd
 from run import get_text_and_audio

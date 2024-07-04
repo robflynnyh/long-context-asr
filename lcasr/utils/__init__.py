@@ -7,4 +7,5 @@ from . import (
     scheduling,
     augmentation,
     lm_tools,
+    omegaconf
 )

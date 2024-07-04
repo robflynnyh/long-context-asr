@@ -9,7 +9,7 @@ from lcasr.eval.wer import word_error_rate_detail
 from pyctcdecode import build_ctcdecoder
 import time
 import warnings
-from omegaconf import OmegaConf
+from lcasr.utils.omegaconf import OmegaConf
 
 paths_dir = os.path.join(os.path.dirname(__file__), '../paths.yaml')
 if os.path.exists(paths_dir):

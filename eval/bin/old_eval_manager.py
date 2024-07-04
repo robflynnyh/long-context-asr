@@ -1,6 +1,6 @@
 '''code for running evals over multiple datasets'''
 import argparse
-from omegaconf import OmegaConf
+from lcasr.utils.omegaconf import OmegaConf
 import os
 import pandas as pd
 from tqdm import tqdm
