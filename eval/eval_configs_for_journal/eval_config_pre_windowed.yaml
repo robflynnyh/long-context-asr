@@ -5,12 +5,13 @@ global:
   checkpoint: step_105360.pt
   overlap_ratio: 0.875
   description: "training + eval with windowed attention at fixed seq len and varying window sizes"
+  downsampling: 8
 
 models:
   - name: ${global.name}
     repeat: 1
     window_size: 32
-    seq_len: ${global.seq_len}
+    seq_len: '${integer: ${multiply: ${.window_size}, ${global.downsampling}}}'
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
@@ -65,13 +66,13 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  # - name: ${global.name} NEEDS TO FINSH!
-  #   repeat: 3
-  #   window_size: 128
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: 0.875
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}  
+    repeat: 3
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
 
   - name: ${global.name}
     repeat: 1
@@ -117,13 +118,13 @@ models:
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
 
-  # - name: ${global.name} # Not finished!!
-  #   repeat: 1
-  #   window_size: 1024
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: 0.875
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 1
+    window_size: 1024
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
   - name: ${global.name}
     repeat: 2
     window_size: 1024
@@ -198,16 +199,16 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  # - name: ${global.name} # Not finished!!
-  #   repeat: 3
-  #   window_size: 8192
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: 0.875
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name} # Not finished!!
+    repeat: 3
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
 
 
-  - name: ${global.name}
+  - name: ${global.name}  
     repeat: 1
     window_size: 16384
     seq_len: ${global.seq_len}
@@ -221,13 +222,13 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  # - name: ${global.name} # Not finished!!
-  #   repeat: 3
-  #   window_size: 16384
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: 0.875
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name} # Not finished!!
+    repeat: 3
+    window_size: 16384
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
 
   - name: ${global.name}
     repeat: 1
@@ -243,13 +244,13 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  # - name: ${global.name} # Not finished!!
-  #   repeat: 3
-  #   window_size: 32768
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: 0.875
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name} # Not finished!!
+    repeat: 3
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
 
   - name: ${global.name}
     repeat: 1
@@ -265,19 +266,33 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  # - name: ${global.name}
-  #   repeat: 3
-  #   window_size: 360000
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: 0.875
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name}
+    repeat: 3
+    window_size: 360000
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
 
 
 args:
-  splits: [test, dev]
-  datasets: [tedlium, earnings22, rev16, earnings22_full]
-  single_utterance: false # only used on some datasets i.e tedlium
   verbose: true
   model_class: SCConformerXL
+  evaluation_mode: windowed_attention
+  max_sequence_length: 3600000
   save_dataframe_path: './results/evals_rotary_pre_windowed.csv'
+
+datasets:
+  - name: earnings22_full
+    splits: [test]
+  - name: this_american_life
+    splits: [test, dev]
+  - name: tedlium
+    splits: [test, dev]
+    args:
+      single_utterance: false
+      concat: false
+  - name: rev16
+    splits: [test]
+  - name: earnings22
+    splits: [test, dev]
