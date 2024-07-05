@@ -23,7 +23,7 @@ def checks(config):
     assert os.path.exists("/".join(config.args.save_dataframe_path.split("/")[:-1])), f'dataframe save directory {"/".join(config.args.save_dataframe_path.split("/")[:-1])} does not exist'
 
 def get_args(config, split, model, dataset_config):
-    return ArgsClass({
+    args = {
         'checkpoint': model.path,
         'split': split,
         'seq_len': model.seq_len,
@@ -32,7 +32,12 @@ def get_args(config, split, model, dataset_config):
         **model.get('args', {}),
         **config.get('args', {}),
         **dataset_config.get('args', {})
-    })
+    }
+    # add evaryign from model dict that is not in args
+    for key, value in model.items():
+        if key not in args and key != 'args':
+            args[key] = value
+    return ArgsClass(args)
 
 
 def get_data_to_save(config, wers, split, dataset, model):
