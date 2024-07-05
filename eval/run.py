@@ -36,10 +36,13 @@ def main(args):
 
     eval_fn = moving_average_eval
     if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'windowed_attention':
-        seq_len = args.seq_len
-        subsample_factor = args.config.model.get('subsampling_factor', 8)
-        ds_seq_len = seq_len // subsample_factor
-        args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
+        if args.__dict__.get('window_size', None) is None:
+            seq_len = args.seq_len
+            subsample_factor = args.config.model.get('subsampling_factor', 8)
+            ds_seq_len = seq_len // subsample_factor
+            window_size = ds_seq_len // 2 # //2 because applied in both directions
+        else: window_size = args.window_size
+        args.config.model.attention_window_size = window_size
         args.seq_len = args.__dict__.get('max_sequence_length', 3600000) # 10 hours
     if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'buffered': eval_fn = buffered_eval
     
