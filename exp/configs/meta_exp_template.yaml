@@ -1,5 +1,5 @@
 template_info:
-  create: 5 # number of experiments to create
+  create: 1 # number of experiments to create
   include_keys: [
     'model', 
     'optimizer', 
@@ -17,13 +17,11 @@ template_info:
   template_keys: [
     'checkpointing.dir', 
     'wandb.name',
-    'model.n_meta_layers',
-    'model.meta_glu_layers',
     #'training.loss',
   ] # keys to use to create experiments
 
-model_class: 'SCConformerMeta'
-description: "Looking at meta learning arch"
+model_class: 'SCConformerTest'
+description: "Test model!!"
 
 model:
   feat_in: 80
@@ -53,9 +51,7 @@ model:
   bias_in_ff: false
   checkpoint_every_n_layers: 0
   rotary_base_freq: 1500000 # https://arxiv.org/pdf/2309.16039.pdf
-  load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_16384_rp_1/step_105360.pt"
-  n_meta_layers: [0, 1, 0, 2, 3]
-  meta_glu_layers: [0, 0 , 1, 0, 0]
+ # load_pretrained_from: "/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_16384_rp_1/step_105360.pt"
 
 optimizer:
   name: 'madgrad'
@@ -63,17 +59,17 @@ optimizer:
     lr: 3e-3
 
 scheduler:
-  warmup_steps: 5500
+  warmup_steps: 5000
 
 audio_chunking: # 360000 (max = 1 hour)
-  size: 4096
+  size: 512
   overlap: 0 # not using currently...
 
 sequence_scheduler:
   increase_every: 5000
   stop_after: 90000
   start_after: 0
-  max_sequence_length: 16384
+  max_sequence_length: 360000
   increase_by_multiplier: 2
   batch_size_multiplier: 0.5
   interpolate_rotary: false
@@ -82,11 +78,7 @@ wandb:
   use: true
   project_name: "spotify_long_context"
   name: [
-    'meta__0glu_0meta',
-    'meta__0glu_1meta',
-    'meta__1glu_0meta',
-    'meta__0glu_2meta',
-    'meta__0glu_3meta',
+    'adaptive_rotary_360000',
     
       #'meta_scale_ppppp1',
   ]
@@ -95,12 +87,7 @@ wandb:
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__0glu_0meta',
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__0glu_1meta',
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__1glu_0meta',
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__0glu_2meta',
-    '/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta__0glu_3meta',
-    #'/mnt/parscratch/users/acp21rjf/spotify/meta_exp/meta_scale_ppppp1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints/adapt_rotary_360000',
   ]
   save_every_n_steps: 2000
 
@@ -123,7 +110,7 @@ spec_augment:
 
 training:
   start_spec_augment_after_n_epochs: -1 # -1 to disable
-  batch_size: 88
+  batch_size: 704
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0

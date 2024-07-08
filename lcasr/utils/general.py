@@ -6,6 +6,7 @@ from lcasr.models.mamba import Mamba
 from lcasr.models.enc_dec_sconformer import EncDecSconformer
 from lcasr.models.enc_dec_sconformer_v2 import EncDecSconformerV2
 from lcasr.models.sconformer_meta import SCConformerMeta
+from lcasr.models.sconformer_test import SCConformerTest
 # from lcasr.models.metaconformer import MetaConformer
 # from lcasr.models.stconformer import STConformer
 from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler
@@ -28,6 +29,7 @@ def get_model_class(config:Dict={}, args:argparse.Namespace={}):
         'EncDecSconformer', 
         'EncDecSconformerV2',
         'SCConformerMeta',
+        'SCConformerTest'
     ]
     
     if 'model_class' in args:
@@ -49,6 +51,8 @@ def get_model_class(config:Dict={}, args:argparse.Namespace={}):
         return EncDecSconformerV2
     elif model_class == 'SCConformerMeta':
         return SCConformerMeta
+    elif model_class == 'SCConformerTest':
+        return SCConformerTest
     else:
         raise NotImplementedError(f'Unknown model class {model_class}, must be one of {model_classes}')
     

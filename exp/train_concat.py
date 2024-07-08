@@ -420,7 +420,7 @@ def main(args):
     dataloader = VariableBatchSimpleDataloader(
         pairs = paired_data, 
         tokenizer = tokenizer, 
-        batch_size = args.config['training']['batch_size'],
+        batch_size = 32,
         chunk_size = args.config.audio_chunking['size'],
         chunk_overlap = args.config.audio_chunking['overlap'],
         num_workers = args.num_workers,

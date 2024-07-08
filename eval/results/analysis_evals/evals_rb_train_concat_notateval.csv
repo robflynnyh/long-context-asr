@@ -1,0 +1,2 @@
+,dataset,split,wer,recording,words,ins_rate,del_rate,sub_rate,name,checkpoint,repeat,seq_len,overlap_ratio,model_class
+0,tedlium,test,0.06135034556087188,all,28215,0.007371965266702109,0.019776714513556618,0.03420166578061315,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_CONCAT_seq_scheduler_rb/n_seq_sched_360000_rp_1/step_105360.pt,1,360000,0.875,SCConformerXL

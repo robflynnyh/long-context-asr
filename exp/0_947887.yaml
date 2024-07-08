@@ -7,7 +7,7 @@ model:
   dropout_ff: 0.0
   dropout_attn: 0.0
   dropout_conv: 0.0
-  subsampling_factor: 4    
+  subsampling_factor: 8    
   subsampling: dw_striding
   subsampling_act: silu
   subsampling_conv_channels: 256
@@ -39,7 +39,7 @@ optimizer:
   args:
     lr: 1e-3
 scheduler:
-  warmup_steps: 2500
+  warmup_steps: 3500
 audio_chunking:
   size: 2048
   overlap: 0
@@ -51,7 +51,7 @@ wandb:
   dir: /mnt/parscratch/users/acp21rjf/wandb_log/
   update_config_with_wandb_id: false
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/test_hourglass
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/test_arot
   save_every_n_steps: 200000
 data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json # /mnt/parscratch/users/acp21rjf/spotify_utterances/
@@ -78,8 +78,10 @@ sequence_scheduler:
   increase_by_multiplier: 2
   batch_size_multiplier: 0.5
   interpolate_rotary: false
-description: Looking at meta learning arch
-#model_class: HourGlassConformer
+description: Looking at adaptive rotary
+
+model_class: SCConformerTest
+
 spec_augment:
   n_time_masks: 0
   time_mask_param: 0

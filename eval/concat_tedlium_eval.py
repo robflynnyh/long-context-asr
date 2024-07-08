@@ -38,9 +38,12 @@ def main(args):
     
     seq_len = args.seq_len
     
-    subsample_factor = args.config.model.get('subsampling_factor', 8)
-    ds_seq_len = seq_len // subsample_factor
-    args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
+    if args.__dict__.get('window_size', None) is None:
+        subsample_factor = args.config.model.get('subsampling_factor', 8)
+        ds_seq_len = seq_len // subsample_factor
+        args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
+    else: args.config.model.attention_window_size = args.window_size
+
     args.seq_len = args.__dict__.get('max_sequence_length', 3600000) # 10 hours
 
     include_per_recording_evaluations = args.__dict__.get('include_per_recording_evaluations', False)
