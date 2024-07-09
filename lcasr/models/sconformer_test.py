@@ -238,7 +238,7 @@ class AdaptiveRotaryPositionalEmbedding(torch.nn.Module): # TODO: incl fused ker
             self, 
             dim, 
             heads,
-            base=10**7, 
+            base=10000, 
             learned_freq=False,
             rotary_interpolation_factor=1.0,
             precision=torch.bfloat16, 
@@ -267,7 +267,7 @@ class AdaptiveRotaryPositionalEmbedding(torch.nn.Module): # TODO: incl fused ker
         self.register_buffer("rotary_interpolation_factor", torch.tensor(rotary_interpolation_factor))
         self.heads = heads
         self.w = torch.nn.Linear(dim*heads, heads, bias=True)
-        self.scale = torch.nn.Parameter(torch.tensor(10.0), requires_grad=True)
+        self.scale = torch.nn.Parameter(torch.tensor(1.0), requires_grad=True)
 
     @staticmethod
     def rotate_half(x):
@@ -286,7 +286,7 @@ class AdaptiveRotaryPositionalEmbedding(torch.nn.Module): # TODO: incl fused ker
         device = q.device
         x= self.w(x)
   
-        x = (x.tanh() + 1) * self.scale
+        x = (x.sigmoid()) * self.scale
         #print(x.max(), x.min(), x.mean(), self.scale)
         
         t = x.cumsum(dim=-2) - x
