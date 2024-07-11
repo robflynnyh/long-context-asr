@@ -287,7 +287,7 @@ class AdaptiveRotaryPositionalEmbedding(torch.nn.Module): # TODO: incl fused ker
         x= self.w(x)
   
         x = (x.sigmoid()) * self.scale
-        #print(x.max(), x.min(), x.mean(), self.scale)
+        #print(x.shape,x.max(dim=-2).values, x.mean(dim=-2), x.std(dim=-2), self.scale)
         
         t = x.cumsum(dim=-2) - x
       

@@ -323,22 +323,25 @@ class ConformerLayer(nn.Module):
 
         self.do_ff = nn.Dropout(dropout_ff)
 
-        self.attend = PreNorm(
-            d_model = d_model, 
-            fn = Attention(
-                n_feats = d_model,
-                head_dim = head_dim,
-                n_heads = n_heads,
-                dropout = dropout_attn,
-                bias = False,
-                layer_idx = layer_idx,
-                **kwargs
-            ),
-            norm = default_norm,
-        )
-        self.attn_norm_out = default_norm(d_model) if sandwich_norm else lambda x: x
+        self.has_attention = kwargs.get('has_attention', True)
 
-        self.do_attn_out = nn.Dropout(min(dropout_ff, 0.1)) # don't wan't this too large
+        if self.has_attention:
+            self.attend = PreNorm(
+                d_model = d_model, 
+                fn = Attention(
+                    n_feats = d_model,
+                    head_dim = head_dim,
+                    n_heads = n_heads,
+                    dropout = dropout_attn,
+                    bias = False,
+                    layer_idx = layer_idx,
+                    **kwargs
+                ),
+                norm = default_norm,
+            )
+            self.attn_norm_out = default_norm(d_model) if sandwich_norm else lambda x: x
+            self.do_attn_out = nn.Dropout(min(dropout_ff, 0.1)) # don't wan't this too large
+
         self.norm_out = default_norm(d_model)
 
             
@@ -354,14 +357,15 @@ class ConformerLayer(nn.Module):
         if not self.trasformer:
             x = self.do_ff(self.ff1(x)) + x
 
-        x = self.attn_norm_out(self.do_attn_out(self.attend(
-            x = x,
-            attn_mask = attn_mask,
-            length = length,
-            pad_mask = pad_mask,
-            flash_attn = flash_attn,
-            rotary_emb_fn = rotary_emb_fn
-        ))) + x
+        if self.has_attention:
+            x = self.attn_norm_out(self.do_attn_out(self.attend(
+                x = x,
+                attn_mask = attn_mask,
+                length = length,
+                pad_mask = pad_mask,
+                flash_attn = flash_attn,
+                rotary_emb_fn = rotary_emb_fn
+            ))) + x
         
         if not self.trasformer:
             x = self.do_conv(self.conv(x, pad_mask = pad_mask)) + x
