@@ -6,6 +6,7 @@ from lcasr.utils.general import load_model, get_model_class
 from pyctcdecode import build_ctcdecoder
 from lcasr.eval.wer import word_error_rate_detail 
 #from lcasr.eval.dynamic_eval import dynamic_eval
+from lcasr.utils.audio_tools import total_frames, total_seconds
 from lcasr.decoding.greedy import GreedyCTCDecoder
 from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
@@ -71,16 +72,18 @@ def main(args):
     all_texts = []
     all_golds = []
     wer_data = []
-
+    
     pbar = tqdm(range(len(data)), total=len(data)) #if verbose else range(len(data))
     for rec in pbar:
         if verbose: print(f'Processing {rec+1}/{len(data)}')
         
         if verbose: print('\n-------\n'+data[rec]['id']+'\n-------\n')
-
         
         audio_spec, gold_text = data[rec]['process_fn'](data[rec])
-        
+
+
+        spec_length_s = total_seconds(spectogram_length=audio_spec.shape[-1])
+     
         logits = eval_fn(
             args = args, 
             model = model, 
@@ -89,12 +92,13 @@ def main(args):
             overlap = args.overlap,
             tokenizer = tokenizer
         ) 
-        
+
+
         force_align(
             logits = logits,
-            transcript = gold_text,
+            transcript = data[rec]['text'],
             tokenizer = tokenizer,
-            downsample_ratio = None #for now
+            seconds_per_frame = spec_length_s / logits.shape[0]
         )
         exit()
 
