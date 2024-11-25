@@ -6,11 +6,13 @@ from lcasr.utils.audio_tools import total_frames, total_seconds
 from typing import List, Dict, Tuple
 from tqdm import tqdm
 from lcasr.models.sconformer_xl import SCConformerXL
+import argparse
+
 
 @torch.no_grad()
 def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer, use_tqdm=True):
     '''
-    args: argparse.Namespace
+    args: argparse.Namespace or dict
     model: instance of CTC based model
     spec: spectrogram tensor
     seq_len: sequence length
@@ -18,16 +20,19 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     tokenizer: tokenizer instance
     use_tqdm: bool, whether to use tqdm or not
     '''
+    if isinstance(args, argparse.Namespace):
+        args = vars(args)
+    assert isinstance(args, dict), f'args must be dict or argparse.Namespace, got: {type(args)}'
 
     spec_n = spec.shape[-1]
     downsampling_factor = model.subsampling.subsampling_factor
-    seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
+    seq_len = seq_len if seq_len != -1 else args['config']['audio_chunking']['size']
  
     if seq_len > spec_n:
         seq_len = spec_n
         overlap = 0
     else:
-        overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
+        overlap = overlap if overlap != -1 else args['config']['audio_chunking']['overlap']
     
     #assert overlap == 0 or cache_len == 0, 'Cannot use overlap and cache_len at the same time'
 
