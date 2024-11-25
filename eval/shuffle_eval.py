@@ -86,39 +86,33 @@ def main(args):
         if args.within_recording:
             assert args.dataset == args.distracter_dataset, 'within_recording only makes sense when dataset and distracter_dataset are the same'
 
-        all_logits = []
-        for i in range(args.__dict__.get('repeats', 1)):
-            if args.dataset == args.distracter_dataset and not args.within_recording:
-                recordings = [i for i in range(len(distracter_data)) if i != rec]
-            elif args.dataset == args.distracter_dataset and args.within_recording:
-                recordings = [rec]
-            else:
-                recordings = [i for i in range(len(distracter_data))]
+        if args.dataset == args.distracter_dataset and not args.within_recording:
+            recordings = [i for i in range(len(distracter_data)) if i != rec]
+        elif args.dataset == args.distracter_dataset and args.within_recording:
+            recordings = [rec]
+        else:
+            recordings = [i for i in range(len(distracter_data))]
 
-            # pick a random recording
-            if args.distracter_dataset != 'no_context':
-                distracter_rec_id = recordings[math.floor(torch.rand(1)*len(recordings))]
-                distracter_spec, _ = distracter_data[distracter_rec_id]['process_fn'](distracter_data[distracter_rec_id])
-            else:
-                distracter_spec = torch.zeros_like(audio_spec)
+        # pick a random recording
+        if args.distracter_dataset != 'no_context':
+            distracter_rec_id = recordings[math.floor(torch.rand(1)*len(recordings))]
+            distracter_spec, _ = distracter_data[distracter_rec_id]['process_fn'](distracter_data[distracter_rec_id])
+        else:
+            distracter_spec = torch.zeros_like(audio_spec)
 
-            logits = shuffled_eval(
-                args = args, 
-                model = model, 
-                spec = audio_spec,
-                distracter_spec = distracter_spec, 
-                distracter_spec_chunks_len = args.distracter_len,
-                seq_len = args.seq_len,
-                window_len = args.window_len,
-                buffer_len = args.buffer_len,
-                tokenizer = tokenizer,
-                use_tqdm = True
-            ) 
-            all_logits.append(torch.as_tensor(logits))
-        logits = torch.zeros_like(all_logits[0])
-        for logit in all_logits:
-            logits += logit.exp()
-        logits = torch.log(logits / 3)
+        logits = shuffled_eval(
+            args = args, 
+            model = model, 
+            spec = audio_spec,
+            distracter_spec = distracter_spec, 
+            distracter_spec_chunks_len = args.distracter_len,
+            seq_len = args.seq_len,
+            window_len = args.window_len,
+            buffer_len = args.buffer_len,
+            tokenizer = tokenizer,
+            use_tqdm = True
+        ) 
+        
         out_text = decoder(logits)
 
         out = normalize(out_text).lower()
