@@ -10,10 +10,14 @@ from typing import List, Dict, Tuple, Union
 from tqdm import tqdm
 from lcasr.models.sconformer_xl import SCConformerXL
 from .buffered_transcription import fetch_logits
+import sentencepiece as spm
 
 def force_align(
-        model:Union[SCConformerXL, nn.Module],
-        audio:Tensor,
-        transcript:str
+        logits:Tensor,
+        transcript:str,
+        tokenizer:spm.SentencePieceProcessor,
+        downsample_ratio:float
     ):
-    pass
+
+    print(transcript)
+    print(logits.shape)
