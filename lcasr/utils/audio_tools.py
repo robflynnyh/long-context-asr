@@ -15,8 +15,12 @@ WIN_LENGTH = 400
 HOP_LENGTH = 160
 SR = 16000
 
-def load(path:str) -> Tuple[torch.Tensor, int]:
-    waveform, sample_rate = torchaudio.load(path)
+def load(
+        path:str,
+        frame_offset:int = 0,
+        num_frames:int = -1,
+    ) -> Tuple[torch.Tensor, int]:
+    waveform, sample_rate = torchaudio.load(path, frame_offset=frame_offset, num_frames=num_frames)
     return waveform, sample_rate
 
 def resample(waveform:torch.Tensor, orig_sr:int, new_sr:int) -> torch.Tensor:
@@ -64,8 +68,13 @@ def total_frames(seconds:float) -> int:
     '''inverse of total_seconds'''
     return int((seconds * 16000) / HOP_LENGTH) 
 
-def processing_chain(path_in:str, normalise:bool = True):
-    waveform, sample_rate = load(path_in)
+def processing_chain(
+        path_in:str, 
+        normalise:bool = True,
+        frame_offset:int = 0,
+        num_frames:int = -1,
+    ):
+    waveform, sample_rate = load(path_in, frame_offset=frame_offset, num_frames=num_frames)
     waveform = grab_left_channel(waveform)
     waveform = resample(waveform, sample_rate, SR)
     spectrogram = to_spectogram(waveform, global_normalisation=normalise)

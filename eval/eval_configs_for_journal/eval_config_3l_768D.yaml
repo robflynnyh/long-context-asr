@@ -1,9 +1,9 @@
 global:
-  root_path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_3l_2048d/n_seq_sched_
+  root_path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_3l_seq_sched/n_seq_sched_
   name: rb_n_seq_sched
   overlap_ratio: 0.875
   checkpoint: step_105360.pt
-  description: "rotary 1.5M 300M param, 3L 2048D, decoding using windowed attention"
+  description: "rotary 1.5M, 3L 768D, decoding using windowed attention"
   
 
 models:
@@ -200,7 +200,7 @@ models:
 args:
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_windowed_3l_2048D.csv'
+  save_dataframe_path: './results/evals_windowed_3l_768D.csv'
   evaluation_mode: windowed_attention
   max_sequence_length: 3600000
 
