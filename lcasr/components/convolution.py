@@ -1,5 +1,7 @@
 import torch, torch.nn as nn
 from lcasr.components.batchrenorm import BatchRenorm1d
+from typing import Tuple
+from torch import Tensor
 
 try:
     from flashfftconv.depthwise_1d import conv1d_forward, conv1d_backward
@@ -22,6 +24,29 @@ try:
             return du, dk, dbias, None, None
 except:
     conv1dFunc = None
+
+
+
+class GatedConv1d(nn.Module):
+    def __init__(
+        self,
+        input_dim:int,
+        output_dim:int=None,
+        expansion_factor:int=1,
+        kernel_size:Tuple[int]=(1,1),
+        stride:Tuple[int]=(1,1),
+        padding:Tuple[int]=(0,0)
+        ) -> None:
+        super().__init__()
+        output_dim = input_dim if output_dim == None else output_dim
+
+        self.in_layer = nn.Conv1d(in_channels=input_dim, out_channels=input_dim*expansion_factor*2, kernel_size=kernel_size[0], stride=stride[0], padding=padding[0])
+        self.out_layer = nn.Conv1d(in_channels=input_dim*expansion_factor, out_channels=output_dim, kernel_size=kernel_size[1], stride=stride[1], padding=padding[1])
+
+    def forward(self, x:Tensor):
+        a, b = self.in_layer(x).chunk(2, dim=1)
+        c = a * torch.nn.functional.silu(b)
+        return self.out_layer(c)
 
 
 def get_norm(norm_type, d_model):

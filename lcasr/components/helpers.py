@@ -1,8 +1,4 @@
 from torch import nn
-from lcasr.components.batchrenorm import BatchRenorm1d
-import torch.nn.functional as F
-from einops import rearrange
-import torch
 
 def get_act(act:str):
     if act == 'silu':
@@ -17,4 +13,14 @@ def get_act(act:str):
         raise ValueError(f'Activation {act} not supported.')
             
 
+class ResidualBlock(nn.Module):
+    def __init__(
+            self,
+            module:nn.Module,
+            ) -> None:
+        super().__init__()
+        self.module = module
+
+    def forward(self, x, *args, **kwargs):
+        return x + self.module(x, *args, **kwargs)
         
