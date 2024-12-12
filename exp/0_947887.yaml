@@ -44,7 +44,7 @@ audio_chunking:
   size: 2048
   overlap: 0
 wandb:
-  use: true
+  use: false
   project_name: spotify_long_context
   name: test
   id: ""
@@ -57,7 +57,7 @@ data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json # /mnt/parscratch/users/acp21rjf/spotify_utterances/
 training:
   start_spec_augment_after_n_epochs: 0
-  batch_size: 176
+  batch_size: 12
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
@@ -80,7 +80,7 @@ sequence_scheduler:
   interpolate_rotary: false
 description: Looking at adaptive rotary
 
-model_class: SCConformerTest
+model_class: SCConformerXL
 
 spec_augment:
   n_time_masks: 0

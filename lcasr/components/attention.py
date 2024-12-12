@@ -496,7 +496,7 @@ class Attention(nn.Module):
         return torch.einsum("b h i j, b h j d -> b h i d", a_weight, v), a_weight
 
     @staticmethod
-    def apply_rotary(q, kv, rotary_emb_fn):
+    def apply_rotary(q, kv, rotary_emb_fn): 
         if rotary_emb_fn is not None:
             if rotary_emb_fn.learned == False:
                 q, kv[:, :, 0] = rotary_emb_fn.apply(q, kv[:, :, 0])

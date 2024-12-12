@@ -13,12 +13,12 @@ models:
   #   overlap_ratio: ${global.overlap_ratio}
   #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
   #   description: ${global.description}
-  # - name: ${global.name}
-  #   repeat: 2
-  #   seq_len: 1024
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 1024
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   # - name: ${global.name}
   #   repeat: 3
   #   seq_len: 1024
@@ -26,12 +26,12 @@ models:
   #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
   #   description: ${global.description}
 
-  # - name: ${global.name}
-  #   repeat: 1
-  #   seq_len: 2048
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   # - name: ${global.name}
   #   repeat: 2
   #   seq_len: 2048
@@ -140,12 +140,12 @@ models:
   #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
   #   description: ${global.description}
 
-  # - name: ${global.name}
-  #   repeat: 1
-  #   seq_len: 131072
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 1
+    seq_len: 131072
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   - name: ${global.name}
     repeat: 2
     seq_len: 131072
@@ -170,13 +170,13 @@ models:
     seq_len: 262144
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
-  # - name: ${global.name}
-  #   repeat: 3
-  #   seq_len: 262144
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 262144
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
 
   # - name: ${global.name}
   #   repeat: 1
@@ -201,10 +201,12 @@ args:
   verbose: true
   model_class: SCConformerXL
   save_dataframe_path: './results/evals_rb_4xss_post_windowed_attn.csv'
-  evaluation_mode: windowed_attention
+  evaluation_mode: buffered
   max_sequence_length: 3600000
 
 datasets:
+  - name: earnings22_full
+    splits: [test]
   - name: this_american_life
     splits: [test, dev]
   - name: tedlium
@@ -216,5 +218,3 @@ datasets:
     splits: [test]
   - name: earnings22
     splits: [test, dev]
-  - name: earnings22_full
-    splits: [test]

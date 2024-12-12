@@ -4,16 +4,22 @@ from lcasr.components.convolution import GatedConv1d
 from lcasr.components.helpers import ResidualBlock
 from lcasr.components.batchrenorm import BatchRenorm1d
 from lcasr.models.base import BaseModel
+from einops.layers.torch import Rearrange
 
 class SoftMaskNN(BaseModel):
-    def __init__(self, layers:int=4) -> None:
+    def __init__(self, layers:int=4, learning_rate=1e-4, *args, **kwargs) -> None:
         super().__init__()
-    
+
+        self.asr_model_lr = nn.Parameter(torch.tensor(learning_rate))
+
         self.network = nn.Sequential(
             *[ResidualBlock(
                 nn.Sequential(
                     GatedConv1d(input_dim=80, output_dim=80, expansion_factor=2, kernel_size=(9,9), stride=(1,1), padding=("same", "same")),
-                    BatchRenorm1d(80)
+                    BatchRenorm1d(80),
+                    # Rearrange('b c t -> b t c'),
+                    # nn.LayerNorm(80),
+                    # Rearrange('b t c -> b c t'),
                 )
             ) for _ in range(layers)], 
             nn.Conv1d(in_channels=80, out_channels=80, kernel_size=1, stride=1, padding=0),

@@ -1,0 +1,58 @@
+model:
+  layers: 4
+
+optimizer:
+  name: madgrad
+  args:
+    lr: 1e-6
+
+scheduler:
+  warmup_steps: 1000
+
+audio_chunking:
+  size: 4096
+  overlap: 0
+
+wandb:
+  use: true
+  project_name: spotify_long_context
+  name: test_train
+  id: ""
+  dir: /mnt/parscratch/users/acp21rjf/wandb_log/
+  update_config_with_wandb_id: false
+checkpointing:
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/augmentation_training
+  save_every_n_steps: 50
+data:
+  path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json # /mnt/parscratch/users/acp21rjf/spotify_utterances/
+
+training:
+  start_spec_augment_after_n_epochs: 0
+  batch_size: 4
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
+  clip_value: 0.8
+  intermediate_loss_weighting: 0.0
+  random_seed: 6433
+  asr_model_checkpoint: /mnt/parscratch/users/acp21rjf/spotify/5kwarmup_rotary_pos_3l_256d_seq_sched/n_seq_sched_4096_rp_1/step_105360.pt #/mnt/parscratch/users/acp21rjf/spotify/no_rotary_seq_sched/n_seq_sched_4096_rp_1/step_105360.pt # FOR NOW !##/mnt/parscratch/users/acp21rjf/spotify/rotary_pos_6l_256d_seq_sched/n_seq_sched_4096_rp_1/step_105360.pt
+  #dtype: float32
+  #num_workers: 4
+  #prefetch_factor: 8
+
+  #loss: 'l2'
+  dtype: float32
+
+description: Adaptive augmentation for TT learning
+
+model_class: SoftMaskNN
+
+spec_augment:
+  n_time_masks: 0
+  time_mask_param: 0
+  n_freq_masks: 0
+  freq_mask_param: 18
+  iid_masks: true
+  min_p: 0.0
+  max_p: 0.0
+  zero_masking: false

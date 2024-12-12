@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --time=96:00:00
-#SBATCH --mem=180GB
-#SBATCH --partition=gpu-h100
-#SBATCH --gres=gpu:h100:1
+#SBATCH --mem=130GB
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:1
 #SBATCH --qos=gpu
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=16
 
 module load Anaconda3/2022.10
 source activate a100
 
-python train.py -config ./configs/no_ds.yaml
+python trainaug_2.py --config ./aug_test.yaml

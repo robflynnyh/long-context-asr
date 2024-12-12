@@ -16,7 +16,8 @@ except:
     from lcasr.components.normalisation import RMSNorm as RMSNorm, RMSNorm as DEFAULT_NORM
     from torch.nn import LayerNorm as LayerNorm
 
-
+# from lcasr.components.normalisation import RMSNorm as RMSNorm, RMSNorm as DEFAULT_NORM
+# from torch.nn import LayerNorm as LayerNorm
 
 PreNorm, Scale = wrappers.PreNorm, wrappers.Scale
 
