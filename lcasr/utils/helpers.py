@@ -17,3 +17,11 @@ def get_config_from_checkpoint(checkpoint_path:str, out_path:str):
     checkpoint = torch.load(checkpoint_path, map_location='cpu')
     config = checkpoint['config']
     OmegaConf.save(config, out_path)
+
+
+class ArgsClass():
+    def __init__(self, args_dict):
+        self.__dict__.update(args_dict)
+
+    def __contains__(self, key):
+        return key in self.__dict__.keys()

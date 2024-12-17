@@ -7,7 +7,7 @@ from typing import List, Dict, Tuple
 from tqdm import tqdm
 from lcasr.models.sconformer_xl import SCConformerXL
 import argparse
-
+from lcasr.utils.helpers import ArgsClass
 
 @torch.no_grad()
 def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer, use_tqdm=True):
@@ -20,7 +20,7 @@ def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, over
     tokenizer: tokenizer instance
     use_tqdm: bool, whether to use tqdm or not
     '''
-    if isinstance(args, argparse.Namespace):
+    if isinstance(args, argparse.Namespace) or isinstance(args, ArgsClass): 
         args = vars(args)
     assert isinstance(args, dict), f'args must be dict or argparse.Namespace, got: {type(args)}'
 

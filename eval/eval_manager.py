@@ -4,16 +4,12 @@ from lcasr.utils.omegaconf import OmegaConf
 import os
 import pandas as pd
 from tqdm import tqdm
-
+from lcasr.utils.helpers import ArgsClass
 from run import main as run_eval, datasets_functions
 accepted_splits = ['test', 'dev', 'train', 'all']
 
-class ArgsClass():
-    def __init__(self, args_dict):
-        self.__dict__.update(args_dict)
 
-    def __contains__(self, key):
-        return key in self.__dict__.keys()
+    
 
 def checks(config):
     for dataset in config.datasets:
