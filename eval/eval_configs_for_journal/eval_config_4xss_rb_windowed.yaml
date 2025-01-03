@@ -32,12 +32,12 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  # - name: ${global.name}
-  #   repeat: 2
-  #   seq_len: 2048
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   - name: ${global.name}
     repeat: 3
     seq_len: 2048
@@ -64,12 +64,12 @@ models:
     path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
 
-  - name: ${global.name}
-    repeat: 1
-    seq_len: 8192
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
+  # - name: ${global.name}
+  #   repeat: 1
+  #   seq_len: 8192
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
   - name: ${global.name}
     repeat: 2
     seq_len: 8192
@@ -95,12 +95,12 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  # - name: ${global.name}
-  #   repeat: 3
-  #   seq_len: 16384
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    seq_len: 16384
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
 
   - name: ${global.name}
     repeat: 1
@@ -152,12 +152,12 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  - name: ${global.name} 
-    repeat: 3
-    seq_len: 131072
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
+  # - name: ${global.name} # RERUN
+  #   repeat: 3
+  #   seq_len: 131072
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
 
   - name: ${global.name}
     repeat: 1

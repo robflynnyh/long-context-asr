@@ -162,3 +162,4 @@ if __name__ == '__main__':
 
 #CUDA_VISIBLE_DEVICES="1" python run.py -dfa -epochs 5 -seq 16384 -o 14336 -split test --dataset earnings22 -r 3 -s "./results/earnings22.json" -kwargs optim_lr=9e-5 spec_augment_freq_mask_param=34 spec_augment_min_p=0.18 spec_augment_n_freq_masks=6  spec_augment_n_time_masks=0 
 
+#tts --text "good morning and welcome to the despegar third quarter ' 21 earnings conference call. a slide" --model_name "tts_models/multilingual/multi-dataset/xtts_v2" --speaker_idx "Ana Florence" --language_idx="en

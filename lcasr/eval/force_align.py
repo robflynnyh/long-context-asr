@@ -168,6 +168,7 @@ def force_align(
     tokens = tokenizer.Encode(transcript)
     print(transcript)
     print(logits.shape)
+    print(seconds_per_frame)
     logits = torch.as_tensor(logits)
     trellis = get_trellis(emission=logits, tokens=tokens)
     path = backtrack(trellis, logits, tokens)
@@ -175,8 +176,11 @@ def force_align(
     segments = merge_repeats(path, tokens=tokens)
     segments = create_segments_of_length(segments, block_size_seconds=block_sizes_seconds, seconds_per_frame=seconds_per_frame, tokenizer=tokenizer)
     for seg in segments:
-        print(seg.start, seg.end)
-        print(tokenizer.IdToPiece(seg.labels))
+        start = round(seg.start*seconds_per_frame, 2)
+        end = round(seg.end*seconds_per_frame, 2)
+        print(f"{start} - {end}: {tokenizer.decode(seg.labels)}")
+        #print(tokenizer.IdToPiece(seg.labels))
+        # print(seg.labels)
         print('---')
 
 # python tts_context_eval.py -c /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_16384_rp_1/step_105360.pt  -seq 16384 -overlap 0
