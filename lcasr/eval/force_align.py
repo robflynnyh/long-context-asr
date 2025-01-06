@@ -176,11 +176,17 @@ def force_align(
     segments = merge_repeats(path, tokens=tokens)
     segments = create_segments_of_length(segments, block_size_seconds=block_sizes_seconds, seconds_per_frame=seconds_per_frame, tokenizer=tokenizer)
     for seg in segments:
-        start = round(seg.start*seconds_per_frame, 2)
-        end = round(seg.end*seconds_per_frame, 2)
-        print(f"{start} - {end}: {tokenizer.decode(seg.labels)}")
+        start = round(seg.start*seconds_per_frame, 4)
+        end = round(seg.end*seconds_per_frame, 4)
+        seg.start_seconds = start
+        seg.end_seconds = end
+        text = tokenizer.decode(seg.labels)
+        seg.text = text
+        print(f"{start} - {end}: {seg.text}")
         #print(tokenizer.IdToPiece(seg.labels))
         # print(seg.labels)
         print('---')
+    return segments
+
 
 # python tts_context_eval.py -c /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_16384_rp_1/step_105360.pt  -seq 16384 -overlap 0

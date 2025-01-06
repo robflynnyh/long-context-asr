@@ -1,6 +1,7 @@
 import torch, argparse, lcasr
 from lcasr.eval.utils import fetch_logits as moving_average_eval
 from lcasr.eval.buffered_transcription import fetch_logits as buffered_eval
+from lcasr.utils.audio_tools import grab_left_channel, resample, to_spectogram
 from lcasr.eval.force_align import force_align
 from lcasr.utils.general import load_model, get_model_class
 from pyctcdecode import build_ctcdecoder
@@ -11,6 +12,8 @@ from lcasr.decoding.greedy import GreedyCTCDecoder
 from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
 from tqdm import tqdm
+import torchaudio
+from functools import partial
 
 from earnings22_full.run import get_text_and_audio as get_text_and_audio_earnings22_full
 from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
@@ -18,6 +21,8 @@ from tedlium.run import get_text_and_audio as get_text_and_audio_tedlium
 from rev16.run import get_text_and_audio as get_text_and_audio_rev16
 from this_american_life.run import get_text_and_audio as get_text_and_audio_this_american_life
 from spotify.run import get_text_and_audio as get_text_and_audio_spotify
+
+from TTS.api import TTS
 
 datasets_functions = {
     'earnings22_full': get_text_and_audio_earnings22_full,
@@ -27,6 +32,51 @@ datasets_functions = {
     'this_american_life': get_text_and_audio_this_american_life,
     'spotify': get_text_and_audio_spotify
 }
+
+
+def create_mixed_recording(
+        real_index, 
+        synthetic_wavs, 
+        segments, 
+        real_audio, 
+        downsample_factor,
+        buffer_size=1,
+        target_size=2,
+    ):
+    target_index=real_index
+    real_start_index, real_end_index = max(target_index-buffer_size, 0),  min(target_index+buffer_size+1, len(segments)-1)    
+    
+    real_start_audio_idx, real_end_audio_idx = segments[real_start_index].start * downsample_factor, segments[real_end_index].end * downsample_factor
+    real_duration_audio_idx = real_end_audio_idx - real_start_audio_idx
+    real_prebufferduration_audio_idx = (segments[target_index].start - segments[real_start_index].start) * downsample_factor
+    real_postbufferduration_audio_idx = (segments[real_end_index].end - segments[target_index + target_size - 1].end) * downsample_factor
+    
+    real_audio_segment = real_audio[:, int(round(real_start_audio_idx)):int(round(real_end_audio_idx))]
+    new_segs = []
+    real_audio_idx = None
+    for i, seg in enumerate(segments):
+        if i < real_start_index or i > real_end_index:
+            new_segs.append(synthetic_wavs[i])
+        elif i == target_index:
+            real_audio_idx = len(new_segs)
+            new_segs.append(real_audio_segment)
+    frames_before_real_audio = sum([seg.shape[-1] for i,seg in enumerate(new_segs) if i < real_audio_idx])
+    frames_after_real_audio = sum([seg.shape[-1] for i,seg in enumerate(new_segs) if i > real_audio_idx])
+    
+    frames_before_target_audio = frames_before_real_audio + real_prebufferduration_audio_idx
+    frames_after_target_audio = frames_after_real_audio + real_postbufferduration_audio_idx
+    real_target_duration_audio_idx = real_duration_audio_idx - real_prebufferduration_audio_idx - real_postbufferduration_audio_idx
+
+    mixed_audio = torch.cat(new_segs, dim=-1)
+
+    return {
+        'mixed_audio': mixed_audio,
+        'frames_before_target_audio': frames_before_target_audio,
+        'frames_after_target_audio': frames_after_target_audio,
+        'real_target_duration_audio_idx': real_target_duration_audio_idx,
+        'prebufferduration_audio_idx': real_prebufferduration_audio_idx,
+        'postbufferduration_audio_idx': real_postbufferduration_audio_idx,
+    }
 
 
 def main(args):
@@ -66,6 +116,16 @@ def main(args):
 
     data = datasets_functions[args.dataset](args.split)
 
+    def split_into_sentences(self, text): return text
+    tts =  TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+    tts.synthesizer.split_into_sentences = partial(split_into_sentences, tts.synthesizer)
+    synthesize_fn = partial(tts.tts, speaker="Ana Florence", language="en", speed=2.0)
+
+    def synthesize(text):
+        out = torch.as_tensor(synthesize_fn([text]))[None]
+        out = resample(out, tts.synthesizer.output_sample_rate, 16000)
+        return out
+
     # for idx, module in enumerate([el.attend.fn for el in model.layers]):
     #     module.return_attention_weights = True
 
@@ -80,8 +140,12 @@ def main(args):
         if verbose: print('\n-------\n'+data[rec]['id']+'\n-------\n')
         
         audio_spec, gold_text = data[rec]['process_fn'](data[rec])
+        print(f'audio path: {data[rec]["audio"]}')
+        audio_wav, sr = torchaudio.load(data[rec]['audio'])
+        audio_wav = grab_left_channel(audio_wav)
+        audio_wav = resample(audio_wav, sr, 16000)
 
-
+      
         spec_length_s = total_seconds(spectogram_length=audio_spec.shape[-1])
      
         logits = eval_fn(
@@ -92,15 +156,78 @@ def main(args):
             overlap = args.overlap,
             tokenizer = tokenizer
         ) 
+        downsample_factor = audio_wav.shape[-1] / logits.shape[0]
+        print('DOWNSAMPLE FACTOR', downsample_factor)
 
-
-        force_align(
+        block_sizes_seconds = 10.24
+        segments = force_align(
             logits = logits,
             transcript = data[rec]['text'],
             tokenizer = tokenizer,
-            seconds_per_frame = spec_length_s / logits.shape[0]
+            seconds_per_frame = spec_length_s / logits.shape[0],
+            block_sizes_seconds = block_sizes_seconds
         )
+
+        segments = segments[:13]
+     
+        synthetic_wavs = {}
+        for i, seg in enumerate(segments):
+            synthetic_wavs[i] = synthesize(seg.text)
+            print(f'{i}/{len(segments)}: {synthetic_wavs[i].shape}')
+        
+
+
+        target_size = 2
+        output_size = (1, logits.shape[0] + 1, tokenizer.vocab_size() + 1)
+        output_counts = torch.zeros(output_size, dtype=torch.int)
+        output_probs = torch.zeros(output_size, dtype=torch.float)
+        if len(segments) < target_size: raise ValueError('The number of segments must be larger than the target size! decrease target size, or decrease block size when segmenting')
+        total_steps = len(segments) - 1 - (target_size - 1)
+        for i in range(total_steps): # -1 for zero index and -1 for each element that the target is larger than a single element
+            print(f'Transcribing {i+1}/{total_steps}')
+            mixed_audio_data = create_mixed_recording(
+                real_index=i, 
+                synthetic_wavs=synthetic_wavs, 
+                segments=segments, 
+                real_audio=audio_wav, 
+                downsample_factor=downsample_factor,
+                buffer_size=1,
+                target_size=2,
+            )
+            mixed_audio = mixed_audio_data['mixed_audio']
+            mixed_audio_spec = to_spectogram(mixed_audio, global_normalisation=True)
+            mixed_logits = eval_fn(
+                args = args, 
+                model = model, 
+                spec = mixed_audio_spec,
+                seq_len = args.seq_len,
+                overlap = args.overlap,
+                tokenizer = tokenizer
+            )
+            frames_before_target = round(mixed_audio_data['frames_before_target_audio'] / downsample_factor)
+            duration = round(mixed_audio_data['real_target_duration_audio_idx'] / downsample_factor)
+            mixed_probs = torch.as_tensor(mixed_logits).exp()[None]
+            print(mixed_probs.shape, '!!')
+            mixed_probs = mixed_probs[:, frames_before_target:frames_before_target+duration, :]
+            output_counts[:, frames_before_target:frames_before_target+duration, :] += 1
+            output_probs[:, frames_before_target:frames_before_target+duration, :] += mixed_probs
+
+        print(output_counts[0].to(torch.float32).mean(-1))
         exit()
+
+        # print(
+        #     mixed_audio_data['mixed_audio'].shape, 
+        #     mixed_audio_data['frames_before_target_audio'], 
+        #     mixed_audio_data['frames_after_target_audio'],
+        #     mixed_audio_data['real_target_duration_audio_idx'],
+        #     mixed_audio_data['prebufferduration_audio_idx'],
+        #     mixed_audio_data['postbufferduration_audio_idx']
+        #     )
+       
+        # torchaudio.save('mixed.wav', mixed_audio_data['mixed_audio'], 16000)
+
+        # exit()
+        
 
         out_text = decoder(torch.as_tensor(logits))
 
@@ -151,15 +278,21 @@ if __name__ == '__main__':
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
     parser.add_argument('-repeat', '--repeat', type=int, default=1, help='number of times to rerun evaluation')
-    parser.add_argument('-eval_mode', '--evaluation_mode', type=str, default='averaged_moving_window', choices=['averaged_moving_window', 'windowed_attention', 'buffered'])
+    parser.add_argument('-eval_mode', '--evaluation_mode', type=str, default='windowed_attention', choices=['averaged_moving_window', 'windowed_attention', 'buffered'])
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
     args = parser.parse_args()
     main(args)
     
 
-#python run.py -d earnings22 -r 3 -dfa -epochs 5 -kwargs optim_lr=0.00009 spec_augment_freq_mask_param=34 spec_augment_min_p=0.1879883950862319 spec_augment_n_time_masks=0 spec_augment_n_freq_masks=6
-
-#CUDA_VISIBLE_DEVICES="1" python run.py -dfa -epochs 5 -seq 16384 -o 14336 -split test --dataset earnings22 -r 3 -s "./results/earnings22.json" -kwargs optim_lr=9e-5 spec_augment_freq_mask_param=34 spec_augment_min_p=0.18 spec_augment_n_freq_masks=6  spec_augment_n_time_masks=0 
 
 #tts --text "good morning and welcome to the despegar third quarter ' 21 earnings conference call. a slide" --model_name "tts_models/multilingual/multi-dataset/xtts_v2" --speaker_idx "Ana Florence" --language_idx="en
+
+# from TTS.api import TTS
+# tts =  TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+# wav = tts.tts(text='hello world', speaker="Ana Florence", language="en")
+# torchaudio.save('out.wav', torch.as_tensor(wav)[None], tts.synthesizer.output_sample_rate)
+# def split_into_sentences(self, text): return text
+# from functools import partial
+# split_into_sentences = partial(split_into_sentences, tts.synthesizer)
+# tts.synthesizer.split_into_sentences = split_into_sentences
