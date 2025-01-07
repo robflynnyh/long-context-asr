@@ -98,6 +98,10 @@ def main(args):
         all_texts.append(out)
         all_golds.append(gold_text)
 
+        # wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
+        # print(wer)
+        # exit()
+
         if include_per_recording_evaluations:
             wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
             wer_data.append({

@@ -34,6 +34,37 @@ datasets_functions = {
 }
 
 
+def match_gains_tensor(source_tensor, target_tensor):
+    """
+    Adjust the gain of the source tensor to match the target tensor's amplitude level.
+    
+    Parameters:
+    source_tensor (torch.Tensor): Audio tensor that needs gain adjustment (shape: [channels, samples])
+    target_tensor (torch.Tensor): Reference audio tensor (shape: [channels, samples])
+    
+    Returns:
+    torch.Tensor: Gain-adjusted audio tensor
+    float: The gain adjustment factor applied
+    """
+    
+    # Calculate RMS energy
+    source_rms = torch.sqrt(torch.mean(source_tensor**2))
+    target_rms = torch.sqrt(torch.mean(target_tensor**2))
+    
+    # Calculate gain adjustment factor
+    gain_factor = target_rms / source_rms
+    
+    # Apply gain adjustment
+    adjusted_tensor = source_tensor * gain_factor
+    
+    # Prevent clipping
+    max_amplitude = torch.max(torch.abs(adjusted_tensor))
+    if max_amplitude > 1.0:
+        adjusted_tensor = adjusted_tensor / max_amplitude
+    
+    return adjusted_tensor, gain_factor.item()
+
+
 def create_mixed_recording(
         real_index, 
         synthetic_wavs, 
@@ -52,6 +83,9 @@ def create_mixed_recording(
     real_postbufferduration_audio_idx = (segments[real_end_index].end - segments[target_index + target_size - 1].end) * downsample_factor
     
     real_audio_segment = real_audio[:, int(round(real_start_audio_idx)):int(round(real_end_audio_idx))]
+    synthetic_wavs_tensor = torch.cat([synthetic_wavs[i] for i in range(len(synthetic_wavs))], dim=-1)
+    real_audio_segment, _ = match_gains_tensor(real_audio_segment, synthetic_wavs_tensor) # match gains so that synthetic audio is not louder than real audio
+
     new_segs = []
     real_audio_idx = None
     for i, seg in enumerate(segments):
@@ -67,6 +101,7 @@ def create_mixed_recording(
     frames_after_target_audio = frames_after_real_audio + real_postbufferduration_audio_idx
     real_target_duration_audio_idx = real_duration_audio_idx - real_prebufferduration_audio_idx - real_postbufferduration_audio_idx
 
+
     mixed_audio = torch.cat(new_segs, dim=-1)
 
     return {
@@ -77,6 +112,7 @@ def create_mixed_recording(
         'prebufferduration_audio_idx': real_prebufferduration_audio_idx,
         'postbufferduration_audio_idx': real_postbufferduration_audio_idx,
     }
+
 
 
 def main(args):
@@ -140,7 +176,7 @@ def main(args):
         if verbose: print('\n-------\n'+data[rec]['id']+'\n-------\n')
         
         audio_spec, gold_text = data[rec]['process_fn'](data[rec])
-        print(f'audio path: {data[rec]["audio"]}')
+        #print(f'audio path: {data[rec]["audio"]}')
         audio_wav, sr = torchaudio.load(data[rec]['audio'])
         audio_wav = grab_left_channel(audio_wav)
         audio_wav = resample(audio_wav, sr, 16000)
@@ -157,7 +193,7 @@ def main(args):
             tokenizer = tokenizer
         ) 
         downsample_factor = audio_wav.shape[-1] / logits.shape[0]
-        print('DOWNSAMPLE FACTOR', downsample_factor)
+        #print('DOWNSAMPLE FACTOR', downsample_factor)
 
         block_sizes_seconds = 10.24
         segments = force_align(
@@ -168,7 +204,7 @@ def main(args):
             block_sizes_seconds = block_sizes_seconds
         )
 
-        segments = segments[:13]
+        segments = segments#[:20]
      
         synthetic_wavs = {}
         for i, seg in enumerate(segments):
@@ -178,23 +214,27 @@ def main(args):
 
 
         target_size = 2
-        output_size = (1, logits.shape[0] + 1, tokenizer.vocab_size() + 1)
+        output_size = (1, logits.shape[0]*2, tokenizer.vocab_size() + 1)
         output_counts = torch.zeros(output_size, dtype=torch.int)
         output_probs = torch.zeros(output_size, dtype=torch.float)
         if len(segments) < target_size: raise ValueError('The number of segments must be larger than the target size! decrease target size, or decrease block size when segmenting')
-        total_steps = len(segments) - 1 - (target_size - 1)
-        for i in range(total_steps): # -1 for zero index and -1 for each element that the target is larger than a single element
-            print(f'Transcribing {i+1}/{total_steps}')
+        #print(len(segments))
+        index = 0
+        while index < len(segments):
+            print(f'Transcribing {index+1}/{len(segments)}')
+            target_size = 2 if index + 1 < len(segments) else 1
+            #print('TARGET SIZE', target_size)
             mixed_audio_data = create_mixed_recording(
-                real_index=i, 
+                real_index=index, 
                 synthetic_wavs=synthetic_wavs, 
                 segments=segments, 
                 real_audio=audio_wav, 
                 downsample_factor=downsample_factor,
-                buffer_size=1,
-                target_size=2,
+                buffer_size=args.buffer_size,
+                target_size=target_size,
             )
             mixed_audio = mixed_audio_data['mixed_audio']
+
             mixed_audio_spec = to_spectogram(mixed_audio, global_normalisation=True)
             mixed_logits = eval_fn(
                 args = args, 
@@ -204,32 +244,41 @@ def main(args):
                 overlap = args.overlap,
                 tokenizer = tokenizer
             )
+
+            downsample_factor = mixed_audio.shape[-1] / mixed_logits.shape[0]
             frames_before_target = round(mixed_audio_data['frames_before_target_audio'] / downsample_factor)
             duration = round(mixed_audio_data['real_target_duration_audio_idx'] / downsample_factor)
+
             mixed_probs = torch.as_tensor(mixed_logits).exp()[None]
-            print(mixed_probs.shape, '!!')
-            mixed_probs = mixed_probs[:, frames_before_target:frames_before_target+duration, :]
-            output_counts[:, frames_before_target:frames_before_target+duration, :] += 1
-            output_probs[:, frames_before_target:frames_before_target+duration, :] += mixed_probs
-
-        print(output_counts[0].to(torch.float32).mean(-1))
-        exit()
-
-        # print(
-        #     mixed_audio_data['mixed_audio'].shape, 
-        #     mixed_audio_data['frames_before_target_audio'], 
-        #     mixed_audio_data['frames_after_target_audio'],
-        #     mixed_audio_data['real_target_duration_audio_idx'],
-        #     mixed_audio_data['prebufferduration_audio_idx'],
-        #     mixed_audio_data['postbufferduration_audio_idx']
-        #     )
        
-        # torchaudio.save('mixed.wav', mixed_audio_data['mixed_audio'], 16000)
+            mixed_probs = mixed_probs[:, frames_before_target:frames_before_target+duration, :]
+            mixed_probs_duration = mixed_probs.shape[1]
+            print(output_probs[:, frames_before_target:frames_before_target+duration, :].shape, 
+                  output_probs[:, frames_before_target:frames_before_target+mixed_probs_duration, :].shape,
+                  mixed_probs.shape,
+                  output_probs.shape,
+                  frames_before_target,
+                  duration,
+                  mixed_probs_duration
+                  )
+            output_counts[:, frames_before_target:frames_before_target+mixed_probs_duration, :] += 1
+            output_probs[:, frames_before_target:frames_before_target+mixed_probs_duration, :] += mixed_probs
 
-        # exit()
-        
+            index += target_size
 
-        out_text = decoder(torch.as_tensor(logits))
+
+        B,N,C = output_probs.shape
+        output_probs = output_probs[output_counts.sum(dim=-1) != 0]
+        output_probs = output_probs.reshape(B,-1,C)
+        output_counts = output_counts[output_counts.sum(dim=-1) != 0]
+        output_counts = output_counts.reshape(B,-1,C)
+        #print(output_counts.to(torch.float).mean(-1).squeeze(0).tolist())
+        logits = output_probs / output_counts
+        logits = torch.log(logits).squeeze(0) # convert to log 
+
+        #print(logits.shape)
+
+        out_text = decoder(logits)
 
         out = normalize(out_text).lower()
         
@@ -237,6 +286,9 @@ def main(args):
         
         all_texts.append(out)
         all_golds.append(gold_text)
+        wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
+        print(f'WER: {wer}')   
+        exit()
 
         if include_per_recording_evaluations:
             wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
@@ -279,6 +331,7 @@ if __name__ == '__main__':
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
     parser.add_argument('-repeat', '--repeat', type=int, default=1, help='number of times to rerun evaluation')
     parser.add_argument('-eval_mode', '--evaluation_mode', type=str, default='windowed_attention', choices=['averaged_moving_window', 'windowed_attention', 'buffered'])
+    parser.add_argument('-buffer_size', '--buffer_size', type=int, default=1, help='buffer size for buffered evaluation')
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
     args = parser.parse_args()
