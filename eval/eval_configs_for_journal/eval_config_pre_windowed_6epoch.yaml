@@ -8,20 +8,20 @@ global:
   downsampling: 8
 
 models:
-  # - name: ${global.name}
-  #   repeat: 1
-  #   window_size: 32
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
-  # - name: ${global.name}
-  #   repeat: 2
-  #   window_size: 32
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 1
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   - name: ${global.name}
     repeat: 3
     window_size: 32
@@ -30,13 +30,13 @@ models:
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
 
-  # - name: ${global.name}
-  #   repeat: 1
-  #   window_size: 64
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 1
+    window_size: 64
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 64
@@ -52,13 +52,13 @@ models:
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
 
-  # - name: ${global.name}
-  #   repeat: 1
-  #   window_size: 128
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 1
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 128
@@ -66,13 +66,13 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  # - name: ${global.name} 
-  #   repeat: 3
-  #   window_size: 128
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: 0.875
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name} 
+    repeat: 3
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
 
   # - name: ${global.name}
   #   repeat: 1
@@ -140,13 +140,13 @@ models:
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
 
-  # - name: ${global.name}
-  #   repeat: 1
-  #   window_size: 2048
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 1
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   - name: ${global.name}
     repeat: 2
     window_size: 2048
@@ -154,13 +154,13 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  # - name: ${global.name}
-  #   repeat: 3
-  #   window_size: 2048
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
 
   - name: ${global.name}
     repeat: 1
@@ -208,20 +208,20 @@ models:
     description: "here we half the number of layers to look at its effect on context"
 
 
-  # - name: ${global.name}
-  #   repeat: 1
-  #   window_size: 16384
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
-  # - name: ${global.name}
-  #   repeat: 2
-  #   window_size: 16384
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 1
+    window_size: 16384
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    window_size: 16384
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   - name: ${global.name}  
     repeat: 3
     window_size: 16384
@@ -244,28 +244,28 @@ models:
   #   overlap_ratio: ${global.overlap_ratio}
   #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
   #   description: ${global.description}
-  # - name: ${global.name} # Not finished!!
-  #   repeat: 3
-  #   window_size: 32768
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: 0.875
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: "here we half the number of layers to look at its effect on context"
+  - name: ${global.name} 
+    repeat: 3
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: "here we half the number of layers to look at its effect on context"
 
-  # - name: ${global.name}
-  #   repeat: 1
-  #   window_size: 360000
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
-  # - name: ${global.name}
-  #   repeat: 2
-  #   window_size: 360000
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 1
+    window_size: 360000
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    repeat: 2
+    window_size: 360000
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
   # - name: ${global.name}
   #   repeat: 3
   #   window_size: 360000
@@ -283,6 +283,8 @@ args:
   max_sequence_length: 3600000
 
 datasets:
+  - name: earnings22_full
+    splits: [test]
   - name: tedlium
     splits: [test, dev]
     args:
@@ -294,5 +296,3 @@ datasets:
     splits: [test, dev]
   - name: this_american_life
     splits: [test, dev]
-  - name: earnings22_full
-    splits: [test]

@@ -14,6 +14,7 @@ normalize = EnglishTextNormalizer()
 from tqdm import tqdm
 import torchaudio
 from functools import partial
+import random
 
 from earnings22_full.run import get_text_and_audio as get_text_and_audio_earnings22_full
 from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
@@ -73,6 +74,7 @@ def create_mixed_recording(
         downsample_factor,
         buffer_size=1,
         target_size=2,
+        shuffle_context=False,
     ):
     target_index=real_index
     real_start_index, real_end_index = max(target_index-buffer_size, 0),  min(target_index+buffer_size+1, len(segments)-1)    
@@ -86,11 +88,18 @@ def create_mixed_recording(
     synthetic_wavs_tensor = torch.cat([synthetic_wavs[i] for i in range(len(synthetic_wavs))], dim=-1)
     real_audio_segment, _ = match_gains_tensor(real_audio_segment, synthetic_wavs_tensor) # match gains so that synthetic audio is not louder than real audio
 
+    valid_synthetic_indexes = [i for i in range(len(synthetic_wavs)) if i < real_start_index or i > real_end_index]
+    if shuffle_context:
+        random_valid_synthetic_indexes = random.sample(valid_synthetic_indexes, len(valid_synthetic_indexes))
+    else:
+        random_valid_synthetic_indexes = valid_synthetic_indexes
+    valid_synthetic_indexes_lookup = {i: random_valid_synthetic_indexes[j] for j, i in enumerate(valid_synthetic_indexes)}
+
     new_segs = []
     real_audio_idx = None
     for i, seg in enumerate(segments):
         if i < real_start_index or i > real_end_index:
-            new_segs.append(synthetic_wavs[i])
+            new_segs.append(synthetic_wavs[valid_synthetic_indexes_lookup[i]])
         elif i == target_index:
             real_audio_idx = len(new_segs)
             new_segs.append(real_audio_segment)
@@ -148,6 +157,8 @@ def main(args):
     model = model.to(device)
     model.eval()
 
+    print(f'Using buffer size of: {args.buffer_size}, shuffle context (beyond buffer): {args.shuffle_context}')
+
     decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
 
     data = datasets_functions[args.dataset](args.split)
@@ -204,7 +215,7 @@ def main(args):
             block_sizes_seconds = block_sizes_seconds
         )
 
-        segments = segments#[:20]
+        segments = segments[:20]
      
         synthetic_wavs = {}
         for i, seg in enumerate(segments):
@@ -232,6 +243,7 @@ def main(args):
                 downsample_factor=downsample_factor,
                 buffer_size=args.buffer_size,
                 target_size=target_size,
+                shuffle_context=args.shuffle_context
             )
             mixed_audio = mixed_audio_data['mixed_audio']
 
@@ -253,14 +265,14 @@ def main(args):
        
             mixed_probs = mixed_probs[:, frames_before_target:frames_before_target+duration, :]
             mixed_probs_duration = mixed_probs.shape[1]
-            print(output_probs[:, frames_before_target:frames_before_target+duration, :].shape, 
-                  output_probs[:, frames_before_target:frames_before_target+mixed_probs_duration, :].shape,
-                  mixed_probs.shape,
-                  output_probs.shape,
-                  frames_before_target,
-                  duration,
-                  mixed_probs_duration
-                  )
+            # print(output_probs[:, frames_before_target:frames_before_target+duration, :].shape, 
+            #       output_probs[:, frames_before_target:frames_before_target+mixed_probs_duration, :].shape,
+            #       mixed_probs.shape,
+            #       output_probs.shape,
+            #       frames_before_target,
+            #       duration,
+            #       mixed_probs_duration
+            #       )
             output_counts[:, frames_before_target:frames_before_target+mixed_probs_duration, :] += 1
             output_probs[:, frames_before_target:frames_before_target+mixed_probs_duration, :] += mixed_probs
 
@@ -287,11 +299,9 @@ def main(args):
         all_texts.append(out)
         all_golds.append(gold_text)
         wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
-        print(f'WER: {wer}')   
-        exit()
-
+        print(f'WER (individual recording): {wer}')   
+   
         if include_per_recording_evaluations:
-            wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
             wer_data.append({
                 'recording': data[rec]['id'],
                 'wer': wer,
@@ -332,6 +342,8 @@ if __name__ == '__main__':
     parser.add_argument('-repeat', '--repeat', type=int, default=1, help='number of times to rerun evaluation')
     parser.add_argument('-eval_mode', '--evaluation_mode', type=str, default='windowed_attention', choices=['averaged_moving_window', 'windowed_attention', 'buffered'])
     parser.add_argument('-buffer_size', '--buffer_size', type=int, default=1, help='buffer size for buffered evaluation')
+    parser.add_argument('-shuffle_context', '--shuffle_context', action='store_true', help='shuffle the TTS context for each recording')
+
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
     args = parser.parse_args()
