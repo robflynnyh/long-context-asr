@@ -90,6 +90,7 @@ def create_mixed_recording(
 
     valid_synthetic_indexes = [i for i in range(len(synthetic_wavs)) if i < real_start_index or i > real_end_index]
     if shuffle_context:
+        raise NotImplementedError('Shuffling context is not implemented yet')
         random_valid_synthetic_indexes = random.sample(valid_synthetic_indexes, len(valid_synthetic_indexes))
     else:
         random_valid_synthetic_indexes = valid_synthetic_indexes
@@ -215,7 +216,7 @@ def main(args):
             block_sizes_seconds = block_sizes_seconds
         )
 
-        segments = segments[:20]
+        segments = segments
      
         synthetic_wavs = {}
         for i, seg in enumerate(segments):
