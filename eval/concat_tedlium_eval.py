@@ -42,6 +42,7 @@ def main(args):
         subsample_factor = args.config.model.get('subsampling_factor', 8)
         ds_seq_len = seq_len // subsample_factor
         args.config.model.attention_window_size = ds_seq_len // 2 # //2 because applied in both directions
+        print(args.config.model.attention_window_size)
     else: args.config.model.attention_window_size = args.window_size
 
     args.seq_len = args.__dict__.get('max_sequence_length', 3600000) # 10 hours
@@ -72,6 +73,11 @@ def main(args):
 
     all_specs = [data[i]['process_fn'](data[i])[0] for i in range(len(data))]
 
+    max_size = args.__dict__.get('max_size', 1000000)
+    max_size_left = max_size // 2
+    max_size_right = max_size // 2
+    flip_context = args.__dict__.get('flip_context', False)
+
     pbar = tqdm(range(len(data)), total=len(data)) #if verbose else range(len(data))
     for rec in pbar:
         if verbose: print(f'Processing {rec+1}/{len(data)}')
@@ -88,7 +94,9 @@ def main(args):
 
         all_logits = []
         for i in range(args.__dict__.get('repeats', 1)):
-            recordings = [i for i in range(len(data)) if i != rec]
+            if not args.__dict__.get('repeat_recording', False): recordings = [i for i in range(len(data)) if i != rec]
+            else: recordings = [rec for _ in range(len(data))]
+
             random.shuffle(recordings)
             all_specs_cur = [all_specs[i] for i in recordings]
             if concat_from == 'middle':
@@ -100,9 +108,17 @@ def main(args):
             elif concat_from == 'right':
                 left = []
                 right = all_specs_cur
-            specs = left + [audio_spec] + right
-            specs = torch.cat(specs, dim=-1) 
-          
+            if flip_context:
+                left = [el.flip(-1) for el in left]
+                right = [el.flip(-1) for el in right]
+            left = torch.cat(left, dim=-1)
+            right = torch.cat(right, dim=-1)
+            totrim_left = max(0, left.shape[-1] - max_size_left)
+            totrim_right = max(0, right.shape[-1] - max_size_right)
+            left = left[:, :, totrim_left:]
+            if totrim_right > 0: right = right[:, :, :-totrim_right]
+            specs = torch.cat([left, audio_spec, right], dim=-1)
+            print(specs.shape)
             logits = model(specs.to(device))['final_posteriors']
             downsampled_by = specs.shape[-1] / logits.shape[-2]
             left_in_len = sum([el.shape[-1] for el in left])
@@ -167,6 +183,10 @@ if __name__ == '__main__':
     parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
+    
+    parser.add_argument('--repeat_recording', action='store_true', help='repeat the same recording rather than concat different recordings')
+    parser.add_argument('--max_size', type=int, default=1000000, help='max size of audio')
+    parser.add_argument('--flip_context', action='store_true', help='flip context (reverse order of recordings in context)')
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
     args = parser.parse_args()

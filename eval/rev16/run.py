@@ -57,6 +57,7 @@ def get_text_and_audio(split, **kwargs):
             "process_fn": process_text_and_audio_fn,
             "id": text_files[rec]['id'],
         })
+    return_data = sorted(return_data, key=lambda x: x['id'])
     return return_data
 
 def main(args):

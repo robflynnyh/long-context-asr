@@ -10,6 +10,7 @@ from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
 from tqdm import tqdm
 import math
+from functools import partial
 
 from earnings22_full.run import get_text_and_audio as get_text_and_audio_earnings22_full
 from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
@@ -17,6 +18,7 @@ from tedlium.run import get_text_and_audio as get_text_and_audio_tedlium
 from rev16.run import get_text_and_audio as get_text_and_audio_rev16
 from this_american_life.run import get_text_and_audio as get_text_and_audio_this_american_life
 from spotify.run import get_text_and_audio as get_text_and_audio_spotify
+from synthetic_dataset.run import get_text_and_audio as get_text_and_audio_synthetic
 
 datasets_functions = {
     'tedlium': get_text_and_audio_tedlium,
@@ -25,6 +27,9 @@ datasets_functions = {
     'rev16': get_text_and_audio_rev16,
     'this_american_life': get_text_and_audio_this_american_life,
     'spotify': get_text_and_audio_spotify,
+    'synthetic_earnings22': partial(get_text_and_audio_synthetic, dataset='earnings22'),
+    'synthetic_rev16': partial(get_text_and_audio_synthetic, dataset='rev16'),
+    'synthetic_this_american_life': partial(get_text_and_audio_synthetic, dataset='this_american_life'),
     'no_context': lambda split: [None] # dummy function to simplify code
 }
 
@@ -63,7 +68,7 @@ def main(args):
     decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
 
     data = datasets_functions[args.dataset](args.split)
-
+    data = sorted(data, key=lambda x: x['id'])
     # for idx, module in enumerate([el.attend.fn for el in model.layers]):
     #     module.return_attention_weights = True
     all_texts = []
@@ -82,16 +87,19 @@ def main(args):
         
         #recordings = [i for i in range(len(data)) if i != rec]
         distracter_data = datasets_functions[args.distracter_dataset]('test')
+        distracter_data = sorted(distracter_data, key=lambda x: x['id'])
 
         if args.within_recording:
-            assert args.dataset == args.distracter_dataset, 'within_recording only makes sense when dataset and distracter_dataset are the same'
+            assert len(distracter_data) == len(data), 'must be same length'
 
         if args.dataset == args.distracter_dataset and not args.within_recording:
             recordings = [i for i in range(len(distracter_data)) if i != rec]
         elif args.dataset == args.distracter_dataset and args.within_recording:
             recordings = [rec]
+        elif args.dataset != args.distracter_dataset and args.within_recording:
+            recordings = [rec]
         else:
-            recordings = [i for i in range(len(distracter_data))]
+            recordings = [i for i in range(len(distracter_data))] # TODO: correct for synthetic copy!!
 
         # pick a random recording
         if args.distracter_dataset != 'no_context':
@@ -99,6 +107,11 @@ def main(args):
             distracter_spec, _ = distracter_data[distracter_rec_id]['process_fn'](distracter_data[distracter_rec_id])
         else:
             distracter_spec = torch.zeros_like(audio_spec)
+        
+        # if args.__dict__.get('noise', 0.0) > 0.0:
+        #     audio_spec = audio_spec + torch.randn_like(audio_spec) * args.__dict__.get('noise', 0.0)
+        #     #distracter_spec = distracter_spec + torch.randn_like(distracter_spec) * args.__dict__.get('noise', 0.0)
+        #     print(args.__dict__.get('noise', 0.0))
 
         logits = shuffled_eval(
             args = args, 
@@ -113,7 +126,7 @@ def main(args):
             use_tqdm = True
         ) 
         
-        out_text = decoder(logits)
+        out_text = decoder(torch.as_tensor(logits))
 
         out = normalize(out_text).lower()
         
@@ -121,7 +134,7 @@ def main(args):
         
         all_texts.append(out)
         all_golds.append(gold_text)
-
+      
         if include_per_recording_evaluations:
             wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
             wer_data.append({
@@ -168,6 +181,9 @@ if __name__ == '__main__':
     parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
+
+    parser.add_argument('-noise', '--noise', type=float, default=0.0, help='noise level')
+
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
     args = parser.parse_args()

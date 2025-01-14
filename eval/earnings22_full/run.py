@@ -71,6 +71,7 @@ def get_text_and_audio(split, **kwargs):
             'audio': audio_files[rec]['path'], 
             "process_fn": process_text_and_audio_fn
         })
+    return_data = sorted(return_data, key=lambda x: x['id'])
     return return_data
 
 def main(args):

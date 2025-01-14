@@ -12,228 +12,228 @@ global:
 
 models:
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 1
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 512
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 1
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 512
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 2
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 512
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 2
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 512
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 3
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 512
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 3
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 512
 
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 1
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 1024
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 1
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 1024
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 2
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 1024
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 2
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 1024
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 3
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 1024
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 3
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 1024
 
   
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 1
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 2048
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 1
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 2048
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 2
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 2048
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 2
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 2048
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 3
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 2048
-
-
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 1
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 4096
-
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 2
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 4096
-
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 3
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 4096
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 3
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 2048
 
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 1
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 8192
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 1
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 4096
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 2
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 8192
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 2
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 4096
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 3
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 8192
-
-
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 1
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 8192
-
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 2
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 8192
-
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 3
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 8192
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 3
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 4096
 
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 1
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 16384
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 1
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 8192
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 2
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 16384
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 2
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 8192
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 3
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 16384
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 3
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 8192
 
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 1
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 32768
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 1
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 8192
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 2
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 32768
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 2
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 8192
 
-  - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
-    repeat: 3
-    seq_len: ${global.seq_len}
-    overlap_ratio: ${global.overlap_ratio}
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
-    description: ${global.description}
-    args:
-      buffer_len: 32768
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 3
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 8192
+
+
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 1
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 16384
+
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 2
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 16384
+
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 3
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 16384
+
+
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 1
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 32768
+
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 2
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 32768
+
+  # - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}
+  #   repeat: 3
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+  #   description: ${global.description}
+  #   args:
+  #     buffer_len: 32768
 
 
   - name: ${global.name}_buffer-${.args.buffer_len}_window-${global.window_len}_seq-${.seq_len}

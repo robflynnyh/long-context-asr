@@ -1,0 +1,4 @@
+,dataset,split,wer,recording,words,ins_rate,del_rate,sub_rate,name,checkpoint,repeat,seq_len,overlap_ratio,model_class
+0,tedlium,test,0.06811979443558391,all,28215,0.008754208754208754,0.0202729044834308,0.03909268119794435,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_1024_rp_1/step_105360.pt,1,1024,0.875,SCConformerXL
+0,tedlium,test,0.06911217437533226,all,28215,0.009569377990430622,0.019670388091440724,0.03987240829346093,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_1024_rp_2/step_105360.pt,2,1024,0.875,SCConformerXL
+0,tedlium,test,0.06907673223462697,all,28215,0.009463051568314727,0.01998936735778841,0.03962431330852383,rb_n_seq_sched,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb/n_seq_sched_1024_rp_3/step_105360.pt,3,1024,0.875,SCConformerXL

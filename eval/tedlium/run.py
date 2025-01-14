@@ -111,6 +111,7 @@ def get_text_and_audio(split, **kwargs):
             'audio': audio_files[rec], 
             "process_fn": partial(process_text_and_audio_fn, single_utterance=single_utterance)
         })
+    return_data = sorted(return_data, key=lambda x: x['id'])
 
     return return_data
 

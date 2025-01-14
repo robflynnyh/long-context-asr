@@ -3,7 +3,7 @@ global:
   name: rb_n_seq_sched
   overlap_ratio: 0.875
   checkpoint: step_105360.pt
-  description: "rotary base 90M param model, decoding using windowed attention on tedlium, when whole test set is concatenated"
+  description: "rotary base 90M param model, decoding using windowed attention on tedlium, when whole recording is is repeated as context"
   
 
 models:
@@ -200,10 +200,11 @@ models:
 args:
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_rb_concat_tedlium__________.csv'
+  save_dataframe_path: './results/evals_rb_concat_repeated_tedlium.csv'
   evaluation_mode: windowed_attention
   max_sequence_length: 3600000
   run_eval_with: concat_tedlium_eval
+  repeat_recording: true
 
 datasets:
   - name: tedlium
