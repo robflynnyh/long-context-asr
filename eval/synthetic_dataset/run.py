@@ -16,6 +16,9 @@ defaults = {
     'earnings22': "/mnt/parscratch/users/acp21rjf/synthetic_earnings22_test/",
     'rev16': "/mnt/parscratch/users/acp21rjf/synthetic_rev16_test/",
     'this_american_life': '/mnt/parscratch/users/acp21rjf/synthetic_TAL_test/',
+    'earnings22_conditioned_on_e22': '/mnt/parscratch/users/acp21rjf/synthetic_e22_conditionede22_test',
+    'earnings22_conditioned_on_TAL': '/mnt/parscratch/users/acp21rjf/synthetic_e22_conditionedTAL_test',
+    'this_american_life_conditioned_on_e22': '/mnt/parscratch/users/acp21rjf/synthetic_TAL_test_conditioned_on_e22',
 }
 
 from whisper.normalizers import EnglishTextNormalizer
@@ -29,7 +32,7 @@ def fetch_data(path:str):
     return full_path_files, files
 
 
-def process_text_and_audio_fn(rec_dict):
+def process_text_and_audio_fn(rec_dict, return_audio=False):
     path = rec_dict['file']
     with open(path, 'rb') as f:
         data = pkl.load(f)
@@ -43,8 +46,9 @@ def process_text_and_audio_fn(rec_dict):
     # print(all_text)
     
     audio_spec = to_spectogram(audio, global_normalisation=True)
-    return audio_spec, normalize(all_text).lower().strip()
 
+    if return_audio: return audio_spec, normalize(all_text).lower().strip(), audio
+    else: return audio_spec, normalize(all_text).lower().strip()
 
 
 
@@ -65,5 +69,6 @@ def get_text_and_audio(split='test', dataset='earnings22', fullpath=None):
 
 
 if __name__ == "__main__":
-    data = get_text_and_audio(dataset='earnings22')
-    data[0]['process_fn'](data[0])
+    data = get_text_and_audio(dataset='earnings22_conditioned_on_TAL')
+    _,_,audio = data[0]['process_fn'](data[0], return_audio=True)
+    torchaudio.save("teste22tal.wav", audio, 16000)

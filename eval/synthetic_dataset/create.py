@@ -29,6 +29,7 @@ from tedlium.run import get_text_and_audio as get_text_and_audio_tedlium
 from rev16.run import get_text_and_audio as get_text_and_audio_rev16
 from this_american_life.run import get_text_and_audio as get_text_and_audio_this_american_life
 from spotify.run import get_text_and_audio as get_text_and_audio_spotify
+from typing import List
 
 from TTS.api import TTS
 
@@ -40,6 +41,19 @@ datasets_functions = {
     'this_american_life': get_text_and_audio_this_american_life,
     'spotify': get_text_and_audio_spotify
 }
+
+def create_conditioning_samples(files:List[str]):
+    snippets = []
+    for file in files:
+        audio, sr = torchaudio.load(file)
+        # select 6 10s snippets
+        for i in range(6):
+            start = random.randint(0, audio.shape[-1] - sr*10)
+            end = start + sr*10
+            snippet = audio[:, start:end]
+            snippets.append(snippet)
+        del audio
+    return snippets
 
 def main(args):
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
@@ -81,15 +95,27 @@ def main(args):
     def split_into_sentences(self, text): return text
     tts =  TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
     tts.synthesizer.split_into_sentences = partial(split_into_sentences, tts.synthesizer)
-    synthesize_fn = partial(tts.tts, speaker="Ana Florence", language="en", speed=2.0)
 
-    def synthesize(text):
-        out = torch.as_tensor(synthesize_fn([text]))[None]
+    def synthesize(text, speaker="Ana Florence", language="en", speed=2.0, speaker_wav=None):
+        out = tts.tts([text], speaker=speaker, language=language, speed=speed, speaker_wav=speaker_wav)
+        out = torch.as_tensor(out)[None]
         out = resample(out, tts.synthesizer.output_sample_rate, 16000)
         return out
 
     # for idx, module in enumerate([el.attend.fn for el in model.layers]):
     #     module.return_attention_weights = True
+
+    snippet_paths = []
+    if args.__dict__.get('condition_on', 'none') != 'none':
+        conditioning_data = datasets_functions[args.condition_on]("test")
+        audio_files = [el['audio'] for el in conditioning_data]
+        tmp_dir = os.environ.get('TMPDIR', '/tmp')
+        snippets = create_conditioning_samples(audio_files)
+        for i, snippet in enumerate(snippets):
+            path = join(tmp_dir, f'snippet_{i}_{random.randint(0, 1000000)}.wav')
+            torchaudio.save(path, snippet, 16000)
+            snippet_paths.append(path)
+    print(f'Created {len(snippet_paths)} conditioning samples')
 
     
     pbar = tqdm(range(len(data)), total=len(data)) #if verbose else range(len(data))
@@ -131,7 +157,10 @@ def main(args):
      
         synthetic_wavs = {}
         for i, seg in enumerate(segments):
-            synthetic_wavs[i] = synthesize(seg.text)
+            if len(snippet_paths) == 0:
+                synthetic_wavs[i] = synthesize(seg.text)
+            else:
+                synthetic_wavs[i] = synthesize(seg.text, speaker_wav=snippet_paths, speaker=None)
             print(f'{i}/{len(segments)}: {synthetic_wavs[i].shape}')
 
         path = join(args.save_path, f'{data[rec]["id"]}.pkl')
@@ -160,6 +189,7 @@ if __name__ == '__main__':
     parser.add_argument('-eval_mode', '--evaluation_mode', type=str, default='windowed_attention', choices=['averaged_moving_window', 'windowed_attention', 'buffered'])
 
     parser.add_argument('-save_path', '--save_path', type=str, required=True, help='path to save data')
+    parser.add_argument('--condition_on', type=str, default='none')
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
     args = parser.parse_args()

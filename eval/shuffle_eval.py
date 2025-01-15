@@ -28,8 +28,10 @@ datasets_functions = {
     'this_american_life': get_text_and_audio_this_american_life,
     'spotify': get_text_and_audio_spotify,
     'synthetic_earnings22': partial(get_text_and_audio_synthetic, dataset='earnings22'),
+    'synthetic_earnings22_conditioned_on_e22': partial(get_text_and_audio_synthetic, dataset='earnings22_conditioned_on_e22'),
     'synthetic_rev16': partial(get_text_and_audio_synthetic, dataset='rev16'),
     'synthetic_this_american_life': partial(get_text_and_audio_synthetic, dataset='this_american_life'),
+    'synthetic_this_american_life_conditioned_on_e22': partial(get_text_and_audio_synthetic, dataset='this_american_life_conditioned_on_e22'),
     'no_context': lambda split: [None] # dummy function to simplify code
 }
 
@@ -98,6 +100,8 @@ def main(args):
             recordings = [rec]
         elif args.dataset != args.distracter_dataset and args.within_recording:
             recordings = [rec]
+        elif args.dataset != args.distracter_dataset and args.force_within_dataset:
+            recordings = [i for i in range(len(distracter_data)) if i != rec]
         else:
             recordings = [i for i in range(len(distracter_data))] # TODO: correct for synthetic copy!!
 
@@ -171,6 +175,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', '-d', type=str, default='tedlium', choices=datasets_functions.keys())
     parser.add_argument('--distracter_dataset', '-dd', type=str, default='earnings22_full', choices=datasets_functions.keys())
     parser.add_argument('-wr', '--within_recording', action='store_true', help='sample distracter from within recording')
+    parser.add_argument('--force_within_dataset', action='store_true', help='use when want to sample cross dataset but using synthetic version as distractor')
 
     parser.add_argument('-window_len', '--window_len', type=int, default=2048, help='window length')
     parser.add_argument('-buffer_len', '--buffer_len', type=int, default=2048, help='buffer length')
@@ -183,6 +188,8 @@ if __name__ == '__main__':
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
 
     parser.add_argument('-noise', '--noise', type=float, default=0.0, help='noise level')
+
+
 
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
