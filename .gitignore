@@ -12,4 +12,4 @@ __pycache__
 paths.yaml
 *.wav
 
-!./eval/synthetic_in_context_dataset/*.wav
+!eval/synthetic_in_context_dataset/**/*.wav
