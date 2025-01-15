@@ -11,3 +11,5 @@ __pycache__
 *.pyc
 paths.yaml
 *.wav
+
+!./eval/synthetic_in_context_dataset/*.wav
