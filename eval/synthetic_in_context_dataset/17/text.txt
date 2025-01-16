@@ -1,0 +1,2 @@
+full: Her eloquent speech at the graduation ceremony moved everyone to tears.
+target: eloquent

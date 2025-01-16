@@ -1,0 +1,2 @@
+TTS: https://huggingface.co/microsoft/speecht5_tts
+text: From http://www.incompleteideas.net/IncIdeas/BitterLesson.html

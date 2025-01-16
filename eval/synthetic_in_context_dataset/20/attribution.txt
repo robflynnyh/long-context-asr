@@ -1,0 +1,4 @@
+TTS: https://huggingface.co/hexgrad/Kokoro-82M
+text: Generated via chatgpt
+room effect: pyroomacoustics 
+sound effect: Tree Chainsawed Drops.m4a by RutgerMuller -- https://freesound.org/s/535352/ -- License: Creative Commons 0

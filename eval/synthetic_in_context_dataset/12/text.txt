@@ -1,0 +1,2 @@
+full: One thing that should be learned from the bitter lesson is the great power of general purpose methods
+target word: general purpose

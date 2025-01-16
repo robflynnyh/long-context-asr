@@ -1,0 +1,3 @@
+TTS: https://huggingface.co/hexgrad/Kokoro-82M
+text: Generated via claude
+room effect: pyroomacoustics

@@ -1,0 +1,4 @@
+TTS: https://huggingface.co/hexgrad/Kokoro-82M
+text: Generated via chatgpt
+room effect: pyroomacoustics 
+sound effect: Arturia Acid - 2019-02-04.wav by Doctor_Dreamchip -- https://freesound.org/s/458557/ -- License: Creative Commons 0

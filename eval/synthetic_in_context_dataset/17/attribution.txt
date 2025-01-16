@@ -1,0 +1,4 @@
+TTS: https://huggingface.co/hexgrad/Kokoro-82M
+text: Generated via claude
+room effect: pyroomacoustics 
+other effects: torch.fft.irfft(torch.fft.rfft(speech)[:3500], n=speech.shape[0])

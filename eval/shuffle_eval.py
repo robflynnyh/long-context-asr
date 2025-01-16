@@ -100,7 +100,7 @@ def main(args):
             recordings = [rec]
         elif args.dataset != args.distracter_dataset and args.within_recording:
             recordings = [rec]
-        elif args.dataset != args.distracter_dataset and args.force_within_dataset:
+        elif args.dataset != args.distracter_dataset and args.__dict__.get('force_within_dataset', False):
             recordings = [i for i in range(len(distracter_data)) if i != rec]
         else:
             recordings = [i for i in range(len(distracter_data))] # TODO: correct for synthetic copy!!
