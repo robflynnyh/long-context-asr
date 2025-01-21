@@ -8,7 +8,7 @@
 
 
 module load Anaconda3/2022.10
-source activate a100
+source activate /mnt/parscratch/users/acp21rjf/conda/main
 
 echo "Running eval_manager.py with config $CONFIG"
 

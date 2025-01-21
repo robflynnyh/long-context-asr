@@ -2,7 +2,6 @@ import torch, argparse, lcasr
 from lcasr.eval.utils import fetch_logits as moving_average_eval
 from lcasr.eval.buffered_transcription import fetch_logits as buffered_eval
 from lcasr.utils.general import load_model, get_model_class
-from pyctcdecode import build_ctcdecoder
 from lcasr.eval.wer import word_error_rate_detail 
 #from lcasr.eval.dynamic_eval import dynamic_eval
 from lcasr.decoding.greedy import GreedyCTCDecoder
