@@ -1,0 +1,3 @@
+,dataset,split,wer,recording,words,ins_rate,del_rate,sub_rate,name,checkpoint,repeat,seq_len,overlap_ratio,model_class
+0,earnings22_full,test,0.2977967392836892,all,985857,0.03214665007196784,0.09286843832320509,0.1727816508885163,rotary_pos_6l_768d_pre_windowed,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_32_rp_1/step_105360.pt,1,360000,0.875,SCConformerXL
+0,earnings22_full,test,0.2977348641841565,all,985857,0.03425750387733718,0.08725809118360979,0.17621926912320957,rotary_pos_6l_768d_pre_windowed,/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_32_rp_2/step_105360.pt,2,360000,0.875,SCConformerXL

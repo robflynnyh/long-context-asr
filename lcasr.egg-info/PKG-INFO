@@ -1,17 +1,18 @@
 Metadata-Version: 2.1
 Name: lcasr
-Version: 0.0.0.1
+Version: 1.0
 Summary: Code for training long-context asr models on spotify podcast corpus
 Home-page: https://github.com/robflynnyh/long-context-asr
 Author: Rob Flynn
 Author-email: rjflynn2@sheffield.ac.uk
-License: MIT
-Classifier: Development Status :: 1 - Planning
+License: Apache 2.0
+Classifier: Development Status :: 2 - Alpha
 Classifier: Intended Audience :: Science/Research
-Classifier: License :: OSI Approved :: BSD License
+Classifier: License :: OSI Approved :: Apache Software License
 Classifier: Operating System :: POSIX :: Linux
-Classifier: Programming Language :: Python :: 2
-Classifier: Programming Language :: Python :: 2.7
 Classifier: Programming Language :: Python :: 3
-Classifier: Programming Language :: Python :: 3.4
-Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.8
+License-File: LICENSE
+Requires-Dist: torch
+Requires-Dist: numpy

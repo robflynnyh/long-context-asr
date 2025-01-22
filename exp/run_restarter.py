@@ -18,7 +18,7 @@ run_strings = {
 #SBATCH --cpus-per-task=8
 
 module load Anaconda3/2022.10
-source activate a100
+source activate /mnt/parscratch/users/acp21rjf/conda/main
 
 """,
     'h100':f"""#!/bin/bash\n
@@ -30,7 +30,7 @@ source activate a100
 #SBATCH --cpus-per-task=8
 
 module load Anaconda3/2022.10
-source activate a100
+source activate /mnt/parscratch/users/acp21rjf/conda/main
 
 """
 }

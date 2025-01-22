@@ -113,6 +113,67 @@ models:
     path: /mnt/parscratch/users/acp21rjf/lcasr-320s/step_105360_repeat_3.pt
     description: "standard rotary with 10k base frequency"
 
+  # - name: 10k_n_seq_sched
+  #   repeat: 1
+  #   seq_len: 65536
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb10k/n_seq_sched_65536_rp_1/step_105360.pt
+  #   description: "standard rotary with 10k base frequency"
+  - name: 10k_n_seq_sched
+    repeat: 2
+    seq_len: 65536
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb10k/n_seq_sched_65536_rp_2/step_105360.pt
+    description: "standard rotary with 10k base frequency"  
+  # - name: 10k_n_seq_sched
+  #   repeat: 3
+  #   seq_len: 65536
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb10k/n_seq_sched_65536_rp_3/step_105360.pt
+  #   description: "standard rotary with 10k base frequency"
+
+  - name: 10k_n_seq_sched
+    repeat: 1
+    seq_len: 131072
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb10k/n_seq_sched_131072_rp_1/step_105360.pt
+    description: "standard rotary with 10k base frequency"
+  # - name: 10k_n_seq_sched
+  #   repeat: 2
+  #   seq_len: 131072
+  #   overlap_ratio: 0.875
+  #   path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb10k/n_seq_sched_131072_rp_2/step_105360.pt
+  #   description: "standard rotary with 10k base frequency"  
+  - name: 10k_n_seq_sched
+    repeat: 3
+    seq_len: 131072
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb10k/n_seq_sched_131072_rp_3/step_105360.pt
+    description: "standard rotary with 10k base frequency"
+
+
+
+
+  - name: 10k_n_seq_sched
+    repeat: 1
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb10k/n_seq_sched_262144_rp_1/step_105360.pt
+    description: "standard rotary with 10k base frequency"
+  - name: 10k_n_seq_sched
+    repeat: 2
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb10k/n_seq_sched_262144_rp_2/step_105360.pt
+    description: "standard rotary with 10k base frequency"  
+  - name: 10k_n_seq_sched
+    repeat: 3
+    seq_len: 262144
+    overlap_ratio: 0.875
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb10k/n_seq_sched_262144_rp_3/step_105360.pt
+    description: "standard rotary with 10k base frequency"
+
+
   - name: 10k_n_seq_sched
     repeat: 1
     seq_len: 360000
