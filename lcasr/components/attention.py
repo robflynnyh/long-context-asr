@@ -522,10 +522,9 @@ class Attention(nn.Module):
                 q, kv = q.half(), kv.half()
 
             qkv = torch.cat([q[:,:,None], kv], dim=2)
-    
 
             if length is not None and length.max() != length.min(): # variable length
-                qkv_unpad, qkv_indices, cu_seqlens, max_seqlen = unpad_input(qkv, attn_mask)
+                qkv_unpad, qkv_indices, cu_seqlens, max_seqlen, seqused = unpad_input(qkv, attn_mask)
                 out = self.flash_attn_fn(qkv_unpad, attn_mask, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen)
                 out = pad_input(out, indices=qkv_indices, batch=B, seqlen=max_seqlen)
             else:

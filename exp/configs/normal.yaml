@@ -1,8 +1,8 @@
-model_class: 'SCConformerMeta'
+model_class: 'SCConformerTest'
 
 model:
   feat_in: 80
-  n_layers: 6
+  n_layers: 5
   d_model: 768
   n_heads: 6
   head_dim: 128
@@ -15,27 +15,28 @@ model:
   subsampling_conv_channels: 256
   self_condition_subsampling: false
   subsampling_norm_out: false
-  conv_kernel_size: 9
+  conv_kernel_size: 7
   qk_rms_norm: false 
   shift_kvs: false
   self_conditioning: true
   gated_sc: false
   decoder_norm: true
   use_rotary: true
-  encoder_mode: 'conformer'
+  transformer: false
   default_norm: 'layer_norm'
   sandwich_norm: false
   bias_in_ff: false
   checkpoint_every_n_layers: 0
   flash_attn: true
+  rotary_base_freq: 1500000
 
 optimizer:
   name: madgrad
   args:
-    lr: 1e-4
+    lr: 1e-3
 
 scheduler:
-  warmup_steps: 9000
+  warmup_steps: 3000
 
 audio_chunking:
   size: 2048
@@ -66,7 +67,7 @@ audio_chunking:
 wandb:
   use: true
   project_name: spotify_long_context
-  name: 'meta_loss'
+  name: 'TEST'
   id: '' #zhmi8ijr
   dir: '/mnt/parscratch/users/acp21rjf/wandb_log/'
 
@@ -80,7 +81,7 @@ data:
 training:
   start_spec_augment_after_n_epochs: -1 # -1 to disable
   max_epochs: 1
-  batch_size: 24
+  batch_size: 124
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0

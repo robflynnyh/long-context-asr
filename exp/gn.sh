@@ -7,6 +7,6 @@
 #SBATCH --cpus-per-task=16
 
 module load Anaconda3/2022.10
-source activate a100
+source activate /mnt/parscratch/users/acp21rjf/conda/main
 
-python trainaug_2.py --config ./aug_test.yaml
+python train.py --config ./configs/normal.yaml
