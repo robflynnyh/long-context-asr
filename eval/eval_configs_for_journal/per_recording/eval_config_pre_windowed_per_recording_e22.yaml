@@ -285,4 +285,5 @@ args:
 datasets:
   - name: earnings22_full
     splits: [test]
-    include_per_recording_evaluations: true
+    args:
+      include_per_recording_evaluations: true

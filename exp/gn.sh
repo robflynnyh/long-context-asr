@@ -9,4 +9,4 @@
 module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main
 
-python train.py --config ./configs/normal.yaml
+python train.py --config ./configs/normal2.yaml

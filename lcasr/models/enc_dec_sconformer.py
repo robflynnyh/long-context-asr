@@ -110,7 +110,7 @@ class EncDecSconformer(BaseModel):
 
         self.use_rotary = use_rotary
 
-        raise NotImplementedError('This model is not yet implemented')
+      
 
         self.rotary_pos_emb = None
         if self.use_rotary:

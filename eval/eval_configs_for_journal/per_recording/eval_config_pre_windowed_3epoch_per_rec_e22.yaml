@@ -154,13 +154,13 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
     description: ${global.description}
-  # - name: ${global.name}
-  #   repeat: 3
-  #   window_size: 2048
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
-  #   description: ${global.description}
+  - name: ${global.name}
+    repeat: 3
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}${.window_size}_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
 
   - name: ${global.name}
     repeat: 1
@@ -285,4 +285,5 @@ args:
 datasets:
   - name: earnings22_full
     splits: [test]
-    include_per_recording_evaluations: true
+    args:
+      include_per_recording_evaluations: true

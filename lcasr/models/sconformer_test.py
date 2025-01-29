@@ -80,7 +80,7 @@ class SCConformerTest(BaseModel):
         self.bias_in_ff = bias_in_ff
         self.transformer = transformer
 
-        self.embedding = nn.parameter.Parameter(nn.Embedding(1, d_model).weight / 5)
+        self.input_bnorm = nn.BatchNorm1d(d_model)
     
         self.legasee_double_norm = legasee_double_norm
 
@@ -139,7 +139,7 @@ class SCConformerTest(BaseModel):
 
         
         self.layers = nn.ModuleList()
-
+        
 
         for i in range(n_layers):
             l = ConformerLayer(
@@ -161,6 +161,12 @@ class SCConformerTest(BaseModel):
                 **kwargs
             )
             self.layers.append(l)
+
+            self.cross_decoder = CrossAttnDecoder(
+                vocab_size = None,
+                n_layers=n_layers,
+                d_model=d_model,
+            )
         
     def forward(
             self, 
@@ -175,6 +181,11 @@ class SCConformerTest(BaseModel):
         length: (batch_size,)
         cached_kvs: (kv i.e 2, batch_size, layers, heads, time, head_dim)
         '''
+        # if audio_signal.size(-1) < 2048:
+        #     to_pad = 2048 - audio_signal.size(-1)
+        #     to_pad = torch.zeros(audio_signal.size(0), audio_signal.size(1), to_pad, device=audio_signal.device)
+        #     print(audio_signal.device)
+        #     audio_signal = torch.cat([audio_signal, to_pad], dim=-1)
 
         decoder = self.decoder
         max_audio_length: int = audio_signal.size(-1)
@@ -182,17 +193,17 @@ class SCConformerTest(BaseModel):
         if cached_kvs is not None:
             assert cached_kv_lengths.max() == cached_kvs.shape[1], 'cached kvs must all be the same length'
         
-        length = None
         if length is None:
             length = torch.tensor([max_audio_length] * audio_signal.size(0), device=audio_signal.device)
-            
+        
         audio_signal = torch.transpose(audio_signal, 1, 2)
         audio_signal, length = self.subsampling(audio_signal, lengths = length) if not self.checkpoint_subsampling else checkpoint(self.create_custom_forward(self.subsampling), audio_signal, length)
 
+        audio_signal = torch.transpose(audio_signal, 1, 2)
+        audio_signal = self.input_bnorm(audio_signal)
+        audio_signal = torch.transpose(audio_signal, 1, 2)
         # audio_signal = b, t, f
-        embedding = self.embedding.unsqueeze(0).expand(audio_signal.size(0), audio_signal.size(1), -1)
-        audio_signal = torch.cat([embedding, audio_signal], dim=1)    
-        length *= 2
+        
 
         max_audio_length = audio_signal.size(1)
         ## create masks
@@ -251,15 +262,14 @@ class SCConformerTest(BaseModel):
                 iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
                 audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))        
 
-        
+        audio_signal = self.cross_decoder(audio_signal, length)
         audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
         final_posts = decoder(x = audio_signal, logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
 
         if self.training and self.rotary_pos_emb is not None:
             self.rotary_pos_emb.reset_if_needed()
 
-        length = (length.to(torch.float32) / 2).to(torch.int32)
-        audio_signal = audio_signal[:, :length.max()]
+
 
         return {'final_posteriors': final_posts, 'length': length,}
 
@@ -387,6 +397,199 @@ class ConformerLayer(nn.Module):
         x = self.norm_out(x)
         return x
 
+class CrossAttention(nn.Module):
+    def __init__(
+        self,
+        n_feats,
+        head_dim,
+        n_heads,
+        bias=False,
+        dropout=0.0,
+        **kwargs
+    ):
+        super().__init__()
+        self.layer_idx = kwargs.get('layer_idx', None)
+        self.flash_attn = kwargs.get('flash_attn', True)
+
+        self.n_feats, self.head_dim, self.n_heads = n_feats, head_dim, n_heads
+   
+        self.activation = nn.Softmax(dim=-1)
+
+        self.dropout_p = dropout
+        self.causal = False
+    
+
+        self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=bias)
+        self.q_proj = nn.Linear(n_feats, n_heads * head_dim, bias=bias)
+        self.kv_proj = nn.Linear(n_feats, 2 * n_heads * head_dim, bias=bias)
+
+        self.kv = lambda x: rearrange(self.kv_proj(x), "b n (h d kv) -> kv b n h d", kv=2, h=n_heads, d=head_dim)
+        self.q = lambda x: rearrange(self.q_proj(x), "b n (h d) -> b n h d", h=n_heads, d=head_dim)
+
+        self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=bias)
+
+    @staticmethod
+    def apply_rotary(q, kv, rotary_emb_fn): 
+        if rotary_emb_fn is not None:
+            if rotary_emb_fn.learned == False:
+                q, kv[:, :, 0] = rotary_emb_fn.apply(q, kv[:, :, 0])
+            else:
+                k, v = kv[:, :, 0], kv[:, :, 1]
+                q, k = rotary_emb_fn.apply(q, k)
+                kv = torch.stack([k, v], dim=2)
+        return q, kv
+        
+    def forward(self, xq, xkv, kv_mask = None, attn_mask=None, rotary_emb_fn=None):
+        H, D = self.n_heads, self.head_dim
+
+
+        q = self.q(xq)
+        k, v = self.kv(xkv)
+        kv = torch.stack([k, v], dim=2)
+        q, kv = self.apply_rotary(q, kv, rotary_emb_fn)
+
+        k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
+        q = q.transpose(1, 2).contiguous()
+        out = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=0.0 if not self.training else self.dropout_p, is_causal=False)
+        out = rearrange(out, "b h n d -> b n (h d)")
+
+
+        out = self.out_proj(out)
+        
+        return out
+
+
+class CrossAttnDecoder(nn.Module):
+    def __init__(
+        self,
+        vocab_size = 4096,
+        n_layers = 3,
+        d_model = 768,
+        n_heads = 6,
+        head_dim = 128,
+        expansion_factor = 4,
+        dropout_ff = 0.0,
+        dropout_attn = 0.0,
+        decoder_norm = True,
+        use_rotary = True,
+        rotary_interpolation_factor = 1.0, # https://arxiv.org/abs//2306.15595 Extending Context Window of Large Language Models via Positional Interpolation
+        default_norm = 'rms_norm',
+        bias_in_ff = False,
+        **kwargs
+    ):
+        super().__init__()
+
+
+        self.d_model = d_model
+        self.n_layers = n_layers
+        self.n_heads = n_heads
+        self.head_dim = head_dim
+        self.expansion_factor = expansion_factor
+        self.dropout_ff = dropout_ff
+        self.dropout_attn = dropout_attn
+        self.decoder_norm = decoder_norm
+        self.use_rotary = use_rotary
+        self.rotary_interpolation_factor = rotary_interpolation_factor
+        self.bias_in_ff = bias_in_ff
+        self.default_norm = default_norm
+        self.flash_attn = kwargs.get('flash_attn', True)
+
+        self.embedding = nn.parameter.Parameter(nn.Embedding(1, d_model).weight / 2)
+
+        self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=kwargs.get('fourier_pos_hidden_dim', 64))
+        self.dropout_emb = kwargs.get('dropout_emb', 0.0)
+        self.ff_out_dropout = kwargs.get('ff_out_dropout', 0.0)
+
+        accepted_norms = ['rms_norm', 'layer_norm']
+        assert default_norm in accepted_norms, f'default_norm must be one of {accepted_norms} (got {default_norm})'
+        default_norm = RMSNorm if default_norm == 'rms_norm' else LayerNorm
+        self.acoustic_norm = default_norm(d_model)
+
+        self.layers = nn.ModuleList([])
+        for _ in range(n_layers):
+            self.layers.append(nn.ModuleList([
+                PreNorm(
+                    d_model = d_model,
+                    fn = Attention(
+                        n_feats = d_model,
+                        n_heads = n_heads,
+                        head_dim = head_dim,
+                        bias = bias_in_ff,
+                        causal = False,
+                        dropout = dropout_attn,
+                        **kwargs
+                    ),
+                    norm = default_norm
+                ),
+                PreNorm(
+                    d_model = d_model, 
+                    fn = CrossAttention(
+                        n_feats = d_model,
+                        n_heads = n_heads,
+                        head_dim = head_dim,
+                        bias = bias_in_ff,
+                        dropout = dropout_attn,
+                        **kwargs
+                    ), 
+                    norm = default_norm
+                ),
+                PreNorm(
+                    d_model = d_model, 
+                    fn = ConformerFeedForward(d_model, bias1 = bias_in_ff, bias2 = bias_in_ff),
+                    norm = default_norm,
+                )
+            ]))
+            
+
+   
+
+        self.rotary_pos_emb = None
+        if self.use_rotary:
+            self.rotary_pos_emb = RotaryPositionalEmbedding(
+                dim = head_dim,
+                base = kwargs.get('rotary_base_freq', 10000),
+                learned_freq = False,
+                rotary_interpolation_factor = rotary_interpolation_factor
+            )
+
+    def forward(
+            self,
+            a_hidden: torch.Tensor, 
+            a_lengths: torch.Tensor,
+        ):
+        '''
+        tokens: (batch, seq_len) - target text sequence
+        a_hidden: (batch, seq_len, dim) - encoder output
+        pos_enc_module: positional encoding module - instance of PosEnc
+        '''
+        tokens = self.embedding.unsqueeze(0).expand(a_hidden.size(0), a_hidden.size(1), -1)
+        lengths = a_lengths
+        x = tokens # self.pos_enc(tokens, lengths=lengths)
+        x = F.dropout(x, p=self.dropout_emb, training=self.training)
+        
+        
+        if a_lengths.max() == a_lengths.min(): kv_mask = None # if all the same length don't bother with the mask
+        else: kv_mask = ~(torch.arange(a_hidden.shape[1], device=a_hidden.device).expand(a_hidden.size(0), a_hidden.shape[1]) >= a_lengths.unsqueeze(1))
+
+        rotary_emb_fn = None
+        if self.use_rotary:
+            max_seq_len = tokens.shape[1]
+            q_offset = 0 
+            cos, sin = self.rotary_pos_emb(max_seq_len, tokens.device)
+            rotary_emb_fn = apply_rotary(cos = cos, sin = sin, q_offset = q_offset, learned = self.rotary_pos_emb.learned_freq)
+
+        attn_mask = None
+        if kv_mask is not None:
+            attn_mask = ~(rearrange(~kv_mask, 'b n -> b () n ()') * rearrange(~kv_mask, 'b n -> b () () n'))
+
+        
+        for lth, (self_attn, cross_attn, ff_out) in enumerate(self.layers):
+            x = self_attn(x, length=lengths, flash_attn=False, rotary_emb_fn=rotary_emb_fn) + x
+            x = cross_attn(x, xkv = a_hidden, kv_mask=kv_mask, attn_mask=attn_mask, rotary_emb_fn=rotary_emb_fn) + x
+            x = F.dropout(ff_out(x), p=self.ff_out_dropout, training=self.training) + x
+
+
+        return x
 
 
 
