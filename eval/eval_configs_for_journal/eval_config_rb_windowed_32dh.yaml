@@ -1,9 +1,9 @@
 global:
-  root_path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_12h_seq_sched/n_seq_sched_
+  root_path: /mnt/parscratch/users/acp21rjf/spotify/rotary_pos_24h_seq_sched/n_seq_sched_
   name: rb_n_seq_sched
   overlap_ratio: 0.875
   checkpoint: step_105360.pt
-  description: "rotary base 90M param model with 64d attention head (vs standard 128), decoding using windowed attention"
+  description: "rotary base 90M param model with 32d attention head (vs standard 128), decoding using windowed attention"
   
 
 models:
@@ -200,7 +200,7 @@ models:
 args:
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/evals_12h_rb_post_windowed_attn.csv'
+  save_dataframe_path: './results/evals_24h_rb_post_windowed_attn.csv'
   evaluation_mode: windowed_attention
   max_sequence_length: 3600000
 
