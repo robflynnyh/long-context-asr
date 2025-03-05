@@ -66,7 +66,7 @@ def load_model(config:Dict, vocab_size, model_class=SCConformerXL):
     model = model_class(**config.model, vocab_size=vocab_size)
     return model
 
-def load_optimizer(config:Dict, model:torch.nn.Module):
+def load_optimizer(config:Dict, model:torch.nn.Module, and_scheduler=True):
     model_device = next(model.parameters()).device.type # check device of model
 
     optim_type = config['optimizer']['name']
@@ -93,14 +93,16 @@ def load_optimizer(config:Dict, model:torch.nn.Module):
     elif optim_type == 'mirrormadgrad':
         optimizer = madgrad.MirrorMADGRAD(param_groups, **optim_args)
 
-    sheduler = CosineLRScheduler(
-        optimizer = optimizer,
-        warmup_steps = config['scheduler']['warmup_steps'],
-        peak_value = config['optimizer']['args']['lr'],
-        final_value = 0.0, # decay to 0
-    )
-
-    return optimizer, sheduler
+    if and_scheduler:
+        sheduler = CosineLRScheduler(
+            optimizer = optimizer,
+            warmup_steps = config['scheduler']['warmup_steps'],
+            peak_value = config['optimizer']['args']['lr'],
+            final_value = 0.0, # decay to 0
+        )
+        return optimizer, sheduler
+    else:
+        return optimizer, None
 
 def save_model(
         model:torch.nn.Module,

@@ -514,7 +514,8 @@ class Attention(nn.Module):
         kv = torch.stack([k, v], dim=2)
         
         q, kv = self.apply_rotary(q, kv, rotary_emb_fn)
-     
+
+        #self.return_attention_weights = True
         ### Flash attention stuff 
         if x.device.type == 'cuda' and flash_attn and not self.return_attention_weights and self.flash_attn_fn is not None:
             q, kv = q.contiguous(), kv.contiguous()
