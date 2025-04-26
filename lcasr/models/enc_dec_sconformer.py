@@ -82,6 +82,8 @@ class EncDecSconformer(BaseModel):
 
         self.ctc_loss_weight = ctc_loss_weight
 
+        raise NotImplementedError # Need to update Flash attn stuff'
+
         # self.abs_pos_enc = PosEnc(d_model)
         self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=kwargs.get('fourier_pos_hidden_dim', 64))
 
