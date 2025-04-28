@@ -1,4 +1,6 @@
 import torch, numpy as np
+from typing import List
+import random
 
 class CosineLRScheduler(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, warmup_steps, peak_value, final_value):
@@ -90,6 +92,59 @@ class SequenceWarmupManager():
             return True, self.cur_sequence_length, self.cur_batch_size
         else:
             return False, self.cur_sequence_length, self.cur_batch_size
+
+    def state_dict(self): # return all state variables
+        return self.__dict__
+
+    def load_state_dict(self, state_dict): # load all state variables
+        self.__dict__.update(state_dict)
+
+
+
+class RandomSequenceLengthManager():
+    def __init__(
+            self,
+            start_after:int,
+            initial_sequence_length:int,
+            initial_batch_size:int,
+            sequence_lengths:List[int] = [512, 1024, 2048, 3072],
+            batch_sizes:List[int] = [352, 176, 88, 44],
+            cur_position:int = 0,
+            **kwargs
+    ):
+
+        self.start_after = start_after
+        self.sequence_lengths = sequence_lengths
+        
+        assert isinstance(self.sequence_lengths, list) and len(self.sequence_lengths) > 0, f"sequence_lengths must be a non-empty list got: {self.sequence_lengths}"
+        assert isinstance(self.batch_sizes, list) and len(self.batch_sizes) > 0, f"batch_sizes must be a non-empty list got: {self.batch_sizes}"
+        assert len(self.sequence_lengths) == len(self.batch_sizes), f"sequence_lengths and batch_sizes must have the same length, got: {len(self.sequence_lengths)} and {len(self.batch_sizes)}"
+        assert isinstance(sequence_lengths[0], int), f"sequence_lengths must be a list of integers, got: {self.sequence_lengths}"
+        assert isinstance(batch_sizes[0], int), f"batch_sizes must be a list of integers, got: {self.batch_sizes}"
+        
+        self.cur_position = cur_position
+        self.batch_sizes = batch_sizes
+
+        self.cur_sequence_length = initial_sequence_length
+        self.cur_batch_size = initial_batch_size
+
+
+    def step(self, steps = 1):        
+        self.cur_position += steps
+        
+        if self.cur_position < self.start_after:
+            return False, self.cur_sequence_length, self.cur_batch_size
+        else:
+            seq_idx = random.choice(list(range(len(self.sequence_lengths))))
+            new_sequence_length = self.sequence_lengths[seq_idx]
+            if new_sequence_length == self.cur_sequence_length:
+                return False, self.cur_sequence_length, self.cur_batch_size
+            else:
+                new_batch_size = self.batch_sizes[seq_idx]
+                self.cur_sequence_length = new_sequence_length
+                self.cur_batch_size = new_batch_size
+                return True, self.cur_sequence_length, self.cur_batch_size
+
 
     def state_dict(self): # return all state variables
         return self.__dict__

@@ -2,18 +2,18 @@ import lcasr
 import torch
 import argparse
 from tqdm import tqdm
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 from lcasr.models.sconformer_xl import SCConformerXL
 from omegaconf.omegaconf import OmegaConf
 import traceback
 from lcasr.utils.dataloading import VariableBatchSimpleDataloader, chunk_spectogram, chunk_text_json, reset_seen_ids
 from lcasr.utils.hooks import add_debug_backwards_hooks
-from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager
+from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager, RandomSequenceLengthManager
 from lcasr.utils.helpers import exists
 from lcasr.utils.general import load_model, save_model, load_checkpoint, load_optimizer, get_model_class, KeepCount
 from lcasr.utils.augmentation import SpecAugment
 import resource
-
+from lcasr.decoding.greedy import GreedyCTCDecoder
 
 from einops import rearrange
 import numpy as np
@@ -77,6 +77,52 @@ def get_dtype(dtype:str) -> torch.dtype:
     else:
         raise ValueError(f'invalid dtype: {dtype}')
 
+def prepare_prev_text_outputs(
+        use_ctc_history:bool,
+        prev_text_outputs:List[str], 
+        cur_selection_mask:torch.Tensor, 
+        txt:List[int], 
+        other_args:Dict[str, Any],
+        device:torch.device,
+        pad_id=0, 
+        bos_id=0,
+        loss_on_previous:bool = False,
+    ):
+    if use_ctc_history: padded_txt = torch.nn.utils.rnn.pad_sequence([torch.LongTensor(el) for el in txt], batch_first=True, padding_value=pad_id)
+    else:
+        assert isinstance(txt, torch.Tensor), 'txt should be a (padded) tensor if not using ctc history'
+        padded_txt = txt
+
+    if prev_text_outputs == None: return None, padded_txt, other_args
+    if cur_selection_mask != None: prev_text_outputs = [el for i, el in enumerate(prev_text_outputs) if cur_selection_mask[i]]
+    
+    assert use_ctc_history, 'something has gone wrong!'
+    assert len(prev_text_outputs) == len(txt)
+
+    lm_text_sequence = []
+    lm_text_sequence_lengths = []
+    prev_lengths = []
+    for i, prev_txt in enumerate(prev_text_outputs):
+        cur_txt = txt[i]
+        full_txt = prev_txt + [bos_id] + cur_txt
+        lm_text_sequence.append(torch.LongTensor(full_txt))
+        lm_text_sequence_lengths.append(len(full_txt))
+        prev_lengths.append(len(prev_txt))
+
+    lm_text_sequence_lengths = torch.LongTensor(lm_text_sequence_lengths)
+    lm_text_sequence = torch.nn.utils.rnn.pad_sequence(lm_text_sequence, batch_first=True, padding_value=pad_id)
+
+    if loss_on_previous == False:
+        prev_lengths = torch.LongTensor(prev_lengths)
+        lm_loss_mask = torch.arange(lm_text_sequence.shape[1]).expand(len(prev_lengths), lm_text_sequence.shape[1]) < prev_lengths.unsqueeze(1)
+        other_args['lm_loss_mask'] = lm_loss_mask.to(device)
+
+    other_args['lm_text_sequence'] = lm_text_sequence.to(device)
+    other_args['lm_text_sequence_lengths'] = lm_text_sequence_lengths.to(device)
+    return prev_text_outputs, padded_txt, other_args
+    
+
+
 def train(
         args:argparse.Namespace,
         model:torch.nn.Module, 
@@ -98,6 +144,20 @@ def train(
     rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
     resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
 
+    tokenizer = dataloader.tokenizer
+
+    bos_id = 0
+    pad_id = tokenizer.pad_id()
+    prev_id = tokenizer.vocab_size()
+
+    condition_on_previous = args.config['training'].get('condition_on_previous', False)
+    loss_on_previous = args.config['training'].get('loss_on_previous', False)
+    use_ctc_history = args.config['training'].get('use_ctc_history', False)
+
+    if loss_on_previous == True:
+        assert condition_on_previous == True, 'loss_on_previous can only be true if condition_on_previous is true'
+
+
     model.train()
 
     model_dtype = next(model.parameters()).dtype
@@ -111,14 +171,12 @@ def train(
     
     wandb_loss_accum = {}
 
-    tokenizer = dataloader.tokenizer
     chunk_size, chunk_overlap = args.config.audio_chunking['size'], 0 # previously args.config.audio_chunking['overlap'] though this is not used anymore
 
     if exists(sequence_scheduler):
         chunk_size = sequence_scheduler.cur_sequence_length
         batch_size = sequence_scheduler.cur_batch_size
 
-    pad_id = tokenizer.pad_id()
     last_podcast, cur_podcast, podcasts_since_last_save = step, step, 0
     max_epochs = args.config['training'].get('max_epochs', 1)
 
@@ -187,9 +245,37 @@ def train(
             cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
             cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
           
-            enc_txt_chunks = [torch.LongTensor(tokenizer.encode(el[ix])) for i, el in enumerate(txt_chunks) if remove_mask[i]]
-            enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
-            enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
+            enc_txt_chunks = [tokenizer.encode(el[ix]) for i, el in enumerate(txt_chunks) if remove_mask[i]]
+            enc_txt_chunks_lengths = torch.LongTensor([len(el) for el in enc_txt_chunks])
+
+            if use_ctc_history == False:
+                enc_txt_chunks = [torch.LongTensor(el) for el in enc_txt_chunks]
+                enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
+
+            if condition_on_previous == True and use_ctc_history == False:
+                lm_txt_chunks = []
+                prev_lengths = []
+                for i, tx_el in enumerate(txt_chunks):
+                    if remove_mask[i]:
+                        if ix == 0:
+                            lm_txt_chunks.append(torch.LongTensor([bos_id] + tokenizer.encode(tx_el[ix])))
+                            prev_lengths.append(0)
+                        else:
+                            prev = [prev_id] + tokenizer.encode(tx_el[ix-1]) + [bos_id]
+                            lm_txt_chunks.append(torch.LongTensor(prev + tokenizer.encode(tx_el[ix])))
+                            prev_lengths.append(len(prev) - 1) # - 1 for bos_id
+
+                lm_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in lm_txt_chunks])
+                lm_txt_chunks = torch.nn.utils.rnn.pad_sequence(lm_txt_chunks, batch_first=True, padding_value=pad_id)
+                lm_loss_mask = None
+                if loss_on_previous == False:
+                    prev_lengths = torch.LongTensor(prev_lengths)
+                    lm_loss_mask = torch.arange(lm_txt_chunks.shape[1]).expand(len(prev_lengths), lm_txt_chunks.shape[1]) < prev_lengths.unsqueeze(1)
+            else:
+                lm_txt_chunks = None
+                lm_txt_chunks_lengths = None
+                lm_loss_mask = None
+
             if enc_txt_chunks_lengths.max() == 0:
                 continue # skip if none contain text (bad batch)
             chunks.append({
@@ -199,6 +285,10 @@ def train(
                 'audio_lengths':cur_lengths,
                 'selection_mask':remove_mask,
                 'cur_culm_lengths':cur_culm_lengths,
+                'lm_txt':lm_txt_chunks,
+                'lm_txt_lengths':lm_txt_chunks_lengths,
+                'lm_loss_mask':lm_loss_mask,
+                'ix':ix,
             })
             culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
 
@@ -208,22 +298,46 @@ def train(
             if not scheduler.is_warmup and was_warmup:
                 scheduler.set_cosine_schedule(total_recordings=total_recordings, cur_podcast=cur_podcast)
         prev_selection_mask, last_kv_set = None, None # selection mask from previous chunk
+        prev_text_outputs = None
         ################################
         # shuffle chunks
-        chunks = random.sample(chunks, len(chunks))
+        if not use_ctc_history: # if using real history we cant shuffle as needs to processed in real order
+            chunks = random.sample(chunks, len(chunks))
         
+
         try:
             for ix, chunk_json in enumerate(chunks):
                 print(f'chunk {ix}/{len(chunks)}')
                
                 audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
                 txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
+                lm_txt, lm_t_lengths = chunk_json['lm_txt'], chunk_json['lm_txt_lengths']
+                #print(chunk_json['ix'], '----')
+                
+                other_args = {}
+                if lm_txt != None:
+                    other_args['lm_text_sequence'] = lm_txt.to(device)
+                    other_args['lm_text_sequence_lengths'] = lm_t_lengths.to(device)
+                    if chunk_json['lm_loss_mask'] != None: other_args['lm_loss_mask'] = chunk_json['lm_loss_mask'].to(device)
+
+                
                 selection_mask = chunk_json['selection_mask']
 
                 cur_selection_mask = None
-                if prev_selection_mask != None and not torch.allclose(selection_mask, prev_selection_mask):
-                    cur_selection_mask = selection_mask[prev_selection_mask]
-                    
+                if prev_selection_mask != None and not torch.allclose(selection_mask, prev_selection_mask): cur_selection_mask = selection_mask[prev_selection_mask]
+                
+
+                prev_text_outputs, txt, other_args = prepare_prev_text_outputs(
+                    use_ctc_history, 
+                    prev_text_outputs, 
+                    cur_selection_mask, 
+                    txt, 
+                    other_args,
+                    device=device,
+                    loss_on_previous=loss_on_previous,
+                    bos_id=bos_id,
+                    pad_id=pad_id,
+                )
 
                 audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
 
@@ -242,10 +356,16 @@ def train(
                         text_sequence = txt.to(device),
                         a_lengths = a_lengths,
                         t_lengths = t_lengths.to(device),
+                        **other_args,
                     )
                     
                     cur_probs = out.get('ctc_posteriors', None)
                     loss = out['loss']
+
+                    if use_ctc_history:
+                        assert cur_probs != None, 'cur_probs must be returned if using ctc history'
+                        prev_text_outputs = GreedyCTCDecoder(tokenizer=tokenizer, blank_id=cur_probs.shape[-1]-1)(cur_probs, decode=False)
+                        prev_text_outputs = [[prev_id] + el for el in prev_text_outputs]
                     
                     
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer) if exists(cur_probs) else None
@@ -380,11 +500,22 @@ def main(args):
 
     sequence_scheduler = None
     if 'sequence_scheduler' in args.config:
-        sequence_scheduler = SequenceWarmupManager(
-            initial_batch_size = args.config['training']['batch_size'],
-            initial_sequence_length = args.config['audio_chunking']['size'],
-            **args.config['sequence_scheduler']
-        )
+        method = args.config['sequence_scheduler'].get('method', 'warmup')
+        if method == 'warmup':
+            sequence_scheduler = SequenceWarmupManager(
+                initial_batch_size = args.config['training']['batch_size'],
+                initial_sequence_length = args.config['audio_chunking']['size'],
+                **args.config['sequence_scheduler']
+            )
+        elif method == 'random':
+            sequence_scheduler = RandomSequenceLengthManager(
+                initial_batch_size = args.config['training']['batch_size'],
+                initial_sequence_length = args.config['audio_chunking']['size'],
+                **args.config['sequence_scheduler']
+            )
+        else:
+            raise ValueError(f'unknown sequence scheduler method: {method}')
+        
 
     seen_ids, step, epoch = load_checkpoint(
         args = args, 

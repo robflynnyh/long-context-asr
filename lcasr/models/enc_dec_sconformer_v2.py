@@ -35,6 +35,8 @@ import math
 import warnings
 from lcasr.decoding import ctc_beam_search
 
+
+
 class EncDecSconformerV2(BaseModel): 
     def __init__(
         self,
@@ -185,12 +187,20 @@ class EncDecSconformerV2(BaseModel):
             text_sequence,
             a_lengths,
             t_lengths,
+            lm_text_sequence=None,
+            lm_text_sequence_lengths=None,
+            lm_loss_mask=None,
             bos_id=0, 
             eos_id=0
         ):
-        # add bos to text sequence
-        text_sequence_bos = F.pad(text_sequence, (1, 0), value=bos_id)
-        target_lengths_bos = t_lengths + 1
+
+        if lm_text_sequence is None: # add bos to text sequence
+            text_sequence_bos = F.pad(text_sequence, (1, 0), value=bos_id)
+            target_lengths_bos = t_lengths + 1
+        else:
+            assert lm_text_sequence_lengths is not None, 'lm_text_sequence_lengths must be provided if lm_text_sequence is provided'
+            text_sequence_bos = lm_text_sequence
+            target_lengths_bos = lm_text_sequence_lengths
         
         out = self.forward(audio_signal, text_sequence_bos, a_lengths)
         ctc_out, lm_out, a_length_out = out['final_posteriors_ctc'], out['final_posteriors_lm'], out['length']
@@ -217,7 +227,15 @@ class EncDecSconformerV2(BaseModel):
             targets = add_eos(targets, eos_id = eos_id, token_lens = target_lengths_bos)
         mask = token_lens_to_mask(target_lengths_bos)
         targets = mark_padding(targets, mask, pad_id = -100)
+        
+        lm_num_masked = 0
+        if lm_loss_mask is not None:
+            assert lm_loss_mask.shape == targets.shape, f'lm_loss_mask shape {lm_loss_mask.shape} does not match targets shape {targets.shape}'
+            lm_loss_mask = lm_loss_mask.to(targets.device)
+            targets = targets.masked_fill(lm_loss_mask, -100)
+            lm_num_masked = lm_loss_mask.sum()
 
+            
         predictions = lm_out
         lm_loss = F.cross_entropy(
             input = rearrange(predictions, 'b n c -> (b n) c'),
@@ -225,8 +243,8 @@ class EncDecSconformerV2(BaseModel):
             ignore_index = -100,
             reduction = 'sum'
         )
-        lm_loss_to_show = (lm_loss / t_lengths.sum()).item()
-        lm_loss_to_bwd = lm_loss / (predictions.shape[0] * predictions.shape[1])
+        lm_loss_to_show = (lm_loss / (target_lengths_bos.sum() - lm_num_masked)).item() 
+        lm_loss_to_bwd = lm_loss / ((predictions.shape[0] * predictions.shape[1]) - lm_num_masked) 
 
         loss_to_show = ctc_loss_to_show * self.ctc_loss_weight + lm_loss_to_show * (1 - self.ctc_loss_weight)
         loss = ctc_loss_to_bwd * self.ctc_loss_weight + lm_loss_to_bwd * (1 - self.ctc_loss_weight) 
@@ -765,7 +783,8 @@ class CrossAttnDecoder(nn.Module):
         self.default_norm = default_norm
         self.flash_attn = kwargs.get('flash_attn', True)
 
-        self.embed = nn.Embedding(vocab_size, d_model)
+        additional_embeddings = kwargs.get('additional_embeddings', 0)
+        self.embed = nn.Embedding(vocab_size + additional_embeddings, d_model)
         self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=kwargs.get('fourier_pos_hidden_dim', 64))
         self.dropout_emb = kwargs.get('dropout_emb', 0.0)
         self.ff_out_dropout = kwargs.get('ff_out_dropout', 0.0)
