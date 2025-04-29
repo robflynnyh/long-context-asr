@@ -41,5 +41,4 @@ training:
 sequence_scheduler:
   method: random
   start_after: 12000
-
 model_class: EncDecSconformerV2

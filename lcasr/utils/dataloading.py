@@ -14,7 +14,7 @@ import re
 def chunk_spectogram( # TODO: speed up
         spec: torch.Tensor, # mel spectrogram (batch, features, time)
         chunk_size: int,
-        chunk_overlap: int,
+        chunk_overlap: int = 0,
     ):
     assert len(spec.shape) == 3, "Audio must be 3D i.e. (batch, features, time)"
     assert chunk_size > chunk_overlap, "chunk_size must be greater than chunk_overlap"

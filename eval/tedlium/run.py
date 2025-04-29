@@ -159,15 +159,18 @@ def main(args):
 
             audio_spec = zero_out_spectogram(spec = audio_spec, remove_timings = remove_timings, buffer=-0.5)
             
-            stime = time.time()
-            logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
-            etime = time.time()
-            print(f'Inference time: {etime-stime}')
-            ds_factor = audio_spec.shape[-1] / logits.shape[0]
-            decoded, bo = decode_beams_lm([logits], decoder, beam_width=1, ds_factor=ds_factor)
+            if hasattr(model, 'transcribe'):
+                all_text = model.transcribe(audio_spec, tokenizer, device=device, max_sequence_length=args.seq_len)
+                all_text = normalize(all_text).lower().strip()
+                all_text = all_text[:-1].strip() if all_text.endswith('.') else all_text.strip()
+            else:
+                logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
+                ds_factor = audio_spec.shape[-1] / logits.shape[0]
+                decoded, bo = decode_beams_lm([logits], decoder, beam_width=1, ds_factor=ds_factor)
 
-            all_text = normalize(decoded[0]['text']).lower()
-            all_text = all_text[:-1].strip() if all_text.endswith('.') else all_text.strip()
+                all_text = normalize(decoded[0]['text']).lower()
+                all_text = all_text[:-1].strip() if all_text.endswith('.') else all_text.strip()
+
             gold_text = normalize(gold_text).lower()    
             print(gold_text) if args.verbose else None
             print(all_text) if args.verbose else None
@@ -183,15 +186,21 @@ def main(args):
             print('\n\n'+paired[audio_files[rec]]+'\n\n') if args.verbose else None
             stm_path = paired[audio_files[rec]]
             utterances, gold_text = fetch_utterances(stm_path=stm_path, spectogram=audio_spec)
-           
-            out_texts = []
-            for utterance in tqdm(utterances):
-                logit = fetch_logits(args, model, utterance['spectogram'], utterance['spectogram'].shape[-1], 0, tokenizer, use_tqdm=False)
-                ds_factor = utterance['spectogram'].shape[-1] / logit.shape[0]
-                decoded, bo = decode_beams_lm([logit], decoder, beam_width=1, ds_factor=ds_factor)
-                out_text = normalize(decoded[0]['text']).lower().strip()
-                out_text = out_text[:-1].strip() if out_text.endswith('.') else out_text
-                out_texts.append(out_text)
+
+            if hasattr(model, 'transcribe'):
+                spectrograms = [utterance['spectogram'] for utterance in utterances]
+                out_texts = model.transcribe(spectrograms, tokenizer, device=device)
+                out_texts = [normalize(out_text).lower().strip() for out_text in out_texts]
+            else:
+                out_texts = []
+                for utterance in tqdm(utterances):
+                    logit = fetch_logits(args, model, utterance['spectogram'], utterance['spectogram'].shape[-1], 0, tokenizer, use_tqdm=False)
+                    ds_factor = utterance['spectogram'].shape[-1] / logit.shape[0]
+                    decoded, bo = decode_beams_lm([logit], decoder, beam_width=1, ds_factor=ds_factor)
+                    out_text = normalize(decoded[0]['text']).lower().strip()
+                    out_text = out_text[:-1].strip() if out_text.endswith('.') else out_text
+                    out_texts.append(out_text)
+
             all_text = " ".join(out_texts).strip()#
             gold_text = normalize(gold_text).lower().strip()
             print(gold_text) if args.verbose else None

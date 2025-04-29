@@ -108,14 +108,15 @@ class RandomSequenceLengthManager():
             initial_sequence_length:int,
             initial_batch_size:int,
             sequence_lengths:List[int] = [512, 1024, 2048, 3072],
-            batch_sizes:List[int] = [352, 176, 88, 44],
+            batch_sizes:List[int] = [352, 176, 88, 59],
             cur_position:int = 0,
             **kwargs
     ):
 
         self.start_after = start_after
         self.sequence_lengths = sequence_lengths
-        
+        self.batch_sizes = batch_sizes
+
         assert isinstance(self.sequence_lengths, list) and len(self.sequence_lengths) > 0, f"sequence_lengths must be a non-empty list got: {self.sequence_lengths}"
         assert isinstance(self.batch_sizes, list) and len(self.batch_sizes) > 0, f"batch_sizes must be a non-empty list got: {self.batch_sizes}"
         assert len(self.sequence_lengths) == len(self.batch_sizes), f"sequence_lengths and batch_sizes must have the same length, got: {len(self.sequence_lengths)} and {len(self.batch_sizes)}"
@@ -123,8 +124,6 @@ class RandomSequenceLengthManager():
         assert isinstance(batch_sizes[0], int), f"batch_sizes must be a list of integers, got: {self.batch_sizes}"
         
         self.cur_position = cur_position
-        self.batch_sizes = batch_sizes
-
         self.cur_sequence_length = initial_sequence_length
         self.cur_batch_size = initial_batch_size
 
@@ -141,8 +140,9 @@ class RandomSequenceLengthManager():
                 return False, self.cur_sequence_length, self.cur_batch_size
             else:
                 new_batch_size = self.batch_sizes[seq_idx]
+                #print(f"Currently at position {self.cur_position}, randomly changing sequence length from {self.cur_sequence_length} to {new_sequence_length} and batch size from {self.cur_batch_size} to {new_batch_size}")
                 self.cur_sequence_length = new_sequence_length
-                self.cur_batch_size = new_batch_size
+                self.cur_batch_size = new_batch_size    
                 return True, self.cur_sequence_length, self.cur_batch_size
 
 

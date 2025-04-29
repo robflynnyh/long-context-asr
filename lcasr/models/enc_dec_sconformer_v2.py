@@ -2,7 +2,7 @@ import torch, torch.nn as nn, torch.nn.functional as F
 
 from torch.utils.checkpoint import checkpoint # # gradient/activation checkpointing
 from einops import rearrange, repeat
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 from functools import partial
 from lcasr.components import fused_dense, subsampling, convolution, decoder, wrappers
 from lcasr.components.positional_encodings import RotaryPositionalEmbedding, apply_rotary, LearnableFourierPosEnc, DynamicPositionBias
@@ -34,6 +34,7 @@ from torch import einsum
 import math
 import warnings
 from lcasr.decoding import ctc_beam_search
+import sentencepiece as spm
 
 
 
@@ -264,13 +265,29 @@ class EncDecSconformerV2(BaseModel):
         }
         
     @torch.no_grad()
-    def generate(self, audio_signal, max_generate=256, bos_id=0, eos_id=0, return_encoder_states=False):
+    def generate(
+            self, 
+            audio_signal, 
+            max_generate=256, 
+            bos_id=0, 
+            return_encoder_states=False, 
+            return_ctc_states=False,
+            prompt:List[int]=None
+        ) -> Dict[str, Union[torch.Tensor, List[int]]]:
         '''
         greedy generation, audio_signal should be a single batch
         '''
+        eos_id = bos_id
         encoder_out = self.forward(audio_signal=audio_signal)
         a_hidden, length = encoder_out['a_hidden'], encoder_out['length']
-        text_sequence = torch.LongTensor([[bos_id]]).to(a_hidden.device)
+
+        if max_generate == 'encoder_states': max_generate = length.max().item()
+        
+        if prompt is None: text_sequence = torch.LongTensor([[bos_id]]).to(a_hidden.device)
+        else: text_sequence = torch.LongTensor([prompt]).to(a_hidden.device)
+
+        prompt_length = text_sequence.shape[1]
+            
         finished = False
         #generated = 0
         cache = None
@@ -283,7 +300,7 @@ class EncDecSconformerV2(BaseModel):
                 a_hidden = a_hidden,
                 a_lengths = length,
                 cache = cache,
-                text_lengths = torch.tensor([1], device=a_hidden.device),
+                text_lengths = torch.tensor([text_sequence.shape[1]]).to(a_hidden.device),
             )
             decoder_logits = decoder_out['logits']
             cache = decoder_out['kv_cache']
@@ -297,8 +314,105 @@ class EncDecSconformerV2(BaseModel):
             else:
                 text_sequence = decoder_pred.unsqueeze(0).unsqueeze(0)
                 final_text_sequence = torch.cat([final_text_sequence, text_sequence], dim=1)
-               
-        return final_text_sequence if not return_encoder_states else (final_text_sequence, encoder_out)
+
+        final_text_sequence = final_text_sequence.squeeze(0).cpu().tolist()
+        final_text_sequence = final_text_sequence[prompt_length:] # remove prompt
+
+        outputs = {}
+        if return_encoder_states:
+            outputs['encoder_states'] = encoder_out['a_hidden']
+        if return_ctc_states:
+            outputs['ctc_states'] = encoder_out['final_posteriors_ctc']
+        outputs['text_sequence'] = final_text_sequence
+
+        return outputs
+
+    def get_prev_id(self) -> int:
+        return self.language_model_decoder.embed.weight.shape[0] - 1
+    
+    def get_blank_id(self) -> int:
+        if self.ctc_loss_weight == 0: return None
+        return self.ctc_decoder.ff.weight.shape[0] - 1
+
+    def transcribe(
+            self,
+            audio_signal: Union[torch.Tensor, List[torch.Tensor]],
+            tokenizer: spm.SentencePieceProcessor,
+            previous_text_conditioning: bool = True,
+            max_sequence_length: int = -1,
+            max_generate: int = 'encoder_states',
+            device: str = None,
+            verbose=True,
+            bos_id=0,
+            ctc_history=False,
+    ):
+        '''
+        audio_signal: (B, T, C) | [(B, T, C)]*N
+        tokenizer: tokenizer to use for decoding
+        previous_text_conditioning: whether to chunk up long format audio and process sequentially like whipser models
+        max_sequence_length: maximum sequence length for the model encoder_states means we cap at the size of the encoder states (NOTE: this assumes downsampling is not greater than 8x)
+        max_generate: maximum number of tokens to generate -1 means we cap at the size of the encoder states
+        '''
+        tensor_input = isinstance(audio_signal, torch.Tensor)
+        if device == None:
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.to(device)
+        
+        if ctc_history: 
+            assert previous_text_conditioning == True, f'previous_text_conditioning must be True if ctc_history is True'
+            from lcasr.decoding.greedy import GreedyCTCDecoder
+            ctc_decoder = GreedyCTCDecoder(tokenizer=tokenizer, blank_id=self.get_blank_id())
+
+        if not previous_text_conditioning and isinstance(audio_signal, torch.Tensor): audios = [audio_signal]
+        if previous_text_conditioning and isinstance(audio_signal, torch.Tensor):
+            if max_sequence_length == -1:
+                audios = [audio_signal]
+            else:
+                from lcasr.utils.dataloading import chunk_spectogram
+                audios = chunk_spectogram(spec=audio_signal, chunk_size=max_sequence_length)
+        
+        elif isinstance(audio_signal, list) and all(isinstance(a, torch.Tensor) for a in audio_signal): audios = audio_signal
+        else: raise ValueError('audio_signal must be a torch.Tensor or a list of torch.Tensors')
+
+        results = []
+        prev_id = self.get_prev_id()
+        prompt = None
+
+        for audio in audios:
+            audio = audio.to(device)
+            #print(f'Audio shape: {audio.shape}')
+            assert audio.dim() == 3, f'Audio signal must be a 3D tensor (B, T, C) got {audio.dim()}'
+            assert audio.shape[0] == 1, f'currently only supports batch size of 1, got {audio.shape[0]}'    
+
+            output = self.generate(
+                audio_signal = audio,
+                max_generate = max_generate,
+                return_encoder_states = True,
+                prompt = prompt,
+                bos_id = bos_id,
+                return_ctc_states = ctc_history,            
+            )
+            out_sequence = output['text_sequence']
+            decoded_sequence = tokenizer.decode(out_sequence) # remove bos token
+
+            if previous_text_conditioning and not ctc_history:
+                prompt = [prev_id] + out_sequence + [bos_id]
+            elif ctc_history:
+                ctc_posteriors = output['ctc_states'].squeeze(0)
+                ctc_history_text = ctc_decoder(ctc_posteriors, decode=False)
+                prompt = [prev_id] + ctc_history_text + [bos_id]
+                print(f'CTC output: {ctc_decoder(ctc_posteriors, decode=True)}')
+
+
+            if verbose: print(f'Decoded sequence: {decoded_sequence}')
+            results.append(decoded_sequence.strip())
+
+        if tensor_input:
+            results = " ".join(results)
+
+        return results
+           
+
 
 
     @torch.no_grad()

@@ -19,7 +19,7 @@ wandb:
   project_name: spotify_enc_dec
   name: noloss_prev_enc_dec_var_seq
   update_config_with_wandb_id: true
-  id: ''
+  id: yefxd3od
 checkpointing:
   dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/noloss_prev_enc_dec_var_seq
   save_every_n_steps: 2000
@@ -41,5 +41,4 @@ training:
 sequence_scheduler:
   method: random
   start_after: 12000
-
 model_class: EncDecSconformerV2

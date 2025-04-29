@@ -34,10 +34,10 @@ def get_model_class(config:Dict={}, args:argparse.Namespace={}):
         'SoftMaskNN'
     ]
     
-    if 'model_class' in args:
-        model_class = args.model_class
-    elif 'model_class' in config:
+    if 'model_class' in config:
         model_class = config['model_class']
+    elif 'model_class' in args:
+        model_class = args.model_class
     else:
         warnings.warn('No model_class specified in model config or args, defaulting to SCConformerXL') 
         model_class = 'SCConformerXL'
