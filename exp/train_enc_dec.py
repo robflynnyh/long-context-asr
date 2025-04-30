@@ -77,37 +77,55 @@ def get_dtype(dtype:str) -> torch.dtype:
     else:
         raise ValueError(f'invalid dtype: {dtype}')
 
-def prepare_prev_text_outputs(
-        use_ctc_history:bool,
-        prev_text_outputs:List[str], 
-        cur_selection_mask:torch.Tensor, 
+def prepare_prompt(
+        unpadded:bool,
         txt:List[int], 
         other_args:Dict[str, Any],
         device:torch.device,
+        prev_text_outputs:List[str]=None,
+        first_pass_text_outputs:List[str]=None, 
+        cur_selection_mask:torch.Tensor=None, 
         pad_id=0, 
         bos_id=0,
         loss_on_previous:bool = False,
     ):
-    if use_ctc_history: padded_txt = torch.nn.utils.rnn.pad_sequence([torch.LongTensor(el) for el in txt], batch_first=True, padding_value=pad_id)
+    if unpadded: 
+        # if we are using CTC history then we don't pad text when preparing data, this is because we only have the previous output once its processed
+        # therefore here we need to pad the current text for the encoder, and prepare and pad the prompt + current text for the decoder!
+        padded_txt = torch.nn.utils.rnn.pad_sequence([torch.LongTensor(el) for el in txt], batch_first=True, padding_value=pad_id)
     else:
         assert isinstance(txt, torch.Tensor), 'txt should be a (padded) tensor if not using ctc history'
-        padded_txt = txt
+        padded_txt = txt 
 
-    if prev_text_outputs == None: return None, padded_txt, other_args
-    if cur_selection_mask != None: prev_text_outputs = [el for i, el in enumerate(prev_text_outputs) if cur_selection_mask[i]]
+    assert prev_text_outputs == None or first_pass_text_outputs == None, 'conditioning on both not implemented yet'
+
+    if prev_text_outputs == None and first_pass_text_outputs == None: return None, padded_txt, other_args
+    if cur_selection_mask != None and prev_text_outputs != None: 
+        prev_text_outputs = [el for i, el in enumerate(prev_text_outputs) if cur_selection_mask[i]]
     
-    assert use_ctc_history, 'something has gone wrong!'
-    assert len(prev_text_outputs) == len(txt)
+    assert unpadded, 'something has gone wrong!'
 
     lm_text_sequence = []
     lm_text_sequence_lengths = []
     prev_lengths = []
-    for i, prev_txt in enumerate(prev_text_outputs):
-        cur_txt = txt[i]
-        full_txt = prev_txt + [bos_id] + cur_txt
-        lm_text_sequence.append(torch.LongTensor(full_txt))
-        lm_text_sequence_lengths.append(len(full_txt))
-        prev_lengths.append(len(prev_txt))
+
+    if first_pass_text_outputs != None:
+        assert len(first_pass_text_outputs) == len(txt)
+        for i, fpass in enumerate(first_pass_text_outputs):
+            cur_txt = txt[i]
+            full_txt = fpass + [bos_id] + cur_txt
+    
+            lm_text_sequence.append(torch.LongTensor(full_txt))
+            lm_text_sequence_lengths.append(len(full_txt))
+            prev_lengths.append(len(fpass))
+    else:
+        assert len(prev_text_outputs) == len(txt)
+        for i, prev_txt in enumerate(prev_text_outputs):
+            cur_txt = txt[i]
+            full_txt = prev_txt + [bos_id] + cur_txt
+            lm_text_sequence.append(torch.LongTensor(full_txt))
+            lm_text_sequence_lengths.append(len(full_txt))
+            prev_lengths.append(len(prev_txt))
 
     lm_text_sequence_lengths = torch.LongTensor(lm_text_sequence_lengths)
     lm_text_sequence = torch.nn.utils.rnn.pad_sequence(lm_text_sequence, batch_first=True, padding_value=pad_id)
@@ -146,16 +164,21 @@ def train(
 
     tokenizer = dataloader.tokenizer
 
-    bos_id = 0
-    pad_id = tokenizer.pad_id()
-    prev_id = tokenizer.vocab_size()
+    bos_id = model.get_bos_id()
+    pad_id = model.get_pad_id()
+    prev_id = model.get_prev_id()
+    blank_id = model.get_blank_id()
+    first_pass_id = model.get_first_pass_id()
 
     condition_on_previous = args.config['training'].get('condition_on_previous', False)
     loss_on_previous = args.config['training'].get('loss_on_previous', False)
     use_ctc_history = args.config['training'].get('use_ctc_history', False)
+    condition_on_ctc_first_pass = args.config['training'].get('condition_on_ctc_first_pass', False)
 
-    if loss_on_previous == True:
-        assert condition_on_previous == True, 'loss_on_previous can only be true if condition_on_previous is true'
+    prepad_text = use_ctc_history == False and condition_on_ctc_first_pass == False
+
+    if condition_on_ctc_first_pass: assert condition_on_previous == False, 'not implemented yet!'
+    if loss_on_previous == True: assert condition_on_previous == True, 'loss_on_previous can only be true if condition_on_previous is true'
 
 
     model.train()
@@ -238,6 +261,7 @@ def train(
         backwards_every_loss = 0.0
         chunks, culm_lengths_audio, nans_in_a_row = [], torch.zeros_like(audio_lengths), 0
 
+
         ################################
         for ix, el in enumerate(audio_chunks_):
 
@@ -248,11 +272,11 @@ def train(
             enc_txt_chunks = [tokenizer.encode(el[ix]) for i, el in enumerate(txt_chunks) if remove_mask[i]]
             enc_txt_chunks_lengths = torch.LongTensor([len(el) for el in enc_txt_chunks])
 
-            if use_ctc_history == False:
+            if prepad_text == True:
                 enc_txt_chunks = [torch.LongTensor(el) for el in enc_txt_chunks]
                 enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(enc_txt_chunks, batch_first=True, padding_value=pad_id)
 
-            if condition_on_previous == True and use_ctc_history == False:
+            if condition_on_previous == True and prepad_text == True:
                 lm_txt_chunks = []
                 prev_lengths = []
                 for i, tx_el in enumerate(txt_chunks):
@@ -326,22 +350,8 @@ def train(
                 cur_selection_mask = None
                 if prev_selection_mask != None and not torch.allclose(selection_mask, prev_selection_mask): cur_selection_mask = selection_mask[prev_selection_mask]
                 
-
-                prev_text_outputs, txt, other_args = prepare_prev_text_outputs(
-                    use_ctc_history, 
-                    prev_text_outputs, 
-                    cur_selection_mask, 
-                    txt, 
-                    other_args,
-                    device=device,
-                    loss_on_previous=loss_on_previous,
-                    bos_id=bos_id,
-                    pad_id=pad_id,
-                )
-
-                audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
-
                 with autocast(device.type, dtype=dtype) if torch.cuda.is_available() else nullcontext():
+                    audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
                     audio = apply_augmentation(audio=audio, lengths=a_lengths, augmentation=augmentation, start_augment_after_n_epochs=start_spec_augment_after_n_epochs, epoch=epoch, is_warmup=scheduler.is_warmup)
                     cached_kvs = last_kv_set.clone() if last_kv_set != None else None
                     cached_kv_lengths = torch.LongTensor([cached_kvs.shape[1]] * cached_kvs.shape[0]).to(device) if cached_kvs != None else None
@@ -349,6 +359,27 @@ def train(
                     if cur_selection_mask != None and cached_kvs != None:
                         cached_kvs = cached_kvs[cur_selection_mask]
                         cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
+
+                    first_pass_text_outputs = None
+                    if condition_on_ctc_first_pass:
+                        encoder_out = model.forward(audio_signal=audio, length=a_lengths)
+                        ctc_output = encoder_out['final_posteriors_ctc']
+                        ctc_text = GreedyCTCDecoder(tokenizer=tokenizer, blank_id=blank_id)(ctc_output, decode=False)
+                        first_pass_text_outputs = [[first_pass_id] + el for el in ctc_text]
+                        other_args['encoder_outputs'] = encoder_out # avoid recalculating encoder outputs 
+
+                    prev_text_outputs, txt, other_args = prepare_prompt(
+                        unpadded=not prepad_text, 
+                        prev_text_outputs=prev_text_outputs, 
+                        first_pass_text_outputs=first_pass_text_outputs,
+                        cur_selection_mask=cur_selection_mask, 
+                        txt=txt, 
+                        other_args=other_args,
+                        device=device,
+                        loss_on_previous=loss_on_previous,
+                        bos_id=bos_id,
+                        pad_id=pad_id,
+                    )
                     
 
                     out = model.calc_loss(
@@ -364,7 +395,7 @@ def train(
 
                     if use_ctc_history:
                         assert cur_probs != None, 'cur_probs must be returned if using ctc history'
-                        prev_text_outputs = GreedyCTCDecoder(tokenizer=tokenizer, blank_id=cur_probs.shape[-1]-1)(cur_probs, decode=False)
+                        prev_text_outputs = GreedyCTCDecoder(tokenizer=tokenizer, blank_id=blank_id)(cur_probs, decode=False)
                         prev_text_outputs = [[prev_id] + el for el in prev_text_outputs]
                     
                     

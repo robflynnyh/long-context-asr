@@ -17,11 +17,12 @@ audio_chunking:
 wandb:
   use: true
   project_name: spotify_enc_dec
-  name: prev_enc_dec_with_loss_var_seq
+  name: ctc_hist_var_seq_with_loss
   update_config_with_wandb_id: true
-  id: m18z6fth
+  dir: /mnt/parscratch/users/acp21rjf/wandb_log/
+  id: x2enu0j6
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/prev_enc_dec_with_loss_var_seq
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/ctc_hist_var_seq_with_loss
   save_every_n_steps: 2000
 data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
@@ -38,6 +39,7 @@ training:
   dtype: float32
   loss_on_previous: true
   condition_on_previous: true
+  use_ctc_history: true
 sequence_scheduler:
   method: random
   start_after: 12000

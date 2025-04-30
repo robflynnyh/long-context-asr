@@ -192,7 +192,8 @@ class EncDecSconformerV2(BaseModel):
             lm_text_sequence_lengths=None,
             lm_loss_mask=None,
             bos_id=0, 
-            eos_id=0
+            eos_id=0,
+            encoder_outputs=None,
         ):
 
         if lm_text_sequence is None: # add bos to text sequence
@@ -203,8 +204,20 @@ class EncDecSconformerV2(BaseModel):
             text_sequence_bos = lm_text_sequence
             target_lengths_bos = lm_text_sequence_lengths
         
-        out = self.forward(audio_signal, text_sequence_bos, a_lengths)
-        ctc_out, lm_out, a_length_out = out['final_posteriors_ctc'], out['final_posteriors_lm'], out['length']
+        if encoder_outputs is None: # run the encoder and decoder if hidden states are not provided
+            out = self.forward(audio_signal, text_sequence_bos, a_lengths)
+            ctc_out, lm_out, a_length_out = out['final_posteriors_ctc'], out['final_posteriors_lm'], out['length']
+        else:
+            ctc_out = encoder_outputs['final_posteriors_ctc']
+            a_length_out = encoder_outputs['length']
+            lm_out = self.language_model_decoder(
+                tokens = text_sequence_bos,
+                a_hidden = encoder_outputs['a_hidden'],
+                a_lengths = a_lengths,
+                cache = None,
+            )
+            lm_out = lm_out['logits']
+
 
         if self.ctc_loss_weight > 0.0:
             ctc_loss = F.ctc_loss(
@@ -268,18 +281,35 @@ class EncDecSconformerV2(BaseModel):
     def generate(
             self, 
             audio_signal, 
-            max_generate=256, 
+            max_generate='encoder_states', 
             bos_id=0, 
+            eos_id=0,
             return_encoder_states=False, 
             return_ctc_states=False,
-            prompt:List[int]=None
+            prompt:List[int]=None,
+            encoder_states:torch.Tensor=None,
+            remove_prompt=True, # whether to remove the prompt from the final output
+            sample=False,
+            temperature=1.0,
         ) -> Dict[str, Union[torch.Tensor, List[int]]]:
         '''
-        greedy generation, audio_signal should be a single batch
+        greedy generation only! audio_signal should be a single batch
+        max_generate: maximum number of tokens to generate 'encoder_states' means we cap at the size of the encoder states, assumes that no more than 8x downsampling is used (otherwise this can be too small)
+        bos_id: beginning of sequence id
+        eos_id: we use this to stop generation prior to the max_generate limit
+        return_encoder_states: whether to return the encoder states and lengths
+        return_ctc_states: whether to return the ctc states (will only work if ctc_loss_weight > 0)
+        prompt: list of tokens/ints to use as a prompt for the generation, if not provided we willl add in a bos token
+        encoder_states: encoder states to use for generation, if not provided we will run the encoder on the audio signal
+        remove_prompt: whether to remove the prompt from the final output
+        sample: whether to sample from the distribution or take the argmax
+        temperature: temperature for sampling
         '''
-        eos_id = bos_id
-        encoder_out = self.forward(audio_signal=audio_signal)
-        a_hidden, length = encoder_out['a_hidden'], encoder_out['length']
+
+        if encoder_states is None:
+            encoder_out = self.forward(audio_signal=audio_signal)
+            a_hidden, length = encoder_out['a_hidden'], encoder_out['length']
+        else: a_hidden, length = encoder_states['a_hidden'], encoder_states['length']
 
         if max_generate == 'encoder_states': max_generate = length.max().item()
         
@@ -305,7 +335,9 @@ class EncDecSconformerV2(BaseModel):
             decoder_logits = decoder_out['logits']
             cache = decoder_out['kv_cache']
             
-            decoder_pred = decoder_logits[0, -1, :].softmax(dim=-1).argmax(dim=-1)
+            if sample == False: decoder_pred = decoder_logits[0, -1, :].softmax(dim=-1).argmax(dim=-1)
+            else: decoder_pred = (decoder_logits[0, -1, :] / temperature).softmax(dim=-1).multinomial(num_samples=1).squeeze(0)
+
             steps += 1
             #generated += 1
             #print(f'Generated {generated} tokens: {decoder_pred.item()}')
@@ -316,35 +348,43 @@ class EncDecSconformerV2(BaseModel):
                 final_text_sequence = torch.cat([final_text_sequence, text_sequence], dim=1)
 
         final_text_sequence = final_text_sequence.squeeze(0).cpu().tolist()
-        final_text_sequence = final_text_sequence[prompt_length:] # remove prompt
+        if remove_prompt: final_text_sequence = final_text_sequence[prompt_length:] # remove prompt
 
         outputs = {}
-        if return_encoder_states:
-            outputs['encoder_states'] = encoder_out['a_hidden']
-        if return_ctc_states:
-            outputs['ctc_states'] = encoder_out['final_posteriors_ctc']
+        if return_encoder_states: outputs['encoder_states'] = {'a_hidden': a_hidden, 'length': length}
+ 
+        if return_ctc_states: outputs['ctc_states'] = encoder_out['final_posteriors_ctc']
         outputs['text_sequence'] = final_text_sequence
 
         return outputs
 
-    def get_prev_id(self) -> int:
-        return self.language_model_decoder.embed.weight.shape[0] - 1
+    def get_prev_id(self) -> int: return self.language_model_decoder.embed.weight.shape[0] - 1
+    def get_pad_id(self) -> int: return 0
+    def get_bos_id(self) -> int: return 0
+    def get_eos_id(self) -> int: return 0
+    def get_first_pass_id(self) -> int: return self.get_bos_id()
     
     def get_blank_id(self) -> int:
         if self.ctc_loss_weight == 0: return None
         return self.ctc_decoder.ff.weight.shape[0] - 1
 
+    @torch.no_grad()
     def transcribe(
             self,
             audio_signal: Union[torch.Tensor, List[torch.Tensor]],
             tokenizer: spm.SentencePieceProcessor,
-            previous_text_conditioning: bool = True,
+            previous_text_conditioning: bool = False,
             max_sequence_length: int = -1,
             max_generate: int = 'encoder_states',
             device: str = None,
             verbose=True,
             bos_id=0,
             ctc_history=False,
+            synthetic_history=False,
+            sample=False,
+            temperature=0.2,
+            sample_synthetic_history=True,
+            temperature_synthetic_history=1.0,
     ):
         '''
         audio_signal: (B, T, C) | [(B, T, C)]*N
@@ -352,21 +392,30 @@ class EncDecSconformerV2(BaseModel):
         previous_text_conditioning: whether to chunk up long format audio and process sequentially like whipser models
         max_sequence_length: maximum sequence length for the model encoder_states means we cap at the size of the encoder states (NOTE: this assumes downsampling is not greater than 8x)
         max_generate: maximum number of tokens to generate -1 means we cap at the size of the encoder states
+        device: device to use for the model i.e. 'cuda' or 'cpu' or 'cuda:N'
+        verbose: for debugging, prints out generations
+        bos_id: beginning of sequence id, this is also used as the eos_id
+        ctc_history: whether to use previous ctc output to form the text prompt
+        synthetic_history: whether to generate a synthetic history/prompt for the model
+        sample: whether to sample from the distribution or take the argmax, this should usually be set to False
+        temperature: temperature for sampling
+        sample_synthetic_history: whether to sample from the distribution or take the argmax when generating the synthetic history, this should usually be set to True
+        temperature_synthetic_history: temperature for sampling the synthetic history
         '''
         tensor_input = isinstance(audio_signal, torch.Tensor)
         if device == None:
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             self.to(device)
         
+        if synthetic_history: assert previous_text_conditioning == False, f'previous_text_conditioning must be False if synthetic_history is True'
+
         if ctc_history: 
             assert previous_text_conditioning == True, f'previous_text_conditioning must be True if ctc_history is True'
             from lcasr.decoding.greedy import GreedyCTCDecoder
             ctc_decoder = GreedyCTCDecoder(tokenizer=tokenizer, blank_id=self.get_blank_id())
 
-        if not previous_text_conditioning and isinstance(audio_signal, torch.Tensor): audios = [audio_signal]
-        if previous_text_conditioning and isinstance(audio_signal, torch.Tensor):
-            if max_sequence_length == -1:
-                audios = [audio_signal]
+        if isinstance(audio_signal, torch.Tensor):
+            if max_sequence_length == -1: audios = [audio_signal]
             else:
                 from lcasr.utils.dataloading import chunk_spectogram
                 audios = chunk_spectogram(spec=audio_signal, chunk_size=max_sequence_length)
@@ -380,28 +429,49 @@ class EncDecSconformerV2(BaseModel):
 
         for audio in audios:
             audio = audio.to(device)
-            #print(f'Audio shape: {audio.shape}')
+            print(f'Audio shape: {audio.shape}') if verbose else None
             assert audio.dim() == 3, f'Audio signal must be a 3D tensor (B, T, C) got {audio.dim()}'
             assert audio.shape[0] == 1, f'currently only supports batch size of 1, got {audio.shape[0]}'    
+
+            encoder_states = None
+            if synthetic_history:
+                output = self.generate(
+                    audio_signal = audio,
+                    max_generate = max_generate,
+                    return_encoder_states = True,
+                    prompt = [prev_id],
+                    bos_id = bos_id,
+                    return_ctc_states = False,
+                    remove_prompt = False,   
+                    sample=sample_synthetic_history,
+                    temperature=temperature_synthetic_history,       
+                )         
+                out_sequence = output['text_sequence']
+                encoder_states = output['encoder_states']
+                print(out_sequence)
+                print(f'synthetic history: {tokenizer.decode(out_sequence[1:])}') if verbose else None
+                prompt = out_sequence + [bos_id]
 
             output = self.generate(
                 audio_signal = audio,
                 max_generate = max_generate,
-                return_encoder_states = True,
+                return_encoder_states = False,
                 prompt = prompt,
                 bos_id = bos_id,
-                return_ctc_states = ctc_history,            
+                return_ctc_states = ctc_history,
+                encoder_states=encoder_states,     
+                sample=sample,
+                temperature=temperature,    
             )
             out_sequence = output['text_sequence']
             decoded_sequence = tokenizer.decode(out_sequence) # remove bos token
 
-            if previous_text_conditioning and not ctc_history:
-                prompt = [prev_id] + out_sequence + [bos_id]
+            if previous_text_conditioning and not ctc_history: prompt = [prev_id] + out_sequence + [bos_id]
             elif ctc_history:
                 ctc_posteriors = output['ctc_states'].squeeze(0)
                 ctc_history_text = ctc_decoder(ctc_posteriors, decode=False)
                 prompt = [prev_id] + ctc_history_text + [bos_id]
-                print(f'CTC output: {ctc_decoder(ctc_posteriors, decode=True)}')
+                print(f'CTC output: {ctc_decoder(ctc_posteriors, decode=True)}') if verbose else None
 
 
             if verbose: print(f'Decoded sequence: {decoded_sequence}')
@@ -412,9 +482,6 @@ class EncDecSconformerV2(BaseModel):
 
         return results
            
-
-
-
     @torch.no_grad()
     def ctc_beam_search(
         self, 
@@ -799,28 +866,21 @@ class CosineAttention(nn.Module):
         self.activation = nn.Softmax(dim=-1)
 
         if not self.shared_kv:
-            self.qkv_proj = nn.Linear(
-                n_feats, 3 * n_heads * head_dim, bias=bias)
-            self.qkv = lambda x: rearrange(self.qkv_proj(
-                x), "b n (h d qkv) -> qkv b h n d", qkv=3, h=n_heads, d=head_dim)
+            self.qkv_proj = nn.Linear(n_feats, 3 * n_heads * head_dim, bias=bias)
+            self.qkv = lambda x: rearrange(self.qkv_proj(x), "b n (h d qkv) -> qkv b h n d", qkv=3, h=n_heads, d=head_dim)
         else:
-            self.q_proj, self.kv_proj = [nn.Linear(n_feats, el, bias=bias) for el in [
-                n_heads * head_dim, 2 * head_dim]]
-            map_q, map_kv = lambda q: rearrange(
-                q, 'b n (h d) -> b h n d', h=n_heads), lambda kv: rearrange(kv, 'b n (kv d) -> kv b () n d', kv=2, d=head_dim)
-            self.qkv = lambda x: (map_q(self.q_proj(x)),
-                                  *map_kv(self.kv_proj(x)))
+            self.q_proj, self.kv_proj = [nn.Linear(n_feats, el, bias=bias) for el in [n_heads * head_dim, 2 * head_dim]]
+            map_q, map_kv = lambda q: rearrange(q, 'b n (h d) -> b h n d', h=n_heads), lambda kv: rearrange(kv, 'b n (kv d) -> kv b () n d', kv=2, d=head_dim)
+            self.qkv = lambda x: (map_q(self.q_proj(x)), *map_kv(self.kv_proj(x)))
 
         self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=bias)
 
     def head_proj(self, dots, mode='pre'):
-        if mode == 'pre' and (self.talking_heads == 'pre' or self.talking_heads == 'both'):
-            dots = self._head_proj(dots)
-        if mode == 'post' and (self.talking_heads == 'post' or self.talking_heads == 'both'):
-            dots = self._head_proj_post(dots)
+        if mode == 'pre' and (self.talking_heads == 'pre' or self.talking_heads == 'both'): dots = self._head_proj(dots)
+        if mode == 'post' and (self.talking_heads == 'post' or self.talking_heads == 'both'): dots = self._head_proj_post(dots)
         return dots
 
-    def attend(self, query, key, value, attn_mask, pos_bias):
+    def attend(self, query, key, value, attn_mask, pos_bias): # TODO: use flex attention to make this faster!
 
         dots = einsum('bhid,bhjd->bhij', query, key) * self.temperature
         dots = self.head_proj(dots, mode='pre')
@@ -838,15 +898,13 @@ class CosineAttention(nn.Module):
     @staticmethod
     def attach_cache(kv, cache, cache_indices):
         kv = torch.stack(kv, dim=0)
-        if cache is None:
-            return kv
+        if cache is None: return kv
         if exists(cache_indices):
             zero_vector = torch.zeros_like(kv[:, :, :, :1, :])
             kv_w_cache = torch.cat([cache, kv, zero_vector], dim=-2)
             # we do this to remove unnecessary padding
             kv_w_cache = torch.gather(kv_w_cache, dim=-2, index=cache_indices)
-        else:
-            kv_w_cache = torch.cat([cache, kv], dim=-2)
+        else: kv_w_cache = torch.cat([cache, kv], dim=-2)
         return kv_w_cache
 
     def forward(self, x, pos_bias, mask, cache=None, cache_indices=None):
@@ -960,9 +1018,8 @@ class CrossAttnDecoder(nn.Module):
 
     @staticmethod
     def get_cache(cache, layer):
-        if cache is None:
-            return None
-        return cache['cache'][layer]
+        if cache is None: return None
+        else: return cache['cache'][layer]
     
     
 
@@ -994,6 +1051,7 @@ class CrossAttnDecoder(nn.Module):
         return indices.to(x.device)
 
     def create_masks_and_positions(self, x, length, cache):
+        ''' We do this so kv caching can be done when there is padding in the kv cache'''
         x_len = length if length is not None else torch.tensor(
             x.shape[-2], device=x.device).expand(x.shape[0])
         cache_len = cache['cache_lengths'] if exists(cache) else 0
