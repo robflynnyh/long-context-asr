@@ -382,6 +382,8 @@ def train(
 
                         other_args['encoder_outputs'] = encoder_out # avoid recalculating encoder outputs 
 
+                    original_txt = txt
+
                     prev_text_outputs, txt, other_args = prepare_prompt(
                         unpadded=not prepad_text, 
                         prev_text_outputs=prev_text_outputs, 
@@ -409,11 +411,76 @@ def train(
                     cur_probs = out.get('ctc_posteriors', None)
                     loss = out['loss']
 
+
                     if use_ctc_history:
                         assert cur_probs != None, 'cur_probs must be returned if using ctc history'
                         prev_text_outputs = GreedyCTCDecoder(tokenizer=tokenizer, blank_id=blank_id)(cur_probs, decode=False)
                         prev_text_outputs = [[prev_id] + el for el in prev_text_outputs]
                     
+
+                    with torch.no_grad():
+                        first_pass_text_outputs_ = []
+                        for i, el in enumerate(first_pass_text_outputs):
+                            first_pass_text_outputs_.append([first_pass_id] + original_txt[i])
+                        first_pass_text_outputs = first_pass_text_outputs_
+
+                        prev_text_outputs, txt, other_args = prepare_prompt(
+                            unpadded=not prepad_text, 
+                            prev_text_outputs=prev_text_outputs, 
+                            first_pass_text_outputs=first_pass_text_outputs,
+                            cur_selection_mask=cur_selection_mask, 
+                            txt=original_txt, 
+                            other_args=other_args,
+                            device=device,
+                            loss_on_previous=loss_on_previous,
+                            bos_id=bos_id,
+                            pad_id=pad_id,
+                        )
+                        other_args['return_token_losses'] = True
+                        
+                        out_a = model.calc_loss(
+                            audio_signal = audio, 
+                            text_sequence = txt.to(device),
+                            a_lengths = a_lengths,
+                            t_lengths = t_lengths.to(device),
+                            tokenizer = tokenizer,
+                            **other_args,
+                        )
+                        lm_losses_a = out_a['lm_loss']
+                        lm_loss_mask_a = out_a['lm_loss_mask']
+
+                        random.shuffle(first_pass_text_outputs)
+
+                        prev_text_outputs, txt, other_args = prepare_prompt(
+                            unpadded=not prepad_text, 
+                            prev_text_outputs=prev_text_outputs, 
+                            first_pass_text_outputs=first_pass_text_outputs,
+                            cur_selection_mask=cur_selection_mask, 
+                            txt=original_txt, 
+                            other_args=other_args,
+                            device=device,
+                            loss_on_previous=loss_on_previous,
+                            bos_id=bos_id,
+                            pad_id=pad_id,
+                        ) 
+
+                        out_b = model.calc_loss(
+                            audio_signal = audio, 
+                            text_sequence = txt.to(device),
+                            a_lengths = a_lengths,
+                            t_lengths = t_lengths.to(device),
+                            tokenizer = tokenizer,
+                            **other_args,
+                        )   
+                        lm_losses_b = out_b['lm_loss']
+                        lm_loss_mask_b = out_b['lm_loss_mask']
+
+                        lm_losses_a = lm_losses_a.sum(-1) / (~lm_loss_mask_a).sum(-1)
+                        lm_losses_b = lm_losses_b.sum(-1) / (~lm_loss_mask_b).sum(-1)
+
+                        spread = torch.abs(lm_losses_a - lm_losses_b).mean().item()
+
+
                     
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer) if exists(cur_probs) else None
                 # check for nan in loss
@@ -466,6 +533,7 @@ def train(
                             'sequence_length': chunk_size,
                             'batch_size': batch_size,
                             'epoch': epoch,
+                            'spread': spread,
                             'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
                         })
                     

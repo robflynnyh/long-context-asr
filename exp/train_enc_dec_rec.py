@@ -175,8 +175,6 @@ def train(
     use_ctc_history = args.config['training'].get('use_ctc_history', False)
     condition_on_ctc_first_pass = args.config['training'].get('condition_on_ctc_first_pass', False)
 
-    first_pass_forcing_percentage = args.config['training'].get('first_pass_forcing_percentage', 0.0)
-
     prepad_text = use_ctc_history == False and condition_on_ctc_first_pass == False
 
     if condition_on_ctc_first_pass: assert condition_on_previous == False, 'not implemented yet!'
@@ -270,6 +268,18 @@ def train(
             remove_mask = ~(culm_lengths_audio > audio_lengths)
             cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
             cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
+
+            culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
+
+            if ix > 0:
+                prev_chunks = audio_chunks_[ix-1][remove_mask]
+                cur_chunks = torch.cat([prev_chunks, cur_chunks], dim=-1)
+                cur_lengths += prev_chunks.shape[-1]
+            else: prev_chunks = None
+
+            # if prev_chunks != None:
+            #     prev_chunks = prev_chunks[remove_mask]
+            #     cur_chunks = torch.cat([prev_chunks, cur_chunks], dim=-1)
           
             enc_txt_chunks = [tokenizer.encode(el[ix]) for i, el in enumerate(txt_chunks) if remove_mask[i]]
             enc_txt_chunks_lengths = torch.LongTensor([len(el) for el in enc_txt_chunks])
@@ -314,10 +324,11 @@ def train(
                 'lm_txt':lm_txt_chunks,
                 'lm_txt_lengths':lm_txt_chunks_lengths,
                 'lm_loss_mask':lm_loss_mask,
+                'has_prev': prev_chunks != None,
                 'ix':ix,
             })
-            culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
-
+            
+            
         was_warmup = scheduler.is_warmup
         if was_warmup:
             scheduler.is_warmup = scheduler.is_warming_up()
@@ -363,23 +374,11 @@ def train(
                         cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
 
                     first_pass_text_outputs = None
-
                     if condition_on_ctc_first_pass:
                         encoder_out = model.forward(audio_signal=audio, length=a_lengths)
                         ctc_output = encoder_out['final_posteriors_ctc']
                         ctc_text = GreedyCTCDecoder(tokenizer=tokenizer, blank_id=blank_id)(ctc_output, decode=False)
                         first_pass_text_outputs = [[first_pass_id] + el for el in ctc_text]
-     
-                        if first_pass_forcing_percentage > 0.0:
-                            first_pass_text_outputs_ = []
-                            for i, el in enumerate(first_pass_text_outputs):
-                                if random.random() * 100 < first_pass_forcing_percentage:
-                                    first_pass_text_outputs_.append([first_pass_id] + txt[i])
-                                else:
-                                    first_pass_text_outputs_.append(el)
-                            first_pass_text_outputs = first_pass_text_outputs_
-
-
                         other_args['encoder_outputs'] = encoder_out # avoid recalculating encoder outputs 
 
                     prev_text_outputs, txt, other_args = prepare_prompt(
@@ -394,15 +393,14 @@ def train(
                         bos_id=bos_id,
                         pad_id=pad_id,
                     )
-
-                    if 'prefix_to_generate' in args.config['training']: other_args['prefix_to_generate'] = args.config['training']['prefix_to_generate']                    
+                    
+                    other_args['trim_ctc_by'] = None if chunk_json['has_prev'] == False else chunk_size
 
                     out = model.calc_loss(
                         audio_signal = audio, 
                         text_sequence = txt.to(device),
                         a_lengths = a_lengths,
                         t_lengths = t_lengths.to(device),
-                        tokenizer = tokenizer,
                         **other_args,
                     )
                     

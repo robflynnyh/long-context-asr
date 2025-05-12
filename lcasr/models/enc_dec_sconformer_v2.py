@@ -1,5 +1,5 @@
 import torch, torch.nn as nn, torch.nn.functional as F
-
+import random
 from torch.utils.checkpoint import checkpoint # # gradient/activation checkpointing
 from einops import rearrange, repeat
 from typing import Dict, List, Tuple, Union
@@ -12,6 +12,7 @@ from lcasr.utils.lm_tools import add_eos, token_lens_to_mask, mark_padding
 ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
+ConvResidualSubsampling = subsampling.ConvResidualSubsampling
 try: from apex.normalization import FusedRMSNorm as DEFAULT_NORM, FusedRMSNorm as RMSNorm, FusedLayerNorm as LayerNorm
 except: 
     from lcasr.components.normalisation import RMSNorm as RMSNorm, RMSNorm as DEFAULT_NORM
@@ -93,7 +94,8 @@ class EncDecSconformerV2(BaseModel):
         self.ctc_loss_weight = ctc_loss_weight
 
         # self.abs_pos_enc = PosEnc(d_model)
-        self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=kwargs.get('fourier_pos_hidden_dim', 64))
+        self.use_abs_pos_enc = kwargs.get('use_abs_pos_enc', True)
+        self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=kwargs.get('fourier_pos_hidden_dim', 64)) if self.use_abs_pos_enc else nn.Identity()
 
         self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
 
@@ -151,10 +153,13 @@ class EncDecSconformerV2(BaseModel):
         )
 
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
-        self.subsampling = \
-            ConvSubsampling(subsampling = self.subsampling_mode, conv_channels = self.subsampling_conv_channels, activation = subsampling_act, **subsampling_args) \
-                if subsampling != 'stacking' else \
-                     StackingSubsampling(norm = True if not subsampling_norm_out else False, default_norm = default_norm, **subsampling_args)
+        if subsampling == 'stacking':
+            self.subsampling = StackingSubsampling(norm = True if not subsampling_norm_out else False, default_norm = default_norm, **subsampling_args)
+        elif subsampling == 'conv_residual':
+            self.subsampling = ConvResidualSubsampling(subsampling = self.subsampling_mode, conv_channels = self.subsampling_conv_channels, activation = subsampling_act, **subsampling_args) 
+        else:
+            self.subsampling = ConvSubsampling(subsampling = self.subsampling_mode, conv_channels = self.subsampling_conv_channels, activation = subsampling_act, **subsampling_args) 
+     
 
         
         self.layers = nn.ModuleList()
@@ -181,10 +186,13 @@ class EncDecSconformerV2(BaseModel):
             )
             self.layers.append(l)
 
+            self.no_encoder_padding = kwargs.get('no_encoder_padding', False)
+            self.min_seq_len = kwargs.get('min_seq_len', 0)
+
 
     def calc_loss(
             self, 
-            audio_signal,
+            audio_signal, # B, C, T
             text_sequence,
             a_lengths,
             t_lengths,
@@ -194,8 +202,10 @@ class EncDecSconformerV2(BaseModel):
             bos_id=0, 
             eos_id=0,
             encoder_outputs=None,
+            **kwargs
         ):
 
+        other_outputs = {}
         if lm_text_sequence is None: # add bos to text sequence
             text_sequence_bos = F.pad(text_sequence, (1, 0), value=bos_id)
             target_lengths_bos = t_lengths + 1
@@ -220,8 +230,19 @@ class EncDecSconformerV2(BaseModel):
 
 
         if self.ctc_loss_weight > 0.0:
+            if kwargs.get('trim_ctc_by', None) is not None:
+                trim_ctc_by = kwargs.get('trim_ctc_by', None)
+                a_lengths = a_lengths - trim_ctc_by
+                in_length = audio_signal.shape[-1]
+                out_length = ctc_out.shape[1]
+                downsample_factor = in_length / out_length
+                trim_ctc_by = int(round(trim_ctc_by / downsample_factor))
+                a_length_out = a_length_out - trim_ctc_by
+                
+            else: trim_ctc_by = 0
+
             ctc_loss = F.ctc_loss(
-                log_probs = rearrange(ctc_out, 'b n c -> n b c'),
+                log_probs = rearrange(ctc_out[:, trim_ctc_by:], 'b n c -> n b c'),
                 targets = text_sequence,
                 input_lengths = a_length_out,
                 target_lengths = t_lengths,
@@ -230,7 +251,7 @@ class EncDecSconformerV2(BaseModel):
             )
             a_sum = a_lengths.sum()
             ctc_loss_to_show = (ctc_loss / a_sum).item() * 100
-            ctc_loss_to_bwd = ctc_loss / (ctc_out.shape[1] * ctc_out.shape[0]) * 100
+            ctc_loss_to_bwd = ctc_loss / (ctc_out[:, trim_ctc_by:].shape[1] * ctc_out.shape[0]) * 100
         else:
             ctc_loss_to_show, ctc_loss_to_bwd = 0, 0
 
@@ -255,13 +276,19 @@ class EncDecSconformerV2(BaseModel):
             input = rearrange(predictions, 'b n c -> (b n) c'),
             target = rearrange(targets, 'b n -> (b n)'),
             ignore_index = -100,
-            reduction = 'sum'
+            reduction = 'none'
         )
+        if kwargs.get('return_token_losses', False):
+            lm_loss = rearrange(lm_loss, '(b n) -> b n', b = predictions.shape[0])
+            other_outputs['lm_loss'] = lm_loss
+            other_outputs['lm_loss_mask'] = lm_loss_mask
+
+        lm_loss = lm_loss.sum()
         lm_loss_to_show = (lm_loss / (target_lengths_bos.sum() - lm_num_masked)).item() 
         lm_loss_to_bwd = lm_loss / ((predictions.shape[0] * predictions.shape[1]) - lm_num_masked) 
 
         loss_to_show = ctc_loss_to_show * self.ctc_loss_weight + lm_loss_to_show * (1 - self.ctc_loss_weight)
-        loss = ctc_loss_to_bwd * self.ctc_loss_weight + lm_loss_to_bwd * (1 - self.ctc_loss_weight) 
+        loss = ctc_loss_to_bwd * self.ctc_loss_weight + lm_loss_to_bwd 
 
         wandb_log_data = {
             'loss': loss_to_show,
@@ -275,6 +302,7 @@ class EncDecSconformerV2(BaseModel):
             'ctc_posteriors': ctc_out,
             'lm_posteriors': lm_out,
             'length': a_length_out,
+            **other_outputs
         }
         
     @torch.no_grad()
@@ -323,6 +351,7 @@ class EncDecSconformerV2(BaseModel):
         cache = None
         final_text_sequence = text_sequence.clone()
         steps = 0
+        
         while not finished:
             
             decoder_out = self.language_model_decoder(
@@ -341,7 +370,7 @@ class EncDecSconformerV2(BaseModel):
             steps += 1
             #generated += 1
             #print(f'Generated {generated} tokens: {decoder_pred.item()}')
-            if decoder_pred == eos_id or ((cache['cache_lengths'].item()+1) > max_generate):
+            if decoder_pred == eos_id or (steps > max_generate):
                 finished = True
             else:
                 text_sequence = decoder_pred.unsqueeze(0).unsqueeze(0)
@@ -384,7 +413,10 @@ class EncDecSconformerV2(BaseModel):
             sample=False,
             temperature=0.2,
             sample_synthetic_history=True,
-            temperature_synthetic_history=1.0,
+            temperature_synthetic_history=0.9,
+            eval_ctc=False,
+            first_pass_ctc=False,
+            min_seq_len = -1
     ):
         '''
         audio_signal: (B, T, C) | [(B, T, C)]*N
@@ -401,6 +433,8 @@ class EncDecSconformerV2(BaseModel):
         temperature: temperature for sampling
         sample_synthetic_history: whether to sample from the distribution or take the argmax when generating the synthetic history, this should usually be set to True
         temperature_synthetic_history: temperature for sampling the synthetic history
+        eval_ctc: whether to return ctc output and not transcribe with the language model
+        min_seq_len: pad audio to this size 
         '''
         tensor_input = isinstance(audio_signal, torch.Tensor)
         if device == None:
@@ -409,10 +443,16 @@ class EncDecSconformerV2(BaseModel):
         
         if synthetic_history: assert previous_text_conditioning == False, f'previous_text_conditioning must be False if synthetic_history is True'
 
-        if ctc_history: 
-            assert previous_text_conditioning == True, f'previous_text_conditioning must be True if ctc_history is True'
+        if ctc_history or eval_ctc or first_pass_ctc:
             from lcasr.decoding.greedy import GreedyCTCDecoder
             ctc_decoder = GreedyCTCDecoder(tokenizer=tokenizer, blank_id=self.get_blank_id())
+            if ctc_history: assert previous_text_conditioning == True, f'previous_text_conditioning must be True if ctc_history is True'
+            else:
+                assert previous_text_conditioning == False
+                assert ctc_history == False
+                assert synthetic_history == False
+                assert sample == False
+
 
         if isinstance(audio_signal, torch.Tensor):
             if max_sequence_length == -1: audios = [audio_signal]
@@ -427,55 +467,118 @@ class EncDecSconformerV2(BaseModel):
         prev_id = self.get_prev_id()
         prompt = None
 
+
         for audio in audios:
+            if audio.shape[-1] < min_seq_len and min_seq_len > 0: audio = torch.cat((audio, torch.zeros(1, audio.shape[1], min_seq_len-audio.shape[2])), dim=-1)
             audio = audio.to(device)
             print(f'Audio shape: {audio.shape}') if verbose else None
             assert audio.dim() == 3, f'Audio signal must be a 3D tensor (B, T, C) got {audio.dim()}'
             assert audio.shape[0] == 1, f'currently only supports batch size of 1, got {audio.shape[0]}'    
 
-            encoder_states = None
-            if synthetic_history:
+            if eval_ctc: # probably I should just have a seperate function call for this eval..
+                output = self.forward(audio_signal=audio)
+                ctc_output = output['final_posteriors_ctc'].squeeze(0)
+                ctc_text = ctc_decoder(ctc_output, decode=True)
+                print(f'Decoded sequence: {ctc_text}') if verbose else None
+                results.append(ctc_text.strip())
+            else:
+                encoder_states = None
+                if synthetic_history:
+                    output = self.generate(
+                        audio_signal = audio,
+                        max_generate = 15,#'encoder_states', #30, #'encoder_states',
+                        return_encoder_states = True,
+                        prompt = [prev_id],
+                        bos_id = bos_id,
+                        eos_id=999999999999999,
+                        return_ctc_states = False,
+                        remove_prompt = False,   
+                        sample=sample_synthetic_history,
+                        temperature=temperature_synthetic_history,       
+                    )         
+                    out_sequence = output['text_sequence']
+                    encoder_states = output['encoder_states']
+                    #out_sequence = [prev_id] + torch.randint_like(torch.tensor(out_sequence), 1, max(out_sequence)).tolist()[1:]
+
+                    print(f'synthetic history: {tokenizer.decode(out_sequence[1:])}') if verbose else None
+                    print(out_sequence) if verbose else None
+                    prompt = out_sequence + [bos_id]
+                elif first_pass_ctc:
+                    # self.language_model_decoder.train()
+                    # self.language_model_decoder.cross_attn_drop_p = 1.0
+
+                    output = self.forward(audio_signal=audio)
+                    ctc_output = output['final_posteriors_ctc'].squeeze(0)
+                    ctc_text = ctc_decoder(ctc_output, decode=False) #,sample=True)
+                    print(f'CTC output: {tokenizer.decode(ctc_text)}') if verbose else None
+                    encoder_states = output
+
+                    # if True:
+                    #     ctc_output = ctc_decoder(ctc_output, decode=True)
+                    #     words = ctc_output.split(" ") 
+                    #     # shuffle order
+                    #     random.shuffle(words)
+                    #     ctc_text = " ".join(words)
+                    #     print(f'Shuffled CTC output: {ctc_text}') if verbose else None
+                    #     ctc_text = tokenizer.encode(ctc_text)
+
+                    #if len(ctc_text) > 1: ctc_text = torch.randint_like(torch.tensor(ctc_text), 1, max(ctc_text)).tolist()
+                    prompt = [self.get_first_pass_id()] + ctc_text + [bos_id] 
+
+                    # output = self.generate(
+                    #     audio_signal = audio,
+                    #     max_generate = max_generate,
+                    #     return_encoder_states = False,
+                    #     prompt = prompt,
+                    #     bos_id = bos_id,
+                    #     return_ctc_states = ctc_history,
+                    #     encoder_states=encoder_states,     
+                    #     sample=sample,
+                    #     temperature=temperature,    
+                    # )
+                    # out_sequence = output['text_sequence']
+                    # decoded_sequence = tokenizer.decode(out_sequence) 
+                    # print(f'First pass output: {decoded_sequence}') if verbose else None
+                    # prompt = [self.get_first_pass_id()] + out_sequence + [bos_id]
+                    
+
                 output = self.generate(
                     audio_signal = audio,
                     max_generate = max_generate,
-                    return_encoder_states = True,
-                    prompt = [prev_id],
+                    return_encoder_states = False,
+                    prompt = prompt,
                     bos_id = bos_id,
-                    return_ctc_states = False,
-                    remove_prompt = False,   
-                    sample=sample_synthetic_history,
-                    temperature=temperature_synthetic_history,       
-                )         
+                    return_ctc_states = ctc_history,
+                    encoder_states=encoder_states,     
+                    sample=sample,
+                    temperature=temperature,    
+                )
                 out_sequence = output['text_sequence']
-                encoder_states = output['encoder_states']
-                print(out_sequence)
-                print(f'synthetic history: {tokenizer.decode(out_sequence[1:])}') if verbose else None
-                prompt = out_sequence + [bos_id]
+                decoded_sequence = tokenizer.decode(out_sequence) 
 
-            output = self.generate(
-                audio_signal = audio,
-                max_generate = max_generate,
-                return_encoder_states = False,
-                prompt = prompt,
-                bos_id = bos_id,
-                return_ctc_states = ctc_history,
-                encoder_states=encoder_states,     
-                sample=sample,
-                temperature=temperature,    
-            )
-            out_sequence = output['text_sequence']
-            decoded_sequence = tokenizer.decode(out_sequence) # remove bos token
+                if previous_text_conditioning and not ctc_history: 
+                    if False:
+                        output = tokenizer.decode(out_sequence)
+                        
+                        words = output.split(" ") 
+                        # shuffle order
+                        random.shuffle(words)
+                        text = " ".join(words)
+                        print(f'Shuffled prev output: {text}') if verbose else None
+                        out_sequence = tokenizer.encode(text)
 
-            if previous_text_conditioning and not ctc_history: prompt = [prev_id] + out_sequence + [bos_id]
-            elif ctc_history:
-                ctc_posteriors = output['ctc_states'].squeeze(0)
-                ctc_history_text = ctc_decoder(ctc_posteriors, decode=False)
-                prompt = [prev_id] + ctc_history_text + [bos_id]
-                print(f'CTC output: {ctc_decoder(ctc_posteriors, decode=True)}') if verbose else None
+                    prompt = [prev_id] + out_sequence + [bos_id]
+                    #if len(out_sequence) > 1: prompt = [prev_id] + torch.randint_like(torch.tensor(out_sequence), 1, max(out_sequence)).tolist() + [bos_id]                
+    
+                elif ctc_history:
+                    ctc_posteriors = output['ctc_states'].squeeze(0)
+                    ctc_history_text = ctc_decoder(ctc_posteriors, decode=False)
+                    prompt = [prev_id] + ctc_history_text + [bos_id]
+                    print(f'CTC output: {ctc_decoder(ctc_posteriors, decode=True)}') if verbose else None
 
 
-            if verbose: print(f'Decoded sequence: {decoded_sequence}')
-            results.append(decoded_sequence.strip())
+                if verbose: print(f'Decoded sequence: {decoded_sequence}')
+                results.append(decoded_sequence.strip())
 
         if tensor_input:
             results = " ".join(results)
@@ -540,11 +643,23 @@ class EncDecSconformerV2(BaseModel):
             cache: Dict = None,
             return_logits = False
         ):
+
         max_audio_length: int = audio_signal.size(-1)
-
         cached_kvs = None
+        
+        if max_audio_length < self.min_seq_len and self.min_seq_len > 0:
+            audio_signal = torch.cat((
+                audio_signal,
+                torch.zeros(
+                    audio_signal.size(0),
+                    audio_signal.size(1),
+                    self.min_seq_len - audio_signal.size(2),
+                    device=audio_signal.device,
+                )
+            ), dim=-1)
+            max_audio_length: int = audio_signal.size(-1)
 
-        if length is None:
+        if length is None or self.no_encoder_padding:
             length = torch.tensor([max_audio_length] * audio_signal.size(0), device=audio_signal.device)
             
         audio_signal = torch.transpose(audio_signal, 1, 2)
@@ -771,9 +886,18 @@ class CrossAttention(nn.Module):
 
         self.out_proj = nn.Linear(n_heads * head_dim, n_feats, bias=bias)
 
-
+    @staticmethod
+    def apply_rotary(q, kv, rotary_emb_fn): 
+        if rotary_emb_fn is not None:
+            if rotary_emb_fn.learned == False:
+                q, kv[:, :, 0] = rotary_emb_fn.apply(q, kv[:, :, 0])
+            else:
+                k, v = kv[:, :, 0], kv[:, :, 1]
+                q, k = rotary_emb_fn.apply(q, k)
+                kv = torch.stack([k, v], dim=2)
+        return q, kv
         
-    def forward(self, xq, xkv, kv_mask = None, attn_mask=None):
+    def forward(self, xq, xkv, kv_mask = None, attn_mask=None, rotary_emb_fn = None):
         H, D = self.n_heads, self.head_dim
 
         flash_attn = self.flash_attn
@@ -781,6 +905,8 @@ class CrossAttention(nn.Module):
         q = self.q(xq)
         k, v = self.kv(xkv)
         kv = torch.stack([k, v], dim=2)
+
+        q, kv = self.apply_rotary(q, kv, rotary_emb_fn)
 
         ### Flash attention stuff 
         if xq.device.type == 'cuda' and flash_attn:
@@ -828,6 +954,14 @@ def l2norm(t, groups=1, dim=-1):
     t = F.normalize(t, p=2, dim=dim)
     return rearrange(t, '... g d -> ... (g d)')
 
+
+# def get_flex_attention_score_function(pos_bias, causal=True):
+#     assert causal, 'Not Implemented'
+#     def score_mod(score, b, h, q_idx, kv_idx):
+#         return torch.where(q_idx >= kv_idx, score * pos_bias[:, h, q_idx, kv_idx], -torch.finfo(score.dtype).max)
+#     return score_mod
+
+
 class CosineAttention(nn.Module):
     def __init__(
         self,
@@ -839,7 +973,7 @@ class CosineAttention(nn.Module):
         cosine_sim=True,
         temperature=15.5,
         return_attention=False,
-        causal=False,
+        causal=True,
         **kwargs
     ):
         super().__init__()
@@ -855,10 +989,12 @@ class CosineAttention(nn.Module):
 
         self.cosine_sim = cosine_sim
 
-        if self.talking_heads == 'pre' or self.talking_heads == 'both':
-            self._head_proj = nn.Conv2d(n_heads, n_heads, (1, 1))
-        if self.talking_heads == 'post' or self.talking_heads == 'both':
-            self._head_proj_post = nn.Conv2d(n_heads, n_heads, (1, 1))
+        if self.talking_heads == 'pre' or self.talking_heads == 'both': self._head_proj = nn.Conv2d(n_heads, n_heads, (1, 1))
+        if self.talking_heads == 'post' or self.talking_heads == 'both': self._head_proj_post = nn.Conv2d(n_heads, n_heads, (1, 1))
+
+        self.use_sdpa = kwargs.get('decoder_use_sdpa', True)
+        if self.use_sdpa:  assert self.talking_heads == 'none', 'sdpa not compatible with talking heads'
+
 
         self.temperature = torch.nn.Parameter(torch.tensor(
             temperature), requires_grad=True) if isinstance(temperature, float) else temperature
@@ -880,20 +1016,34 @@ class CosineAttention(nn.Module):
         if mode == 'post' and (self.talking_heads == 'post' or self.talking_heads == 'both'): dots = self._head_proj_post(dots)
         return dots
 
-    def attend(self, query, key, value, attn_mask, pos_bias): # TODO: use flex attention to make this faster!
+    def attend(self, query, key, value, attn_mask, pos_bias): 
+        if not self.use_sdpa:
+            dots = einsum('bhid,bhjd->bhij', query, key) * self.temperature
+            dots = self.head_proj(dots, mode='pre')
+            
+            dots += pos_bias.masked_fill_(attn_mask, -torch.finfo(dots.dtype).max)
 
-        dots = einsum('bhid,bhjd->bhij', query, key) * self.temperature
-        dots = self.head_proj(dots, mode='pre')
-        
-        dots += pos_bias
+            attn = self.activation(dots)
+            attn = self.head_proj(attn, mode='post')
 
-        dots.masked_fill_(attn_mask, -torch.finfo(dots.dtype).max)
+            attn = self.dropout(attn)
+            return torch.matmul(attn, value)
+        else:
+            query = query * self.temperature # apply before sdpa so gradient is computed
+            pos_bias = pos_bias.masked_fill(attn_mask, -torch.finfo(pos_bias.dtype).max) # apply pos_bias as an additive mask by combining with attn_mask
+            out = F.scaled_dot_product_attention(
+                query=query,
+                key=key,
+                value=value,
+                attn_mask=pos_bias,
+                is_causal=False,
+                dropout_p=0.0 if not self.training else self.dropout.p,
+                scale=1.0, # scale is already applied to query
+                enable_gqa=self.shared_kv,
+            )
+            return out
+    
 
-        attn = self.activation(dots)
-        attn = self.head_proj(attn, mode='post')
-
-        attn = self.dropout(attn)
-        return einsum("bhij,bhjd->bhid", attn, value)
 
     @staticmethod
     def attach_cache(kv, cache, cache_indices):
@@ -943,7 +1093,8 @@ class CrossAttnDecoder(nn.Module):
 
 
         self.d_model = d_model
-        self.n_layers = n_layers
+        n_layers = n_layers if kwargs.get('decoder_layers', None) is None else kwargs.get('decoder_layers')
+        self.n_layers = n_layers 
         self.n_heads = n_heads
         self.head_dim = head_dim
         self.expansion_factor = expansion_factor
@@ -954,10 +1105,22 @@ class CrossAttnDecoder(nn.Module):
         self.bias_in_ff = bias_in_ff
         self.default_norm = default_norm
         self.flash_attn = kwargs.get('flash_attn', True)
+        self.cross_attn_drop_p = kwargs.get('cross_attn_drop_p', 0.0)
 
         additional_embeddings = kwargs.get('additional_embeddings', 0)
         self.embed = nn.Embedding(vocab_size + additional_embeddings, d_model)
-        self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=kwargs.get('fourier_pos_hidden_dim', 64))
+        self.abs_pos_dec = kwargs.get('use_abs_pos_dec', True)
+        self.pos_enc = LearnableFourierPosEnc(d_model, hidden_dim=kwargs.get('fourier_pos_hidden_dim', 64)) if self.abs_pos_dec else nn.Identity()
+
+        self.use_rotary_cross_attn = kwargs.get('rotary_cross_attn', False)
+        self.rotary_pos_emb = None
+        if self.use_rotary_cross_attn:
+            self.rotary_pos_emb = RotaryPositionalEmbedding(
+                dim = head_dim,
+                base = 1500000,
+                learned_freq = False,
+            )
+
         self.dropout_emb = kwargs.get('dropout_emb', 0.0)
         self.ff_out_dropout = kwargs.get('ff_out_dropout', 0.0)
         self.causal = True
@@ -965,6 +1128,13 @@ class CrossAttnDecoder(nn.Module):
         assert default_norm in accepted_norms, f'default_norm must be one of {accepted_norms} (got {default_norm})'
         default_norm = RMSNorm if default_norm == 'rms_norm' else LayerNorm
         self.acoustic_norm = default_norm(d_model) if kwargs.get('acoustic_norm', False) else nn.Identity()
+
+        self.learnt_cache_size = kwargs.get('learnt_cache_size', 0)
+        if self.learnt_cache_size > 0:
+            self.learnt_cache = nn.Embedding(self.learnt_cache_size, d_model)
+            self.cache_merge = nn.Sequential(
+                nn.Linear(head_dim*n_layers, head_dim*n_layers),
+            )
 
         self.layers = nn.ModuleList([])
         for _ in range(n_layers):
@@ -1089,6 +1259,59 @@ class CrossAttnDecoder(nn.Module):
         ##
         return q_mask, attn_mask, total_len, x_len, cache_len, pos_bias
 
+    def create_learnt_cache(self, batch_size, a_hidden, a_lengths):
+        x = self.learnt_cache.weight.unsqueeze(0).expand(batch_size, -1, -1)
+        lengths = torch.LongTensor([x.shape[1]] * batch_size).to(x.device)
+        mask, attn_mask, total_lens, x_len, cache_len, pos_bias = self.create_masks_and_positions(x, lengths, None)
+        cache_indices = None
+
+        if a_lengths.max() == a_lengths.min(): kv_mask = None # if all the same length don't bother with the mask
+        else: kv_mask = ~(torch.arange(a_hidden.shape[1], device=a_hidden.device).expand(a_hidden.size(0), a_hidden.shape[1]) >= a_lengths.unsqueeze(1))
+
+        cross_attn_mask = None
+        if (a_hidden.device.type != 'cuda' or not self.flash_attn) and kv_mask is not None: # create attention mask
+            #kv_mask = kv_mask if kv_mask is not None else ~(torch.arange(a_hidden.shape[1], device=a_hidden.device).expand(a_hidden.size(0), a_hidden.shape[1]) >= a_lengths.unsqueeze(1))
+            q_mask = torch.zeros(x.shape[0], x.shape[1], dtype=torch.bool, device=x.device) # no mask
+            cross_attn_mask = ~(rearrange(~q_mask, 'b n -> b () n ()') * rearrange(~kv_mask, 'b n -> b () () n'))
+
+        rotary_emb_fn = None
+        if self.use_rotary_cross_attn:
+            max_seq_len = a_hidden.shape[-2] + x.shape[-2]
+            q_offset = a_hidden.shape[-2]
+            cos, sin = self.rotary_pos_emb(max_seq_len, a_hidden.device)
+            rotary_emb_fn = apply_rotary(cos = cos, sin = sin, q_offset = q_offset, learned = False, trim_k=True)
+
+        kv_cache = []
+
+        for lth, (self_attn, cross_attn, ff_out) in enumerate(self.layers):
+            z, kv = self_attn(
+                x = x,
+                pos_bias = pos_bias, 
+                mask = attn_mask,
+                cache = self.get_cache(None, lth),
+                cache_indices = cache_indices
+            )
+            x = x + z
+            kv_cache.append(kv)
+            x = cross_attn(
+                x, 
+                xkv = a_hidden, 
+                kv_mask = kv_mask, 
+                attn_mask = cross_attn_mask,
+                rotary_emb_fn = rotary_emb_fn,
+            ) + x
+            x = F.dropout(ff_out(x), p=self.ff_out_dropout, training=self.training) + x
+
+
+        kv_cache = torch.stack(kv_cache, dim=0) 
+        ## cache kv =  LAYERS, KEYS+VALUES (2), BATCH, HEADS, N, DIM
+        kv_cache = rearrange(kv_cache, 'l kv b h n d -> kv b h n (l d)', l=self.n_layers, kv=2)
+
+        kv_cache = self.cache_merge(kv_cache)
+        kv_cache = rearrange(kv_cache, 'kv b h n (l d) -> l kv b h n d', l=self.n_layers, kv=2)
+        kv_cache = {'cache_lengths': total_lens, 'cache': kv_cache}
+        return kv_cache
+
     def forward(
             self,
             tokens: torch.Tensor, 
@@ -1103,11 +1326,25 @@ class CrossAttnDecoder(nn.Module):
         '''
         lengths = torch.LongTensor([tokens.shape[1]] * tokens.shape[0]).to(tokens.device) if text_lengths is None else text_lengths
         offsets = cache['cache_lengths'] if exists(cache) else None
-        x = self.pos_enc(self.embed(tokens), lengths=lengths, position_offsets=offsets)
+
+        if offsets != None and self.learnt_cache_size > 0: offsets = offsets - self.learnt_cache_size
+
+        x = self.embed(tokens)
+        if self.abs_pos_dec: x = self.pos_enc(x, lengths=lengths, position_offsets=offsets)
         x = F.dropout(x, p=self.dropout_emb, training=self.training)
         a_hidden = self.acoustic_norm(a_hidden)
         
-        
+
+        rotary_emb_fn = None
+        if self.use_rotary_cross_attn:
+            assert offsets is None, 'not implemented with cache yet'
+            max_seq_len = a_hidden.shape[-2] + tokens.shape[-1]
+            q_offset = a_hidden.shape[-2]
+            cos, sin = self.rotary_pos_emb(max_seq_len, a_hidden.device)
+            rotary_emb_fn = apply_rotary(cos = cos, sin = sin, q_offset = q_offset, learned = False, trim_k=True)
+
+        if not exists(cache) and self.learnt_cache_size > 0: cache = self.create_learnt_cache(a_hidden.shape[0], a_hidden, a_lengths)
+
 
         mask, attn_mask, total_lens, x_len, cache_len, pos_bias = self.create_masks_and_positions(x, lengths, cache)
         cache_indices = self.get_cache_indices(x_len, cache_len, cache['cache'], x) if exists(cache) and self.cache_needs_gather else None
@@ -1124,6 +1361,9 @@ class CrossAttnDecoder(nn.Module):
 
         kv_cache = []
 
+        if self.training and self.cross_attn_drop_p > 0.0: drop_probs = torch.rand(a_hidden.shape[0], device=a_hidden.device) < self.cross_attn_drop_p
+
+
         for lth, (self_attn, cross_attn, ff_out) in enumerate(self.layers):
             z, kv = self_attn(
                 x = x,
@@ -1134,7 +1374,17 @@ class CrossAttnDecoder(nn.Module):
             )
             x = x + z
             kv_cache.append(kv)
-            x = cross_attn(x, xkv = a_hidden, kv_mask=kv_mask, attn_mask=cross_attn_mask) + x
+            cross_attn_out = cross_attn(
+                x, 
+                xkv = a_hidden, 
+                kv_mask = kv_mask, 
+                attn_mask = cross_attn_mask,
+                rotary_emb_fn = rotary_emb_fn,
+            ) 
+
+            if self.training and self.cross_attn_drop_p > 0.0: cross_attn_out = torch.masked_fill(cross_attn_out, drop_probs[:, None, None], 0.0)
+
+            x = x + cross_attn_out
             x = F.dropout(ff_out(x), p=self.ff_out_dropout, training=self.training) + x
 
 
@@ -1145,31 +1395,302 @@ class CrossAttnDecoder(nn.Module):
         return {'logits':self.out_proj(x), 'kv_cache':kv_cache}
 
 
+class RLEncDecSconformerV2(EncDecSconformerV2):
+    @torch.no_grad()
+    def batch_generate_rl_prompt(
+        self,
+        encoder_states:Dict[str, torch.Tensor], # encoder states
+        temperature:float = 1.0, # temperature for sampling
+        to_generate:int = 20, # number of tokens to generate
+    ):
+        a_hidden, length = encoder_states['a_hidden'], encoder_states['length']
+        batch_size = a_hidden.shape[0]
+        prompt = torch.LongTensor([[self.get_prev_id()] for _ in range(batch_size)]).to(a_hidden.device)
+        cache = None
+        generated = 0
 
+        generated_sequence = prompt.clone()
+
+        while generated < to_generate:
+            decoder_out = self.language_model_decoder(
+                tokens = prompt,
+                a_hidden = a_hidden,
+                a_lengths = length,
+                cache = cache,
+                text_lengths = torch.tensor([prompt.shape[1]]).to(a_hidden.device),
+            )
+            decoder_logits = decoder_out['logits']
+            cache = decoder_out['kv_cache']
+            decoder_pred = (decoder_logits[:, -1, :] / temperature).softmax(dim=-1).multinomial(num_samples=1)
+            generated_sequence = torch.cat([generated_sequence, decoder_pred], dim=1)
+            prompt = decoder_pred
+            generated += 1
+
+        return generated_sequence
+
+
+    def calc_loss(
+            self, 
+            audio_signal, # B, C, T
+            text_sequence,
+            a_lengths,
+            t_lengths,
+            lm_text_sequence=None,
+            lm_text_sequence_lengths=None,
+            bos_id=0, 
+            eos_id=0,
+            encoder_outputs=None,
+            tokenizer=None,
+            **kwargs
+        ):
+        if encoder_outputs is None:
+            encoder_outputs = self(audio_signal, length=a_lengths)
+
+        repeats = 2
+        repeated_encoder_outputs = {
+            'a_hidden': encoder_outputs['a_hidden'].repeat(repeats, 1, 1),
+            'length': encoder_outputs['length'].repeat(repeats),
+        }
+
+        to_generate = kwargs.get('prefix_to_generate', 20)
+        prompt = self.batch_generate_rl_prompt(encoder_states=repeated_encoder_outputs, to_generate=to_generate)
+        if tokenizer is not None:
+            if random.random() < 0.05:
+                print('Generated Prompt (1):', tokenizer.decode(prompt[0, 1:].cpu().tolist()))
+                print('Generated Prompt (2):', tokenizer.decode(prompt[encoder_outputs['a_hidden'].shape[0], 1:].cpu().tolist()))
+
+        if lm_text_sequence is None: # add bos to text sequence
+            text_sequence_bos = F.pad(text_sequence, (1, 0), value=bos_id)
+            target_lengths_bos = t_lengths + 1
+        else:
+            assert lm_text_sequence_lengths is not None, 'lm_text_sequence_lengths must be provided if lm_text_sequence is provided'
+            text_sequence_bos = lm_text_sequence
+            target_lengths_bos = lm_text_sequence_lengths
+
+        repeated_text_sequence_bos = text_sequence_bos.repeat(repeats, 1)
+        repeated_target_lengths = target_lengths_bos.repeat(repeats)
+        repeated_text_sequence_bos = torch.cat(
+            [prompt, repeated_text_sequence_bos], dim=1
+        )
+        prompt_length = prompt.shape[1]
+        repeated_target_lengths += prompt_length
+        
+        ctc_out = encoder_outputs['final_posteriors_ctc']
+        a_length_out = encoder_outputs['length']
+        
+        lm_out = self.language_model_decoder(
+            tokens = repeated_text_sequence_bos,
+            a_hidden = repeated_encoder_outputs['a_hidden'],
+            a_lengths = repeated_encoder_outputs['length'],
+            cache = None,
+        )
+        lm_out = lm_out['logits']
+
+        if self.ctc_loss_weight > 0.0:
+            if kwargs.get('trim_ctc_by', None) is not None:
+                trim_ctc_by = kwargs.get('trim_ctc_by', None)
+                a_lengths = a_lengths - trim_ctc_by
+                in_length = audio_signal.shape[-1]
+                out_length = ctc_out.shape[1]
+                downsample_factor = in_length / out_length
+                trim_ctc_by = int(round(trim_ctc_by / downsample_factor))
+                a_length_out = a_length_out - trim_ctc_by
+                
+            else: trim_ctc_by = 0
+            ctc_loss = F.ctc_loss(
+                log_probs = rearrange(ctc_out[:, trim_ctc_by:], 'b n c -> n b c'),
+                targets = text_sequence,
+                input_lengths = a_length_out,
+                target_lengths = t_lengths,
+                reduction = 'sum',
+                blank = ctc_out.shape[-1] - 1
+            )
+
+            a_sum = a_lengths.sum()
+            ctc_loss_to_show = (ctc_loss / a_sum).item() * 100
+            ctc_loss_to_bwd = ctc_loss / (ctc_out[:, trim_ctc_by:].shape[1] * ctc_out.shape[0]) * 100
+        else:
+            ctc_loss_to_show, ctc_loss_to_bwd = 0, 0
+
+        targets = repeated_text_sequence_bos.clone()
+        targets[:, :-1] = repeated_text_sequence_bos[:, 1:]
+        if repeated_target_lengths.max() == repeated_target_lengths.min(): targets[:, -1] = 0
+        else:
+            targets = add_eos(targets, eos_id = eos_id, token_lens = repeated_target_lengths)
+        mask = token_lens_to_mask(repeated_target_lengths)
+        targets = mark_padding(targets, mask, pad_id = -100)
+
+            
+        predictions = lm_out
+        lm_loss = F.cross_entropy(
+            input = rearrange(predictions, 'b n c -> (b n) c'),
+            target = rearrange(targets, 'b n -> (b n)'),
+            ignore_index = -100,
+            reduction = 'none'
+        )
+        lm_loss = rearrange(lm_loss, '(b n) -> b n', b = predictions.shape[0]).clone()
+        supervised_loss_scores = lm_loss[:, prompt_length:].sum(-1) / ((repeated_target_lengths - prompt_length).sum())
+        supervised_loss_scores = rearrange(supervised_loss_scores, '(r b) -> b r', r = repeats)
+        best_score_idx = supervised_loss_scores.argmin(dim=-1)
+        mask = F.one_hot(best_score_idx, num_classes=repeats).to(lm_loss.device, dtype=torch.bool)
+        
+        spread = (supervised_loss_scores[:, 0] - supervised_loss_scores[:, 1]).abs().mean().item()
+        
+
+        mask = rearrange(mask, 'b r -> (r b)')
+
+        prompt_probs = predictions[:, :prompt_length, :].softmax(dim=-1)
+        log_prompt_probs = prompt_probs.log()
+        prompt_entropy = -(prompt_probs * log_prompt_probs).sum(dim=-1)
+        entropy_beta = kwargs.get('entropy_beta', 0.005) # #0.002) .0005
+        negative_completion_weight = kwargs.get('negative_completion_weight', -0.01) # 0.0
+
+        prompt_entropy = prompt_entropy.mean() 
+        lm_loss[:, :prompt_length][~mask] *= -1.0
+
+
+        lm_loss_to_show = (lm_loss[mask][:, prompt_length:].sum() / (target_lengths_bos.sum())).item() # just lm loss excluding the prompt
+        negative_lm_loss_to_show = (lm_loss[~mask][:, prompt_length:].sum() / (target_lengths_bos.sum())).item() # just lm loss excluding the prompt
+        
+        prompt_loss_to_show = (lm_loss[mask][:, :prompt_length].sum() / (prompt_length * mask.shape[0])).item()
+
+        not_prompt_length = lm_loss[:, prompt_length:].shape[1]
+        batch_size = lm_loss.shape[0] / repeats
+
+        lm_loss_to_bwd = lm_loss[:, prompt_length:][mask].sum() / (not_prompt_length * batch_size)
+        lm_loss_to_bwd += (lm_loss[:, prompt_length:][~mask].sum() / (not_prompt_length * batch_size)) * negative_completion_weight
+
+        prompt_loss_to_bwd = lm_loss[:, :prompt_length].sum() / (prompt_length * batch_size)
+
+        prompt_weighting = kwargs.get('prompt_weighting', 0.01) # 0.01
+
+        loss_to_show = ctc_loss_to_show * self.ctc_loss_weight + prompt_loss_to_show  * prompt_weighting + lm_loss_to_show 
+        loss = ctc_loss_to_bwd * self.ctc_loss_weight + lm_loss_to_bwd + prompt_loss_to_bwd * prompt_weighting - prompt_entropy * entropy_beta * prompt_weighting   
+
+        wandb_log_data = {
+            'loss': loss_to_show,
+            'ctc_loss': ctc_loss_to_show,
+            'lm_loss': lm_loss_to_show,
+            'prompt_loss': prompt_loss_to_show,
+            'prompt_entropy': prompt_entropy.item(),
+            'negative_lm_loss': negative_lm_loss_to_show,
+            'spread': spread,
+        }
+
+        return {
+            'loss': loss,
+            'display_losses': wandb_log_data,
+            'ctc_posteriors': ctc_out,
+            'lm_posteriors': lm_out,
+            'length': a_length_out,
+        }
+
+    @staticmethod # for converting enc dec for RL training
+    def reformat_checkpoint(
+        checkpoint_path:str,
+        save_path:str,
+        to_generate=20,
+    ):
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        checkpoint['config']['model_class'] = "RLEncDecSconformerV2"
+        checkpoint['config']['training']['loss_on_previous'] = False
+        checkpoint['config']['training']['condition_on_previous'] = False
+        checkpoint['config']['training']['prefix_to_generate'] = to_generate
+
+        torch.save(checkpoint, save_path)
+        print(f"Checkpoint reformatted and saved to {save_path}")
+            
+
+import argparse
 if __name__ == '__main__':
-    model = EncDecSconformerV2() # default model
-    model.print_total_params()
-    device = 'cuda'
-    vocab_size = 4096
-    audio_seq = torch.randn(2, 80, 100, device=device)
-    text = torch.randint(0, vocab_size, (2, 10), device=device)
-    model.to(device)
-    print(text.shape, audio_seq.shape)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--checkpoint', type=str, default=None)
+    parser.add_argument('--save_path', type=str, default=None)
+    parser.add_argument('--to_generate', type=int, default=20)
+    args = parser.parse_args()
+    if args.checkpoint is not None:
+        RLEncDecSconformerV2.reformat_checkpoint(
+            checkpoint_path=args.checkpoint,
+            save_path=args.save_path,
+            to_generate=args.to_generate
+        )
+    else:
+        # run debug tests
 
-    out = model(audio_seq, text)
-    print('final_posteriors_ctc', out['final_posteriors_ctc'].shape)
-    print('final_posteriors_lm', out['final_posteriors_lm'].shape)
-    print('a_hidden', out['a_hidden'].shape)
-    print('length', out['length'].shape)
-    print('kv_cache', out['kv_cache']['cache'].shape)
-    print('kv_cache', out['kv_cache']['cache_lengths'])
+        model = EncDecSconformerV2(decoder_use_sdpa=False, shared_kv=True) # default model
+        model.print_total_params()
+        device = 'cuda'
+        vocab_size = 4096
+        audio_seq = torch.randn(2, 80, 100, device=device)
+        text = torch.randint(0, vocab_size, (2, 10), device=device)
+        model.to(device)
+        model.eval()
+        print(text.shape, audio_seq.shape)
 
-    print(model.calc_loss(
-        audio_signal = audio_seq,
-        text_sequence = text,
-        a_lengths = torch.tensor([100, 100], device=device),
-        t_lengths = torch.tensor([5, 10], device=device)
-    )['loss'])
+        out = model(audio_seq, text)
+        print('final_posteriors_ctc', out['final_posteriors_ctc'].shape)
+        print('final_posteriors_lm', out['final_posteriors_lm'].shape)
+        print('a_hidden', out['a_hidden'].shape)
+        print('length', out['length'].shape)
+        print('kv_cache', out['kv_cache']['cache'].shape)
+        print('kv_cache', out['kv_cache']['cache_lengths'])
+
+        print(model.calc_loss(
+            audio_signal = audio_seq,
+            text_sequence = text,
+            a_lengths = torch.tensor([100, 100], device=device),
+            t_lengths = torch.tensor([5, 10], device=device)
+        )['loss'])
+
+
+        new_model = EncDecSconformerV2(decoder_use_sdpa=True, shared_kv=True)
+        new_model.load_state_dict(model.state_dict())
+        model = new_model
+        model.to(device)
+        model.eval()
+        sdpa_out = model(audio_seq, text)
+
+        print(out['final_posteriors_lm'][0,0])
+        print('--')
+        print(sdpa_out['final_posteriors_lm'][0,0])
+        print(
+            torch.allclose(
+                out['final_posteriors_lm'], 
+                sdpa_out['final_posteriors_lm'],
+                rtol=1e-3, atol=1e-3, # tolerance used in flash attn github tests
+            )
+        )
+        print(
+            torch.allclose(
+                out['a_hidden'], 
+                sdpa_out['a_hidden'],
+            )
+        )
+
+        ### RL model
+
+        model = RLEncDecSconformerV2()
+        device = 'cuda'
+        vocab_size = 4096   
+        audio_seq = torch.randn(5, 80, 200, device=device) 
+        text = torch.randint(0, vocab_size, (5, 15), device=device)
+        model.to(device)
+        model.eval()
+
+        from lcasr.utils.audio_tools import load_tokenizer
+        tokenizer = load_tokenizer()
+
+        loss = model.calc_loss(
+            audio_signal=audio_seq, 
+            text_sequence=text, 
+            a_lengths=torch.tensor([200, 200, 200, 200, 200], device=device),
+            t_lengths=torch.tensor([5, 15, 15, 15, 15], device=device),
+            tokenizer=tokenizer,
+        )
+        print(loss['display_losses'])
+
+
+
 
 
 

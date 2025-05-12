@@ -59,7 +59,7 @@ def main(args):
     model = model.to(device)
     model.eval()
 
-    decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
+    if not hasattr(model, 'transcribe'): decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
 
     data = datasets_functions[args.dataset](args.split)
 
@@ -79,7 +79,12 @@ def main(args):
         
         audio_spec, gold_text = data[rec]['process_fn'](data[rec])
         
-        for z in range(args.__dict__.get('repeat', 1)):
+
+        if hasattr(model, 'transcribe'):
+            all_text = model.transcribe(audio_spec, tokenizer, device=device, max_sequence_length=args.seq_len)
+            out = normalize(all_text).lower().strip()
+            
+        else: # assume ctc
             logits = eval_fn(
                 args = args, 
                 model = model, 
@@ -88,9 +93,8 @@ def main(args):
                 overlap = args.overlap,
                 tokenizer = tokenizer
             ) 
-        out_text = decoder(torch.as_tensor(logits))
-
-        out = normalize(out_text).lower()
+            out_text = decoder(torch.as_tensor(logits))
+            out = normalize(out_text).lower()
         
         if verbose: print(gold_text, '\n', out, '\n\n')
         

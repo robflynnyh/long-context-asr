@@ -1,6 +1,7 @@
 model:
   feat_in: 80
-  n_layers: 5
+  n_layers: 1
+  decoder_layers: 10
   d_model: 768
   ctc_loss_weight: 0.05
   acoustic_norm: false
@@ -17,12 +18,12 @@ audio_chunking:
 wandb:
   use: true
   project_name: spotify_enc_dec
-  name: prev_5l_enc_dec_V2_lr_3e3_ctcw_0_05
+  name: hist_decoder
   update_config_with_wandb_id: true
+  id: 103mj11r
   dir: /mnt/parscratch/users/acp21rjf/wandb_log/
-  id: wv15yg3d
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/prev_enc_dec_5l_lr_2e3_ctcw_0_05
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/hist_decoder
   save_every_n_steps: 2000
 data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
@@ -37,8 +38,9 @@ training:
   intermediate_loss_weighting: 0.0
   random_seed: 552268
   dtype: float32
-  loss_on_previous: true
+  loss_on_previous: false
   condition_on_previous: true
+  use_ctc_history: false
 sequence_scheduler:
   increase_every: 5000
   stop_after: 90000

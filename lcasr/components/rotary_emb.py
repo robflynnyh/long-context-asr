@@ -65,19 +65,29 @@ def rotate_half(x):
     )  # dim=-1 triggers a bug in earlier torch versions
 
 
-def apply_rotary_pos_emb(q, k, cos, sin, q_offset: int = 0):
+def apply_rotary_pos_emb(q, k, cos, sin, q_offset: int = 0, trim_k: bool = False):
     q_cos, q_sin = (
         cos[:, q_offset : q.shape[1] + q_offset],
         sin[:, q_offset : q.shape[1] + q_offset],
     )
-    return (q * q_cos) + (rotate_half(q) * q_sin), (k * cos) + (rotate_half(k) * sin)
+    if cos.shape[1] != k.shape[1] and trim_k: k_cos, k_sin = cos[:, : k.shape[1]], sin[:, : k.shape[1]]
+    else: k_cos, k_sin = cos, sin
+    return (q * q_cos) + (rotate_half(q) * q_sin), (k * k_cos) + (rotate_half(k) * k_sin)
 
 class apply_rotary(): 
-    def __init__(self, cos, sin, q_offset: int = 0, learned: bool = False):
+    def __init__(
+            self, 
+            cos, 
+            sin, 
+            q_offset: int = 0, 
+            learned: bool = False,
+            trim_k: bool = False
+        ):
         self.learned = learned
         self.cos = cos
         self.sin = sin
         self.q_offset = q_offset
+        self.trim_k = trim_k
     
     def apply(self, q, k):
-        return apply_rotary_pos_emb(q, k, self.cos, self.sin, self.q_offset)
+        return apply_rotary_pos_emb(q, k, self.cos, self.sin, self.q_offset, self.trim_k)

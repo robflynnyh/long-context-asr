@@ -4,7 +4,7 @@ model:
   d_model: 768
   ctc_loss_weight: 0.05
   acoustic_norm: false
-  additional_embeddings: 1
+  additional_embeddings: 0
 optimizer:
   name: madgrad
   args:
@@ -12,24 +12,24 @@ optimizer:
 scheduler:
   warmup_steps: 9000
 audio_chunking:
-  size: 2048
+  size: 256
   overlap: 0
 wandb:
   use: true
   project_name: spotify_enc_dec
-  name: prev_5l_enc_dec_V2_lr_3e3_ctcw_0_05
+  name: ctc_fp_pf
   update_config_with_wandb_id: true
+  id: ltrebu21
   dir: /mnt/parscratch/users/acp21rjf/wandb_log/
-  id: wv15yg3d
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/prev_enc_dec_5l_lr_2e3_ctcw_0_05
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/ctc_fp_pf
   save_every_n_steps: 2000
 data:
-  path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
+  path: /users/acp21rjf/reduced_pairs.json
 training:
   start_spec_augment_after_n_epochs: -1
-  max_epochs: 2
-  batch_size: 88
+  max_epochs: 1
+  batch_size: 128
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
@@ -37,10 +37,13 @@ training:
   intermediate_loss_weighting: 0.0
   random_seed: 552268
   dtype: float32
-  loss_on_previous: true
-  condition_on_previous: true
+  loss_on_previous: false
+  condition_on_previous: false
+  use_ctc_history: false
+  condition_on_ctc_first_pass: true
+  first_pass_forcing_percentage: 20.0
 sequence_scheduler:
-  increase_every: 5000
+  increase_every: 500
   stop_after: 90000
   start_after: 0
   max_sequence_length: 2048

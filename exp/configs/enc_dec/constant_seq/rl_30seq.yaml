@@ -17,12 +17,12 @@ audio_chunking:
 wandb:
   use: true
   project_name: spotify_enc_dec
-  name: prev_5l_enc_dec_V2_lr_3e3_ctcw_0_05
+  name: rl_test
   update_config_with_wandb_id: true
   dir: /mnt/parscratch/users/acp21rjf/wandb_log/
-  id: wv15yg3d
+  id: 3cjio2qx
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/prev_enc_dec_5l_lr_2e3_ctcw_0_05
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/rl_30seq
   save_every_n_steps: 2000
 data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
@@ -34,11 +34,11 @@ training:
   backwards_every: 1
   max_seq_len: 0
   clip_value: 0.8
-  intermediate_loss_weighting: 0.0
   random_seed: 552268
   dtype: float32
-  loss_on_previous: true
-  condition_on_previous: true
+  loss_on_previous: false
+  condition_on_previous: false
+  prefix_to_generate: 30
 sequence_scheduler:
   increase_every: 5000
   stop_after: 90000
@@ -46,4 +46,4 @@ sequence_scheduler:
   max_sequence_length: 2048
   increase_by_multiplier: 2
   batch_size_multiplier: 1.0
-model_class: EncDecSconformerV2
+model_class: RLEncDecSconformerV2

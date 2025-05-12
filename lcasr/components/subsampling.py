@@ -24,7 +24,7 @@ import logging
 from .causal_convs import CausalConv2D
 from torch import Tensor
 from lcasr.components.fused_dense import FusedMLP
-from lcasr.components.batchrenorm import BatchRenorm1d
+from lcasr.components.batchrenorm import BatchRenorm1d, BatchRenorm2d
 
 import torch.nn.functional as F
 
@@ -212,7 +212,7 @@ class ConvSubsampling(torch.nn.Module):
         ):
             raise ValueError("subsampling_conv_chunking_factor should be -1, 1, or a power of 2")
         self.subsampling_conv_chunking_factor = subsampling_conv_chunking_factor
-
+        
         in_channels = 1
         layers = []
 
@@ -552,6 +552,250 @@ class ConvSubsampling(torch.nn.Module):
         ):
             raise ValueError("subsampling_conv_chunking_factor should be -1, 1, or a power of 2")
         self.subsampling_conv_chunking_factor = subsampling_conv_chunking_factor
+
+
+class ConvResidualSubsampling(torch.nn.Module):
+    """Convolutional subsampling which supports VGGNet and striding approach introduced in:
+    VGGNet Subsampling: Transformer-transducer: end-to-end speech recognition with self-attention (https://arxiv.org/pdf/1910.12977.pdf)
+    Striding Subsampling: "Speech-Transformer: A No-Recurrence Sequence-to-Sequence Model for Speech Recognition" by Linhao Dong et al. (https://ieeexplore.ieee.org/document/8462506)
+    Args:
+        subsampling (str): The subsampling technique from {"vggnet", "striding"}
+        subsampling_factor (int): The subsampling factor which should be a power of 2
+        subsampling_conv_chunking_factor (int): Input chunking factor which can be -1 (no chunking) 
+        1 (auto) or a power of 2. Default is 1
+        feat_in (int): size of the input features
+        feat_out (int): size of the output features
+        conv_channels (int): Number of channels for the convolution layers.
+        activation (Module): activation function, default is nn.ReLU()
+    """
+
+    def __init__(
+        self,
+        subsampling,
+        subsampling_factor,
+        feat_in,
+        feat_out,
+        conv_channels,
+        subsampling_conv_chunking_factor=1,
+        activation=nn.ReLU(),
+        is_causal=False,
+        norm_out=False,
+        default_norm=LayerNorm,
+        skip_connections=False,
+    ):
+        super(ConvResidualSubsampling, self).__init__()
+        self._subsampling = subsampling
+        self._conv_channels = conv_channels
+        self._feat_in = feat_in
+        self._feat_out = feat_out
+        self.has_norm_out = norm_out
+        if norm_out:
+            self.norm_out = default_norm(feat_out)
+
+        if subsampling_factor % 2 != 0:
+            raise ValueError("Sampling factor should be a multiply of 2!")
+        self._sampling_num = int(math.log(subsampling_factor, 2))
+        self.subsampling_factor = subsampling_factor
+        self.is_causal = is_causal
+
+        if (
+            subsampling_conv_chunking_factor != -1
+            and subsampling_conv_chunking_factor != 1
+            and subsampling_conv_chunking_factor % 2 != 0
+        ):
+            raise ValueError("subsampling_conv_chunking_factor should be -1, 1, or a power of 2")
+        self.subsampling_conv_chunking_factor = subsampling_conv_chunking_factor
+        
+        in_channels = 1
+        self.layers = nn.ModuleList([])
+
+        
+
+
+        self._stride = 2
+        self._kernel_size = 5
+        self._ceil_mode = False
+
+
+        self._left_padding = (self._kernel_size - 1) // 2
+        self._right_padding = (self._kernel_size - 1) // 2
+        self._max_cache_len = 0
+
+
+
+
+        self.layers.append(
+            nn.ModuleList([
+                Conv2d(
+                    in_channels=in_channels,
+                    out_channels=conv_channels,
+                    kernel_size=self._kernel_size,
+                    stride=self._stride,
+                    padding=self._left_padding,
+                ),
+                nn.Identity(),
+                nn.Identity(),
+                activation,
+            ])
+        )
+
+        in_channels = conv_channels
+
+        for i in range(self._sampling_num - 1):
+
+            self.layers.append(
+                nn.ModuleList([
+                    Conv2d(
+                        in_channels=in_channels,
+                        out_channels=in_channels,
+                        kernel_size=self._kernel_size,
+                        stride=self._stride,
+                        padding=self._left_padding,
+                        groups=in_channels,
+                    ),
+                    Conv2d(
+                        in_channels=in_channels,
+                        out_channels=conv_channels,
+                        kernel_size=1,
+                        stride=1,
+                        padding=0,
+                        groups=1,
+                    ),
+                    BatchRenorm2d(num_features=conv_channels),
+                    activation,
+                ])
+            )
+        
+            in_channels = conv_channels
+
+        
+
+        in_length = torch.tensor(feat_in, dtype=torch.float)
+        out_length = calc_length(
+            lengths=in_length,
+            all_paddings=self._left_padding + self._right_padding,
+            kernel_size=self._kernel_size,
+            stride=self._stride,
+            ceil_mode=self._ceil_mode,
+            repeat_num=self._sampling_num,
+        )
+        self.out = torch.nn.Linear(conv_channels * int(out_length), feat_out, bias = norm_out) # no bias if norm_out bcos scale and shift
+    
+
+        self.skip_connections = skip_connections
+
+
+    def get_sampling_frames(self):
+        return [1, self.subsampling_factor]
+
+    def get_streaming_cache_size(self):
+        return [0, self.subsampling_factor + 1]
+
+    def forward(self, x, lengths):
+        lengths = calc_length(
+            lengths,
+            all_paddings=self._left_padding + self._right_padding,
+            kernel_size=self._kernel_size,
+            stride=self._stride,
+            ceil_mode=self._ceil_mode,
+            repeat_num=self._sampling_num,
+        )
+        x = x.unsqueeze(1)
+
+
+        for conv, ff, norm, act in self.layers:
+            residual = x
+
+            x_ceil = 2 ** 31 / self._conv_channels * self._stride * self._stride
+            if torch.numel(x) > x_ceil:
+                need_to_split = True
+            else:
+                need_to_split = False
+            
+            if not need_to_split:
+                x = conv(x)
+            else:
+                x, _ = self.conv_split_by_batch(x, conv)
+            x = ff(x)
+            x = norm(x)
+            x = act(x)
+
+            if residual.shape[1] == x.shape[1]: # no residual on first layer
+                residual = nn.functional.interpolate(
+                    residual,
+                    (x.shape[-2], x.shape[-1]),
+                )
+                x = x + residual
+
+        
+
+        b, c, t, f = x.size()
+        x = self.out(x.transpose(1, 2).reshape(b, t, -1))
+        
+        if self.has_norm_out:
+            x = self.norm_out(x)
+
+        return x, lengths
+
+    def reset_parameters(self):
+        # initialize weights
+        if self._subsampling == 'dw_striding':
+            with torch.no_grad():
+                # init conv
+                scale = 1.0 / self._kernel_size
+                dw_max = (self._kernel_size ** 2) ** -0.5
+                pw_max = self._conv_channels ** -0.5
+
+                torch.nn.init.uniform_(self.conv[0].weight, -scale, scale)
+                torch.nn.init.uniform_(self.conv[0].bias, -scale, scale)
+
+                for idx in range(2, len(self.conv), 3):
+                    torch.nn.init.uniform_(self.conv[idx].weight, -dw_max, dw_max)
+                    torch.nn.init.uniform_(self.conv[idx].bias, -dw_max, dw_max)
+                    torch.nn.init.uniform_(self.conv[idx + 1].weight, -pw_max, pw_max)
+                    torch.nn.init.uniform_(self.conv[idx + 1].bias, -pw_max, pw_max)
+
+                # init fc (80 * 64 = 5120 from https://github.com/kssteven418/Squeezeformer/blob/13c97d6cf92f2844d2cb3142b4c5bfa9ad1a8951/src/models/conformer_encoder.py#L487
+                fc_scale = (self._feat_out * self._feat_in / self._sampling_num) ** -0.5
+                torch.nn.init.uniform_(self.out.weight, -fc_scale, fc_scale)
+                torch.nn.init.uniform_(self.out.bias, -fc_scale, fc_scale)
+
+    def conv_split_by_batch(self, x, layer):
+        """ Tries to split input by batch, run conv and concat results """
+        b, _, _, _ = x.size()
+        if b == 1:  # can't split if batch size is 1
+            return x, False
+
+        if self.subsampling_conv_chunking_factor > 1:
+            cf = self.subsampling_conv_chunking_factor
+            logging.debug(f'using manually set chunking factor: {cf}')
+        else:
+            # avoiding a bug / feature limiting indexing of tensors to 2**31
+            # see https://github.com/pytorch/pytorch/issues/80020
+            x_ceil = 2 ** 31 / self._conv_channels * self._stride * self._stride
+            p = math.ceil(math.log(torch.numel(x) / x_ceil, 2))
+            cf = 2 ** p
+            logging.debug(f'using auto set chunking factor: {cf}')
+
+        new_batch_size = b // cf
+        if new_batch_size == 0:  # input is too big
+            return x, False
+
+        logging.debug(f'conv subsampling: using split batch size {new_batch_size}')
+        return torch.cat([layer(chunk) for chunk in torch.split(x, new_batch_size, 0)]), True
+
+    
+    def change_subsampling_conv_chunking_factor(self, subsampling_conv_chunking_factor: int):
+        if (
+            subsampling_conv_chunking_factor != -1
+            and subsampling_conv_chunking_factor != 1
+            and subsampling_conv_chunking_factor % 2 != 0
+        ):
+            raise ValueError("subsampling_conv_chunking_factor should be -1, 1, or a power of 2")
+        self.subsampling_conv_chunking_factor = subsampling_conv_chunking_factor
+
+   
+
 
 
 def calc_length(lengths, all_paddings, kernel_size, stride, ceil_mode, repeat_num=1):

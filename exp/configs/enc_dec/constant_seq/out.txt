@@ -1,0 +1,11 @@
+           6332710       gpu normal_b acp21rjf PD       0:00      1 (Priority)
+           6332711       gpu ctc_hist acp21rjf PD       0:00      1 (Priority)
+           6317077       gpu nolosspr acp21rjf  R 3-06:40:41      1 gpu08
+           6317801       gpu ctc_hist acp21rjf  R 3-05:13:09      1 gpu14
+           6327722       gpu ctc_hist acp21rjf  R   19:16:08      1 gpu09
+           6331969       gpu ctc_hist acp21rjf  R    1:53:35      1 gpu09
+           6331618       gpu prev_his acp21rjf  R    3:31:43      1 gpu15
+           6331602       gpu prev_5_8 acp21rjf  R    3:36:41      1 gpu15
+           6329742       gpu     bash acp21rjf  R    7:22:57      1 gpu10
+           6329175       gpu prev_his acp21rjf  R    8:27:55      1 gpu06
+

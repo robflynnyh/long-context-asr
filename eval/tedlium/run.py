@@ -176,6 +176,7 @@ def main(args):
             print(all_text) if args.verbose else None
             all_texts.append(all_text)
             all_golds.append(gold_text)
+            break
             
     else:
         for rec in tqdm(range(len(audio_files)), total=len(audio_files)):
@@ -189,6 +190,7 @@ def main(args):
 
             if hasattr(model, 'transcribe'):
                 spectrograms = [utterance['spectogram'] for utterance in utterances]
+                timings = [{'start': utterances[utt_id]['start'], 'end': utterances[utt_id]['end']} for utt_id in range(len(utterances))]
                 out_texts = model.transcribe(spectrograms, tokenizer, device=device)
                 out_texts = [normalize(out_text).lower().strip() for out_text in out_texts]
             else:
@@ -207,7 +209,8 @@ def main(args):
             print(all_text) if args.verbose else None
             all_texts.append(all_text)
             all_golds.append(gold_text)
-            
+            break
+
 
         
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)

@@ -4,7 +4,14 @@ model:
   d_model: 768
   ctc_loss_weight: 0.05
   acoustic_norm: false
-  additional_embeddings: 0
+  additional_embeddings: 1
+  cosine_sim: false
+  decoder_attention_temperature: 0.08838834764
+  rotary_cross_attn: true
+  use_abs_pos_dec: false
+  use_abs_pos_enc: false
+  no_encoder_padding: true
+  min_seq_len: 2048
 optimizer:
   name: madgrad
   args:
@@ -17,12 +24,11 @@ audio_chunking:
 wandb:
   use: true
   project_name: spotify_enc_dec
-  name: ctc_fp_var_seq
+  name: ctc_hist_experimental
   update_config_with_wandb_id: true
-  id: ''
-  dir: /mnt/parscratch/users/acp21rjf/wandb_log/
+  id: 40j82kbo
 checkpointing:
-  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/ctc_fp_var_seq
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/ctc_hist_experimental
   save_every_n_steps: 2000
 data:
   path: /mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json
@@ -38,11 +44,13 @@ training:
   random_seed: 552268
   dtype: float32
   loss_on_previous: false
-  condition_on_previous: false
-  use_ctc_history: false
-  condition_on_ctc_first_pass: true
-
+  condition_on_previous: true
+  use_ctc_history: true
 sequence_scheduler:
-  method: random
-  start_after: 12000
+  increase_every: 5000
+  stop_after: 90000
+  start_after: 0
+  max_sequence_length: 2048
+  increase_by_multiplier: 2
+  batch_size_multiplier: 1.0
 model_class: EncDecSconformerV2
