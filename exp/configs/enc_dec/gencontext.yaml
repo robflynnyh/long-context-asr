@@ -1,0 +1,61 @@
+template_info:
+  create: 1 # number of experiments to create
+  include_keys: [
+    'model', 
+    'optimizer', 
+    'scheduler', 
+    'audio_chunking', 
+    'wandb', 
+    'checkpointing', 
+    'data', 
+    'training', 
+    'model_class',
+  ] # keys to include in experiments config
+  template_keys: [ 
+    'wandb.name',
+    #'training.loss',
+  ] # keys to use to create experiments
+
+
+
+model:
+  feat_in: 80
+  n_layers: 5
+  d_model: 384
+  conv_kernel_size: 17
+optimizer:
+  name: madgrad
+  args:
+    lr: 0.001
+scheduler:
+  warmup_steps: 500
+audio_chunking:
+  size: 2048
+  overlap: 0
+wandb:
+  use: true
+  project_name: spotify_fake_context
+  name: ["gencontext"]
+  update_config_with_wandb_id: true
+  id: ""
+  dir: /mnt/parscratch/users/acp21rjf/wandb_log/
+checkpointing:
+  dir: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/gencontext
+  save_every_n_steps: 90000
+data:
+  path: /mnt/parscratch/users/acp21rjf/spotify_utterances/
+training:
+  start_spec_augment_after_n_epochs: -1
+  max_epochs: 1
+  batch_size: 32
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
+  clip_value: 0.1
+  intermediate_loss_weighting: 0.0
+  random_seed: 552268
+  dtype: float32
+  num_workers: 8
+  prefetch_factor: 6
+  mask_pass: false
+model_class: SCConformerTest

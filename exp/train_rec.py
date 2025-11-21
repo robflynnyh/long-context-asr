@@ -29,33 +29,7 @@ from typing import Dict, List, Tuple
 from collections import defaultdict
 import warnings
 import random
-from lcasr.decoding.greedy import GreedyCTCDecoder
 random.seed(1234)
-
-import ctc
-from torch.func import vmap, grad, functional_call
-
-def vmap_forward(weights, audio, model):
-    return functional_call(model, weights, args=(audio[None],))
-
-def calc_loss(
-        asr_model_weights,
-        audio,
-        teacher_text,
-        teacher_text_lengths,
-        asr_model,
-        loss_fn,
-    ):
-        vmap_forward_fn = partial(vmap_forward, model=asr_model)
-        out = vmap(vmap_forward_fn)(asr_model_weights, audio)
-        
-        predictions = out['final_posteriors'].squeeze(1)
-        # return predictions.sum() / predictions.numel() /10
-        ce_alignment_targets = ctc.ctc_alignment_targets(predictions.transpose(0, 1), teacher_text, out['length'].squeeze(1), teacher_text_lengths, blank = asr_model.decoder.num_classes-1)
-        ce_ctc = -ce_alignment_targets * predictions.transpose(0, 1)
-        loss = ce_ctc.sum()
-        
-        return loss / out['length'].sum() 
 
 
 def blank_p(logits, tokenizer):
@@ -103,11 +77,9 @@ def get_dtype(dtype:str) -> torch.dtype:
     else:
         raise ValueError(f'invalid dtype: {dtype}')
 
-from lcasr.components.attention import Attention
 def train(
         args:argparse.Namespace,
-        augmentation_model:torch.nn.Module,
-        asr_model:SCConformerXL,
+        model:torch.nn.Module, 
         dataloader:torch.utils.data.DataLoader, 
         optimizer:torch.optim.Optimizer,
         scheduler:CosineLRScheduler,
@@ -126,16 +98,10 @@ def train(
     rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
     resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
 
-    model = asr_model
-    model.eval()
-    model.flash_attn = False
+    model.train()
+
     model_dtype = next(model.parameters()).dtype
     ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
-
-    # iterate all modules and find modules that are instances of:Attention
-    for name, module in model.named_modules():
-        if isinstance(module, Attention):
-            module.return_attention_weights = True
 
     backprop_every, backwards_every = args.config['training']['backprop_every'], args.config['training'].get('backwards_every', 1)
     assert backprop_every >= backwards_every, f'backprop_every ({backprop_every}) must be >= backwards_every ({backwards_every})'
@@ -155,7 +121,6 @@ def train(
     pad_id = tokenizer.pad_id()
     last_podcast, cur_podcast, podcasts_since_last_save = step, step, 0
     max_epochs = args.config['training'].get('max_epochs', 1)
-    decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = asr_model.decoder.num_classes-1)
 
     i, finished = -1, False
     dataloader_iter = iter(dataloader)
@@ -193,7 +158,7 @@ def train(
         if podcasts_since_last_save > args.config['checkpointing']['save_every_n_steps']:
             torch.cuda.empty_cache() 
             save_model(
-                model = augmentation_model, 
+                model = model, 
                 optimizer = optimizer, 
                 scheduler = scheduler, 
                 podcast_step = cur_podcast, 
@@ -242,8 +207,7 @@ def train(
                 scheduler.set_cosine_schedule(total_recordings=total_recordings, cur_podcast=cur_podcast)
         prev_selection_mask, last_kv_set = None, None # selection mask from previous chunk
         ################################
-        random.shuffle(chunks)
-        
+ 
         try:
             for ix, chunk_json in enumerate(chunks):
                 print(f'chunk {ix}/{len(chunks)}')
@@ -268,50 +232,30 @@ def train(
                         cached_kvs = cached_kvs[cur_selection_mask]
                         cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
                     
-                    with torch.no_grad():     
-                        teacher_out = asr_model(
-                            audio_signal = audio, 
-                            
-                        )
-                        teacher_loss = ctc_loss_fn(teacher_out['final_posteriors'].transpose(0,1), txt, teacher_out['length'], t_lengths).sum()        
-                        teacher_probs = teacher_out['final_posteriors'].to('cpu')
-                        teacher_preds = [torch.LongTensor(decoder(el, decode=False)) for el in teacher_probs]
-                        teacher_text_lengths = torch.LongTensor([el.shape[0] for el in teacher_preds]).to(device)
-                        teacher_text_preds = torch.nn.utils.rnn.pad_sequence(teacher_preds, batch_first=True, padding_value=pad_id).to(device)
 
-                    batched_detached_asr_params = {k: v[None].expand(audio.shape[0], *[-1 for _ in range(v.ndim)]) for k, v in model.named_parameters()}
-                    calc_grad_fn = partial(calc_loss, asr_model=asr_model, loss_fn=ctc_loss_fn)
-
-                    augmented_audio = augmentation_model(audio)
-                    grads = grad(calc_grad_fn)(
-                        batched_detached_asr_params,
-                        augmented_audio,
-                        teacher_text_preds,
-                        teacher_text_lengths,
+                    first_pass = model(
+                        audio_signal = audio, 
+                        length = a_lengths, 
                     )
-                    loss = 0
-                    for k, v in grads.items():
-                        batched_detached_asr_params[k] = batched_detached_asr_params[k] - v * augmentation_model.asr_model_lr 
-                        
-               
-                    vmap_forward_fn = partial(vmap_forward, model=asr_model)
-                    out = vmap(vmap_forward_fn)(batched_detached_asr_params, audio)
-                    predictions = out['final_posteriors'].squeeze(1)
-                    loss = ctc_loss_fn(predictions.transpose(0,1), txt, out['length'].squeeze(1), t_lengths).sum()
-                    # out = model(
-                    #     audio_signal = audio, 
-                    #     length = a_lengths, 
-                    #     cached_kvs = cached_kvs, 
-                    #     cached_kv_lengths = cached_kv_lengths
-                    # )
+                    second_pass = model(
+                        downsampled_audio = first_pass['downsampled_audio'].detach(),
+                        downsampled_audio_length = first_pass['length'].detach(),
+                        prev_posteriors = first_pass['final_posteriors'].exp().detach(),
+                    )
+
+                    final_posteriors = torch.cat([first_pass['final_posteriors'], second_pass['final_posteriors']], dim=0)
+                    length = torch.cat([first_pass['length'], second_pass['length']], dim=0)
+                    txt = torch.cat([txt, txt], dim=0)
+                    t_lengths = torch.cat([t_lengths, t_lengths], dim=0)
+                    out = {'final_posteriors': final_posteriors, 'length': length}
                     
-                 
-                    print(loss, teacher_loss, augmentation_model.asr_model_lr)
-                    # cur_probs = out['final_posteriors']
-                    # B,N,C = cur_probs.shape 
-                    # loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
+             
                     
-                #blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
+                    cur_probs = out['final_posteriors']
+                    B,N,C = cur_probs.shape 
+                    loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
+                    
+                blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
                 # check for nan in loss
                 if torch.isnan(loss):
                     print('OH NO! NAN IN LOSS, SKIPPING') # TODO: set kv cache to None here
@@ -332,16 +276,13 @@ def train(
                 steps_since_backwards += 1
                 
                 # cur_tokens_in_loss += B * N
-                cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch
+                cur_tokens_in_loss += (sum(a_lengths))*2 # total number of acoustic frames in batch
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
-                    backwards_with_respect_to = list(augmentation_model.parameters())
-                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward(inputs=backwards_with_respect_to) # divide by chunk*batch_size constant to weight smaller batches less
+                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size*2)*steps_since_backwards) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
                     last_kv_set.detach_() if last_kv_set != None else None
                     steps_since_backwards = 0
                     backwards_every_loss = 0
-
-                
 
 
                 if (ix+1) % backprop_every == 0 or (ix+1) == len(chunks): 
@@ -349,9 +290,7 @@ def train(
                     full_loss /= cur_tokens_in_loss
                     full_loss *= 100
                     loss_to_log = full_loss.item()
-                    teacher_loss = ((teacher_loss / cur_tokens_in_loss) * 100).item()
-                    loss_diff = teacher_loss - loss_to_log
-                    print(f'loss: {loss_diff}')
+                    print(f'loss: {full_loss}')
                     
                     backwards_pass(
                         model = model,
@@ -365,8 +304,8 @@ def train(
 
                     if wandb_config['use']:
                         wandb.log({
-                            'loss': loss_diff,
-                            'augmentation_model_lr': augmentation_model.asr_model_lr.item(),
+                            'loss': loss_to_log,
+                            'blank_p': blank_prob,
                             'learning_rate': learning_rate,
                             'sequence_length': chunk_size,
                             'batch_size': batch_size,
@@ -406,7 +345,7 @@ def train(
         del chunks
         
     save_model( # save final model
-        model = augmentation_model, 
+        model = model, 
         optimizer = optimizer, 
         scheduler = scheduler, 
         podcast_step = cur_podcast,
@@ -415,7 +354,7 @@ def train(
         seen_ids = seen_ids,
         epoch = epoch,
     )
-    return augmentation_model
+    return model
             
             
 
@@ -430,16 +369,10 @@ def main(args):
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
     # set random seed for initialization
     torch.manual_seed(12345), torch.cuda.manual_seed(12345)
-    
-    augmentation_model = load_model(args.config, tokenizer.vocab_size(), get_model_class(config = args.config))
-    asr_model_checkpoint_path = args.config['training']['asr_model_checkpoint']
-    asr_model_checkpoint = torch.load(asr_model_checkpoint_path, map_location='cpu', weights_only=False)
-    asr_model = load_model(asr_model_checkpoint['config'], tokenizer.vocab_size(), get_model_class(config = asr_model_checkpoint['config']))
-    asr_model.load_state_dict(asr_model_checkpoint['model'])
-
-    tparams = augmentation_model.print_total_params()
-    asr_model.print_total_params()
+    model = load_model(args.config, tokenizer.vocab_size(), get_model_class(config = args.config))
+    tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
+
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
@@ -450,15 +383,14 @@ def main(args):
         wandb_dir = args.config['wandb'].get('dir', './wandb')
         config = OmegaConf.to_container(args.config, resolve=True)
         wandb.init(project=project_name, config=config, name=run_name, dir=wandb_dir) if w_id == '' else wandb.init(project=project_name, id=w_id, resume="must", config=config, allow_val_change=True, dir=wandb_dir)
-        wandb.watch(augmentation_model, log="all") # sometimes this causes a crash ):
+        wandb.watch(model, log="all") # sometimes this causes a crash ):
         wandb.config.update({'total_params': tparams}, allow_val_change=True)
         print(f'\nLoggging with Wandb id: {wandb.run.id}\n')
         args.config['wandb']['id'] = wandb.run.id # add wandb config to args.config
         if wandb_config.get('update_config_with_wandb_id', False): OmegaConf.save(config=args.config, f=args.config_path)
 
-    augmentation_model = augmentation_model.to(device)
-    asr_model = asr_model.to(device)
-    optimizer, scheduler = load_optimizer(args.config, augmentation_model)
+    model = model.to(device)
+    optimizer, scheduler = load_optimizer(args.config, model)
 
     sequence_scheduler = None
     if 'sequence_scheduler' in args.config:
@@ -470,7 +402,7 @@ def main(args):
 
     seen_ids, step, epoch = load_checkpoint(
         args = args, 
-        model = augmentation_model, 
+        model = model, 
         optimizer = optimizer, 
         scheduler = scheduler, 
         sequence_scheduler = sequence_scheduler,
@@ -510,7 +442,7 @@ def main(args):
     if args.debug_hooks:
         assert wandb_config['use'], 'must have wandb enabled when - arg.debug_hooks ==  True - to log debug hooks outputs'
         logger = partial(wandb.log, commit=False)
-        add_debug_backwards_hooks(model = augmentation_model, logger = logger)
+        add_debug_backwards_hooks(model = model, logger = logger)
     
     if sequence_scheduler and dataloader.batch_size != sequence_scheduler.cur_batch_size:
         print('WARNING: dataloader batch size does not match sequence scheduler batch size, updating dataloader batch size')
@@ -518,8 +450,7 @@ def main(args):
 
     final_model = train(
         args = args, 
-        augmentation_model = augmentation_model,
-        asr_model = asr_model, 
+        model = model, 
         dataloader = dataloader, 
         optimizer = optimizer, 
         scheduler = scheduler,

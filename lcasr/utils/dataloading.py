@@ -10,6 +10,8 @@ import os
 import time
 import pandas as pd
 import re
+import random
+from typing import Any
 
 def chunk_spectogram( # TODO: speed up
         spec: torch.Tensor, # mel spectrogram (batch, features, time)
@@ -34,7 +36,22 @@ def chunk_text_json( # TODO: speed up
     ):
     assert chunk_size > chunk_overlap, "chunk_size must be greater than chunk_overlap"
     
+    def resolve_keys(text):
+        el_0 = text[0]
+        if 'startTime' in el_0 and 'endTime' in el_0 and 'word' in el_0:
+            return 'startTime', 'endTime', 'word', 'spotify'
+        elif 'start' in el_0 and 'end' in el_0 and 'text' in el_0:
+            return 'start', 'end', 'text', 'floras50'
+
+    def resolve_time(el, key, format) -> float:
+        if format == 'spotify':
+            return float(el[key][:-1])
+        elif format == 'floras50':
+            return el[key]
+
     text_remaining = text
+    start_key, end_key, word_key, format = resolve_keys(text)
+  
     splits = []
     start_end_times = []
     for i in range(0, spectogram_length, chunk_size - chunk_overlap):
@@ -44,11 +61,12 @@ def chunk_text_json( # TODO: speed up
         c_text = []
         max_text_index = 0
         for i, el in enumerate(text_remaining):
-            if float(el['startTime'][:-1]) >= c_start_pos_sec and float(el['endTime'][:-1]) <= c_end_pos_sec:
-                c_text.append(el['word'])
-            if float(el['endTime'][:-1]) < c_end_pos_sec - chunk_overlap_sec:
+            start_time, end_time = resolve_time(el, start_key, format), resolve_time(el, end_key, format)
+            if start_time >= c_start_pos_sec and end_time <= c_end_pos_sec:
+                c_text.append(el[word_key])
+            if end_time < c_end_pos_sec - chunk_overlap_sec:
                 max_text_index = i
-            if float(el['endTime'][:-1]) > c_end_pos_sec:
+            if end_time > c_end_pos_sec:
                 break
         text_remaining = text_remaining[max_text_index:]
         splits.append(" ".join(c_text))
@@ -177,26 +195,148 @@ class Utterance_Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         data = torch.load(self.files[idx])
         return data['id'], data['audio'], data['txt'], data['txt_lengths'], data['audio_lengths']
-
-def utterance_collate_fn(batch):
-    ids, audio, txt, txt_lengths, audio_lengths = zip(*batch)
-    txt_lengths = torch.cat(txt_lengths)
-    audio_lengths = torch.cat(audio_lengths)
-    max_audio_length = audio_lengths.max()
-    max_txt_length = txt_lengths.max()
     
-    pad_amount = max_audio_length - audio_lengths
-    audio = torch.cat([torch.nn.functional.pad(el, (0, pad_amount[i]), value=0) for i, el in enumerate(audio)], dim=0)
-    pad_amount = max_txt_length - txt_lengths
-    txt = torch.cat([torch.nn.functional.pad(el, (0, pad_amount[i]), value=0) for i, el in enumerate(txt)], dim=0)
+    @staticmethod
+    def collate_fn(batch):
+        ids, audio, txt, txt_lengths, audio_lengths = zip(*batch)
+        txt_lengths = torch.cat(txt_lengths)
+        audio_lengths = torch.cat(audio_lengths)
+        max_audio_length = audio_lengths.max()
+        max_txt_length = txt_lengths.max()
+        
+        pad_amount = max_audio_length - audio_lengths
+        audio = torch.cat([torch.nn.functional.pad(el, (0, pad_amount[i]), value=0) for i, el in enumerate(audio)], dim=0)
+        pad_amount = max_txt_length - txt_lengths
+        txt = torch.cat([torch.nn.functional.pad(el, (0, pad_amount[i]), value=0) for i, el in enumerate(txt)], dim=0)
 
-    return {
-        'ids':ids,
-        'audio':audio,
-        'text':txt,
-        'text_lengths':txt_lengths,
-        'audio_lengths':audio_lengths
-    }
+        return {
+            'ids':ids,
+            'audio':audio,
+            'text':txt,
+            'text_lengths':txt_lengths,
+            'audio_lengths':audio_lengths
+        }
+
+
+class MaskedUtterance_Dataset(Utterance_Dataset):
+    def __init__(
+            self, 
+            utterance_folder: str, 
+            tokenizer: spm.SentencePieceProcessor,
+            seen_ids: List[str] = [],
+            zipf_path: str = None,
+            masking=True,
+            unk_id=1,
+            bos_id=0,
+            pad_id=0,
+            random_drop:float=0.1,
+        ):
+        super().__init__(utterance_folder, seen_ids)
+        if masking: assert zipf_path is not None, "zipf_path must be provided"
+
+        self.tokenizer = tokenizer
+        if masking:
+            zipf = pd.read_csv(zipf_path) 
+            import string
+            table = str.maketrans('', '', string.punctuation + string.digits + string.whitespace)
+            self.strip_clean = lambda s: s.translate(table).lower()
+            zipf = pd.concat([zipf, pd.DataFrame({'Word': ['i'], 'Zipf-value': [7]})], ignore_index=True)
+            self.zipf = zipf
+        self.unk_id = unk_id
+        self.bos_id = bos_id
+        self.masking = masking
+        self.random_drop = random_drop
+        self.pad_id = pad_id
+
+    def replace_with_unk(self, s):
+        words = s.split()
+        result = []
+        for i, word in enumerate(words):
+            clean_word = self.strip_clean(word)
+            match = self.zipf.loc[self.zipf['Word'] == clean_word]
+            no_match = match.empty
+
+            if self.random_drop > 0:
+                if random.random() < self.random_drop: no_match = not no_match # flip the no_match flag
+
+            if not no_match:
+                zipf_vals = list(match['Zipf-value'])
+                if len(zipf_vals) == 1 and zipf_vals[0] >= 4:
+                    result.extend(self.tokenizer.encode(word))
+                else:
+                    result.append(self.unk_id)
+            else:
+                result.append(self.unk_id)
+        return result
+    
+    def __getitem__(self, idx):
+        data = torch.load(self.files[idx])
+
+        txt = data['txt']
+        txt_list = txt[0].tolist()
+        if self.masking:
+            plain_text = self.tokenizer.decode(txt_list)
+            redacted_txt = self.replace_with_unk(plain_text)
+
+            if random.random() < 0.5:
+                prev = [self.bos_id] + redacted_txt
+                lm_txt = prev + [self.bos_id] + txt_list
+                lm_txt_lengths = torch.LongTensor([len(lm_txt)])
+                prev_lengths = torch.LongTensor([len(prev)])
+                lm_txt = torch.LongTensor(lm_txt).unsqueeze(0)
+            else:
+                lm_txt = [self.bos_id] + txt_list
+                lm_txt_lengths = torch.LongTensor([len(lm_txt)])
+                lm_txt = torch.LongTensor(lm_txt).unsqueeze(0)
+                prev_lengths = torch.LongTensor([0])
+        else:
+            lm_txt = [self.bos_id] + txt_list 
+            lm_txt_lengths = torch.LongTensor([len(lm_txt)])
+            lm_txt = torch.LongTensor(lm_txt).unsqueeze(0)
+            prev_lengths = None
+        
+        return data['id'], data['audio'], data['txt'], data['txt_lengths'], data['audio_lengths'], lm_txt, lm_txt_lengths, prev_lengths
+    
+    @staticmethod
+    def collate_fn(batch):
+        ids, audio, txt, txt_lengths, audio_lengths, lm_txt, lm_txt_lengths, prev_lengths = zip(*batch)
+        txt_lengths = torch.cat(txt_lengths)
+        
+        audio_lengths = torch.cat(audio_lengths)
+        max_audio_length = audio_lengths.max()
+        max_txt_length = txt_lengths.max()
+
+        lm_txt_lengths = torch.cat(lm_txt_lengths)
+        all_prev_lengths_none = all([el is None for el in prev_lengths])
+        prev_lengths = torch.cat(prev_lengths) if not all_prev_lengths_none else None
+        max_lm_txt_length = lm_txt_lengths.max()
+        
+        pad_amount = max_audio_length - audio_lengths
+        audio = torch.cat([torch.nn.functional.pad(el, (0, pad_amount[i]), value=0) for i, el in enumerate(audio)], dim=0)
+        pad_amount = max_txt_length - txt_lengths
+        txt = torch.cat([torch.nn.functional.pad(el, (0, pad_amount[i]), value=0) for i, el in enumerate(txt)], dim=0)
+        pad_amount = max_lm_txt_length - lm_txt_lengths
+        
+        lm_txt = torch.cat([torch.nn.functional.pad(el, (0, pad_amount[i]), value=0) for i, el in enumerate(lm_txt)], dim=0)
+
+        if prev_lengths is not None: lm_loss_mask = torch.arange(lm_txt.shape[1]).expand(len(prev_lengths), lm_txt.shape[1]) < prev_lengths.unsqueeze(1)
+        else: lm_loss_mask = None
+
+        return {
+            'ids':ids,
+            'audio':audio,
+            'text':txt,
+            'text_lengths':txt_lengths,
+            'audio_lengths':audio_lengths,
+            'lm_text':lm_txt,
+            'lm_text_lengths':lm_txt_lengths,
+            'lm_loss_mask':lm_loss_mask,
+        }
+
+
+
+
+def utterance_collate_fn(batch): return Utterance_Dataset.collate_fn(batch)
     
 
 class Utterance_Dataloader(torch.utils.data.DataLoader):
@@ -210,9 +350,10 @@ class Utterance_Dataloader(torch.utils.data.DataLoader):
             shuffle:bool = True,
             seen_ids:List[str] = [],
             random_seed:int = 1234,
+            dataset = Utterance_Dataset,
         ):
         torch.manual_seed(random_seed)
-        self.dataset = Utterance_Dataset(utterance_folder, seen_ids = seen_ids)
+        self.dataset = dataset(utterance_folder, seen_ids = seen_ids)
         super().__init__(
             dataset = self.dataset,
             batch_size = batch_size,
@@ -220,7 +361,7 @@ class Utterance_Dataloader(torch.utils.data.DataLoader):
             num_workers = num_workers,
             pin_memory = pin_memory,
             prefetch_factor = prefetch,
-            collate_fn = utterance_collate_fn,
+            collate_fn = self.dataset.collate_fn,
         )
 
 
@@ -274,11 +415,19 @@ class SimpleDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.pairs)
 
+    @staticmethod
+    def resolve_txt(txt:Dict[str, Any]):
+        if 'word_timestamps' in txt: # floras 50 format prepared via: https://github.com/robflynnyh/align_floras50/tree/main
+            return txt['word_timestamps']
+        else:
+            return txt['results'][-1]['alternatives'][0]['words'] # spotify format prepared by spotify 
+
     def __getitem__(self, idx):
         audio, txt = load_sample({'audio': self.pairs['audio'][idx], 'txt': self.pairs['txt'][idx]})
         id = self.pairs['id'][idx]
-        txt = txt['results'][-1]['alternatives'][0]['words']
-        audio = rearrange(audio, '() f t -> t f')
+        txt = self.resolve_txt(txt)
+        audio = audio.squeeze(0) 
+        audio = rearrange(audio, 'f t -> t f')
         return audio, txt, id
 
 

@@ -11,7 +11,7 @@ ConformerConvolution = convolution.ConformerConvolution
 ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
 import random
-
+from lcasr.components.batchrenorm import BatchRenorm1d
 try: from apex.normalization import FusedRMSNorm as DEFAULT_NORM, FusedRMSNorm as RMSNorm, FusedLayerNorm as LayerNorm
 except: 
     from lcasr.components.normalisation import RMSNorm as RMSNorm, RMSNorm as DEFAULT_NORM
@@ -29,6 +29,38 @@ import warnings
 from matplotlib import pyplot as plt
 # TODO: 
 # -. remove caching stuff as it is not used anymore
+
+
+class MelDiscriminator1D(nn.Module):
+    def __init__(self, mel_bins=80):
+        super().__init__()
+        self.model = nn.Sequential(
+            nn.Conv1d(mel_bins, 128, kernel_size=15, stride=1, padding=7),
+            BatchRenorm1d(128),
+            nn.LeakyReLU(0.2),
+
+            nn.Conv1d(128, 128, kernel_size=41, stride=4, groups=4, padding=20),
+            BatchRenorm1d(128),
+            nn.LeakyReLU(0.2),
+
+            nn.Conv1d(128, 256, kernel_size=41, stride=4, groups=4, padding=20),
+            BatchRenorm1d(256),
+            nn.LeakyReLU(0.2),
+
+            nn.Conv1d(256, 512, kernel_size=41, stride=4, groups=4, padding=20),
+            BatchRenorm1d(512),
+            nn.LeakyReLU(0.2),
+
+            nn.Conv1d(512, 1024, kernel_size=5, stride=1, padding=2),
+            BatchRenorm1d(1024),
+            nn.LeakyReLU(0.2),
+
+            nn.Conv1d(1024, 1, kernel_size=3, stride=1, padding=1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        return self.model(x)  # Output: [B, 1, T']
 
 class SCConformerTest(BaseModel): 
     def __init__(
@@ -73,6 +105,7 @@ class SCConformerTest(BaseModel):
         self.bias_in_ff = bias_in_ff
         self.transformer = transformer
     
+        self.calc_loss_includes_backward = True
         self.legasee_double_norm = legasee_double_norm
 
         self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
@@ -130,6 +163,8 @@ class SCConformerTest(BaseModel):
                 **kwargs
             )
             self.layers.append(l)
+
+        self.discriminator = MelDiscriminator1D(mel_bins=feat_in)
         
     def forward(
             self, 
@@ -216,7 +251,7 @@ class SCConformerTest(BaseModel):
         length = a_lengths
         if length is None: length = torch.tensor([T] * B, device=audio_signal.device)
         start_mask_a = torch.LongTensor([0]*B).to(audio_signal.device)
-        
+     
         end_mask_a = (start_mask_a + length // 4)
         end_mask_b = (length)
         start_mask_b = (end_mask_b - length // 4)
@@ -233,17 +268,50 @@ class SCConformerTest(BaseModel):
         mask_b = (time >= start_mask_b) & (time < end_mask_b)
         mask = mask_a | mask_b
         audio_signal = audio_signal.masked_fill(mask, 0)
-        prediction = self.forward(audio_signal, length)['out']
+        prediction = self.forward(audio_signal, length)['out'].transpose(1, 2)
 
         if kwargs.get("wandb", False) and random.random() < 0.1:
             wandb = kwargs.get("wandb")
-            fig = plt.imshow(prediction.transpose(-1,-2)[0].cpu().detach().numpy(), aspect='auto', vmin=-1, vmax=1, cmap='inferno')
+            fig = plt.imshow(prediction[0].cpu().detach().numpy(), aspect='auto', vmin=-1, vmax=1, cmap='inferno')
             wandb.log({"prediction": fig}, commit=False)
 
-        loss = F.l1_loss(prediction.transpose(-1,-2), target, reduction='mean')
-        # loss = loss.masked_fill(~mask, 0).sum() / (mask.sum() * C)
+        optimizer = kwargs.get("optimizer")
+
+        loss_recon = F.l1_loss(prediction, target, reduction='mean')
+
+        loss_G = self.discriminator(prediction).mean(dim=(-1,-2)) 
+        loss_G = ((loss_G - 1) ** 2).mean()
+        loss = loss_G 
+
+        G_params = list(self.layers.parameters()) + list(self.in_proj.parameters()) + list(self.out_proj.parameters())
+        torch.nn.utils.clip_grad_norm_(G_params, 0.1)
+        optimizer.zero_grad()
+        loss.backward(inputs=G_params)
+        optimizer.step()
+        optimizer.zero_grad()
+
+        all_samples = torch.cat([prediction.detach(), target.detach()], dim=0)
+        disc_out = self.discriminator(all_samples).mean(dim=(-1,-2))
+        disc_out_fake = disc_out[:B]
+        disc_out_real = disc_out[B:B*2]
+        loss_D_real = (disc_out_real - 1) ** 2
+        loss_D_fake = disc_out_fake ** 2
+        loss_D = (loss_D_real.mean() + loss_D_fake.mean()) / 2
+        loss_D *= 0.1
+
+        disc_params = list(self.discriminator.parameters())
+        torch.nn.utils.clip_grad_norm_(disc_params, 0.1)
+        loss_D.backward(inputs=disc_params)
+        optimizer.step()
+
+        display_losses = {
+            'loss_D': loss_D.item(),
+            'loss_G': loss_G.item(),
+            'loss_recon': loss_recon.item(),
+            'loss': loss.item(),
+        }
         
-        return {'loss': loss, 'display_losses': {'loss': loss.item()}}
+        return {'loss': loss, 'display_losses': display_losses}
 
 
 

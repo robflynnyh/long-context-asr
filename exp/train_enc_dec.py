@@ -43,6 +43,27 @@ def blank_p(logits, tokenizer):
     return blank_p
 
 
+def replace_with_unk_fn(zipf, tokenizer): # zipf: pd.DataFrame
+    import string, pandas as pd
+    table = str.maketrans('', '', string.punctuation + string.digits + string.whitespace)
+    strip_clean = lambda s: s.translate(table).lower()
+    zipf = pd.concat([zipf, pd.DataFrame({'Word': ['i'], 'Zipf-value': [7]})], ignore_index=True)
+    def replace_with_unk(s, unk_id=1):
+        words = s.split()
+        result = []
+        for i, word in enumerate(words):
+            clean_word = strip_clean(word)
+            match = zipf.loc[zipf['Word'] == clean_word]
+            if not match.empty:
+                if list(match['Zipf-value'])[0] >= 4:
+                    result.extend(tokenizer.encode(word))
+                else:
+                    result.append(unk_id)
+            else:
+                result.append(unk_id)
+        return result
+    return replace_with_unk
+
 def backwards_pass(
         model:SCConformerXL,
         clip_value:float,
@@ -179,6 +200,17 @@ def train(
 
     prepad_text = use_ctc_history == False and condition_on_ctc_first_pass == False
 
+
+    masked_first_pass = args.config['training'].get('masked_first_pass', False)
+    if masked_first_pass:
+        zipf_freq_path = args.config['data'].get('zipf_freq_path', None)
+        assert zipf_freq_path != None, 'must provide zipf_freq_path if masked_first_pass is True'
+        import pandas as pd
+        zipf_freq = pd.read_csv(zipf_freq_path)
+        replace_with_unk = replace_with_unk_fn(zipf_freq, tokenizer)
+
+
+
     if condition_on_ctc_first_pass: assert condition_on_previous == False, 'not implemented yet!'
     if loss_on_previous == True: assert condition_on_previous == True, 'loss_on_previous can only be true if condition_on_previous is true'
 
@@ -282,7 +314,7 @@ def train(
                 lm_txt_chunks = []
                 prev_lengths = []
                 for i, tx_el in enumerate(txt_chunks):
-                    if remove_mask[i]:
+                    if remove_mask[i]: 
                         if ix == 0:
                             lm_txt_chunks.append(torch.LongTensor([bos_id] + tokenizer.encode(tx_el[ix])))
                             prev_lengths.append(0)
@@ -297,6 +329,15 @@ def train(
                 if loss_on_previous == False:
                     prev_lengths = torch.LongTensor(prev_lengths)
                     lm_loss_mask = torch.arange(lm_txt_chunks.shape[1]).expand(len(prev_lengths), lm_txt_chunks.shape[1]) < prev_lengths.unsqueeze(1)
+            elif masked_first_pass and prepad_text == True:
+                lm_txt_chunks = []
+                for i, tx_el in enumerate(txt_chunks):
+                    if remove_mask[i]:
+                        redacted_text = replace_with_unk(tx_el[ix])
+                        lm_txt_chunks.append(torch.LongTensor([bos_id] + redacted_text + [bos_id] + tokenizer.encode(tx_el[ix])))
+                lm_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in lm_txt_chunks])
+                lm_txt_chunks = torch.nn.utils.rnn.pad_sequence(lm_txt_chunks, batch_first=True, padding_value=pad_id)
+                lm_loss_mask = None
             else:
                 lm_txt_chunks = None
                 lm_txt_chunks_lengths = None

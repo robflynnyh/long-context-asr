@@ -59,7 +59,7 @@ def fetch_utterances(stm_path:str, spectogram:torch.Tensor):
         utterances.append({
             'start': float(start), 
             'end': float(end), 
-            'text': text, 
+            'text': re.sub(r" '([a-z])", r"'\1", text).strip(),
             'start_frame': total_frames(float(start)), 
             'end_frame': total_frames(float(end)),
             'spectogram': spectogram[:, :, total_frames(float(start)):total_frames(float(end))]
@@ -190,8 +190,9 @@ def main(args):
 
             if hasattr(model, 'transcribe'):
                 spectrograms = [utterance['spectogram'] for utterance in utterances]
+                gold_utterances = [utterance['text'] for utterance in utterances]
                 timings = [{'start': utterances[utt_id]['start'], 'end': utterances[utt_id]['end']} for utt_id in range(len(utterances))]
-                out_texts = model.transcribe(spectrograms, tokenizer, device=device)
+                out_texts = model.transcribe(spectrograms, tokenizer, device=device, targets=gold_utterances)
                 out_texts = [normalize(out_text).lower().strip() for out_text in out_texts]
             else:
                 out_texts = []

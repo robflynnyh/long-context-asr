@@ -14,7 +14,6 @@ from lcasr.utils.general import load_model, save_model, load_checkpoint, load_op
 from lcasr.utils.augmentation import SpecAugment
 import resource
 import time
-import random
 
 from einops import rearrange
 import numpy as np
@@ -42,21 +41,21 @@ def vmap_forward(weights, audio, model):
 def calc_loss(
         asr_model_weights,
         audio,
-        teacher_posteriors,
+        teacher_text,
+        teacher_text_lengths,
         asr_model,
+        loss_fn,
     ):
         vmap_forward_fn = partial(vmap_forward, model=asr_model)
         out = vmap(vmap_forward_fn)(asr_model_weights, audio)
         
         predictions = out['final_posteriors'].squeeze(1)
-        # kl divergence loss
-        kl_loss = torch.nn.functional.kl_div(input = predictions, target = teacher_posteriors, reduction='mean', log_target=True)
         # return predictions.sum() / predictions.numel() /10
-        # ce_alignment_targets = ctc.ctc_alignment_targets(predictions.transpose(0, 1), teacher_text, out['length'].squeeze(1), teacher_text_lengths, blank = asr_model.decoder.num_classes-1)
-        # ce_ctc = -ce_alignment_targets * predictions.transpose(0, 1)
-        # loss = ce_ctc.sum()
+        ce_alignment_targets = ctc.ctc_alignment_targets(predictions.transpose(0, 1), teacher_text, out['length'].squeeze(1), teacher_text_lengths, blank = asr_model.decoder.num_classes-1)
+        ce_ctc = -ce_alignment_targets * predictions.transpose(0, 1)
+        loss = ce_ctc.sum()
         
-        return kl_loss
+        return loss / out['length'].sum() 
 
 
 def blank_p(logits, tokenizer):
@@ -244,16 +243,12 @@ def train(
         prev_selection_mask, last_kv_set = None, None # selection mask from previous chunk
         ################################
         random.shuffle(chunks)
-
+        
         try:
             for ix, chunk_json in enumerate(chunks):
                 print(f'chunk {ix}/{len(chunks)}')
                
                 audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
-                if a_lengths.max() != a_lengths.min():
-                    print('skipping batch due to different lengths')
-                    continue
-
                 txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
                 selection_mask = chunk_json['selection_mask']
 
@@ -273,26 +268,26 @@ def train(
                         cached_kvs = cached_kvs[cur_selection_mask]
                         cached_kv_lengths = cached_kv_lengths[cur_selection_mask]
                     
-
-                    augmented_audio_a, augmented_audio_b = augmentation_model(audio)
-                    teacher_out = asr_model(
-                        audio_signal = augmented_audio_a,    
-                    )
-                    teacher_posteriors = teacher_out['final_posteriors']
-                    with torch.no_grad(): 
-                        original_out = asr_model(
-                            audio_signal = audio,    
+                    with torch.no_grad():     
+                        teacher_out = asr_model(
+                            audio_signal = audio, 
+                            
                         )
-                        teacher_loss = ctc_loss_fn(original_out['final_posteriors'].transpose(0,1), txt, original_out['length'], t_lengths).sum()
+                        teacher_loss = ctc_loss_fn(teacher_out['final_posteriors'].transpose(0,1), txt, teacher_out['length'], t_lengths).sum()        
+                        teacher_probs = teacher_out['final_posteriors'].to('cpu')
+                        teacher_preds = [torch.LongTensor(decoder(el, decode=False)) for el in teacher_probs]
+                        teacher_text_lengths = torch.LongTensor([el.shape[0] for el in teacher_preds]).to(device)
+                        teacher_text_preds = torch.nn.utils.rnn.pad_sequence(teacher_preds, batch_first=True, padding_value=pad_id).to(device)
 
                     batched_detached_asr_params = {k: v[None].expand(audio.shape[0], *[-1 for _ in range(v.ndim)]) for k, v in model.named_parameters()}
-                    calc_grad_fn = partial(calc_loss, asr_model=asr_model)
+                    calc_grad_fn = partial(calc_loss, asr_model=asr_model, loss_fn=ctc_loss_fn)
 
-                    
+                    augmented_audio = augmentation_model(audio)
                     grads = grad(calc_grad_fn)(
                         batched_detached_asr_params,
-                        augmented_audio_b,
-                        teacher_posteriors
+                        augmented_audio,
+                        teacher_text_preds,
+                        teacher_text_lengths,
                     )
                     loss = 0
                     for k, v in grads.items():

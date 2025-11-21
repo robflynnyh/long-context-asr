@@ -215,6 +215,7 @@ def train(
                 audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
                 txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
                 selection_mask = chunk_json['selection_mask']
+                print(tokenizer.decode(txt[0][:t_lengths[0]].tolist()))
 
                 cur_selection_mask = None
                 if prev_selection_mask != None and not torch.allclose(selection_mask, prev_selection_mask):

@@ -1,0 +1,87 @@
+template_info:
+  create: 6 # number of experiments to create
+  include_keys: [
+    'model', 
+    'optimizer', 
+    'scheduler', 
+    'audio_chunking', 
+    'wandb', 
+    'checkpointing', 
+    'data', 
+    'training', 
+    'model_class',
+  ] # keys to include in experiments config
+  template_keys: [
+    'checkpointing.dir', 
+    'wandb.name',
+    'training.mask_pass',
+    #'training.loss',
+  ] # keys to use to create experiments
+
+
+
+model:
+  feat_in: 80
+  n_layers: 5
+  d_model: 768
+  ctc_loss_weight: 0.05
+  acoustic_norm: false
+  additional_embeddings: 0
+optimizer:
+  name: madgrad
+  args:
+    lr: 0.001
+scheduler:
+  warmup_steps: 2500
+audio_chunking:
+  size: 2048
+  overlap: 0
+wandb:
+  use: true
+  project_name: spotify_enc_dec
+  name: [
+    "masking_rp_1",
+    "baseline_rp_1",
+    "masking_rp_2",
+    "baseline_rp_2",
+    "masking_rp_3",
+    "baseline_rp_3",
+  ]
+  update_config_with_wandb_id: true
+  id: ""
+  dir: /mnt/parscratch/users/acp21rjf/wandb_log/
+checkpointing:
+  dir: [
+    "/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/masking_rp_1/",
+    "/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/baseline_rp_1/",
+    "/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/masking_rp_2/",
+    "/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/baseline_rp_2/",
+    "/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/masking_rp_3/",
+    "/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/baseline_rp_3/",
+  ]
+  save_every_n_steps: 150000
+data:
+  path: /mnt/parscratch/users/acp21rjf/spotify_utterances/
+  zipf_freq_path: /users/acp21rjf/zipf.csv
+training:
+  start_spec_augment_after_n_epochs: -1
+  max_epochs: 1
+  batch_size: 128
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
+  clip_value: 0.1
+  intermediate_loss_weighting: 0.0
+  random_seed: 552268
+  dtype: float32
+  num_workers: 12
+  prefetch_factor: 6
+  mask_pass: [
+    true, # 1
+    false,
+    true, #2
+    false,
+    true, #3
+    false,
+  ]
+model_class: EncDecSconformerV2

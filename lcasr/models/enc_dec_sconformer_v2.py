@@ -341,17 +341,22 @@ class EncDecSconformerV2(BaseModel):
 
         if max_generate == 'encoder_states': max_generate = length.max().item()
         
-        if prompt is None: text_sequence = torch.LongTensor([[bos_id]]).to(a_hidden.device)
-        else: text_sequence = torch.LongTensor([prompt]).to(a_hidden.device)
+        if prompt is None: text_sequence = torch.LongTensor([[bos_id]])
+        elif isinstance(prompt, list): text_sequence = torch.LongTensor([prompt])
+        else: text_sequence = prompt
+        text_sequence = text_sequence.to(a_hidden.device)
 
         prompt_length = text_sequence.shape[1]
             
         finished = False
         #generated = 0
         cache = None
-        final_text_sequence = text_sequence.clone()
+        if text_sequence.ndim == 3: prompt_length = 0; final_text_sequence = torch.LongTensor([[]]).to(a_hidden.device)
+        else: final_text_sequence = text_sequence.clone()
+        if sample == False: temperature = 1.0
         steps = 0
-        
+        all_probs = []
+
         while not finished:
             
             decoder_out = self.language_model_decoder(
@@ -364,8 +369,13 @@ class EncDecSconformerV2(BaseModel):
             decoder_logits = decoder_out['logits']
             cache = decoder_out['kv_cache']
             
-            if sample == False: decoder_pred = decoder_logits[0, -1, :].softmax(dim=-1).argmax(dim=-1)
-            else: decoder_pred = (decoder_logits[0, -1, :] / temperature).softmax(dim=-1).multinomial(num_samples=1).squeeze(0)
+            logits = decoder_logits[0, -1, :]
+            probs = (logits / temperature).softmax(dim=-1)
+            if sample == False: decoder_pred = probs.argmax(dim=-1)
+            else: decoder_pred = probs.multinomial(num_samples=1).squeeze(0)
+
+            probability = probs[decoder_pred].item()
+            all_probs.append(probability)
 
             steps += 1
             #generated += 1
@@ -384,6 +394,7 @@ class EncDecSconformerV2(BaseModel):
  
         if return_ctc_states: outputs['ctc_states'] = encoder_out['final_posteriors_ctc']
         outputs['text_sequence'] = final_text_sequence
+        outputs['probs'] = all_probs
 
         return outputs
 
@@ -416,7 +427,9 @@ class EncDecSconformerV2(BaseModel):
             temperature_synthetic_history=0.9,
             eval_ctc=False,
             first_pass_ctc=False,
-            min_seq_len = -1
+            masked_conditioning=True,
+            min_seq_len = -1,
+            **kwargs
     ):
         '''
         audio_signal: (B, T, C) | [(B, T, C)]*N
@@ -451,7 +464,6 @@ class EncDecSconformerV2(BaseModel):
                 assert previous_text_conditioning == False
                 assert ctc_history == False
                 assert synthetic_history == False
-                assert sample == False
 
 
         if isinstance(audio_signal, torch.Tensor):
@@ -486,11 +498,11 @@ class EncDecSconformerV2(BaseModel):
                 if synthetic_history:
                     output = self.generate(
                         audio_signal = audio,
-                        max_generate = 15,#'encoder_states', #30, #'encoder_states',
+                        max_generate = 'encoder_states', #30, #'encoder_states',
                         return_encoder_states = True,
                         prompt = [prev_id],
                         bos_id = bos_id,
-                        eos_id=999999999999999,
+                        #eos_id=999999999999999,
                         return_ctc_states = False,
                         remove_prompt = False,   
                         sample=sample_synthetic_history,
@@ -513,14 +525,14 @@ class EncDecSconformerV2(BaseModel):
                     print(f'CTC output: {tokenizer.decode(ctc_text)}') if verbose else None
                     encoder_states = output
 
-                    # if True:
-                    #     ctc_output = ctc_decoder(ctc_output, decode=True)
-                    #     words = ctc_output.split(" ") 
-                    #     # shuffle order
-                    #     random.shuffle(words)
-                    #     ctc_text = " ".join(words)
-                    #     print(f'Shuffled CTC output: {ctc_text}') if verbose else None
-                    #     ctc_text = tokenizer.encode(ctc_text)
+                    if False:
+                        ctc_output = ctc_decoder(ctc_output, decode=True)
+                        words = ctc_output.split(" ") 
+                        # shuffle order
+                        random.shuffle(words)
+                        ctc_text = " ".join(words)
+                        print(f'Shuffled CTC output: {ctc_text}') if verbose else None
+                        ctc_text = tokenizer.encode(ctc_text)
 
                     #if len(ctc_text) > 1: ctc_text = torch.randint_like(torch.tensor(ctc_text), 1, max(ctc_text)).tolist()
                     prompt = [self.get_first_pass_id()] + ctc_text + [bos_id] 
@@ -540,6 +552,35 @@ class EncDecSconformerV2(BaseModel):
                     # decoded_sequence = tokenizer.decode(out_sequence) 
                     # print(f'First pass output: {decoded_sequence}') if verbose else None
                     # prompt = [self.get_first_pass_id()] + out_sequence + [bos_id]
+                elif masked_conditioning:
+                    output = self.generate(
+                        audio_signal = audio,
+                        max_generate = 'encoder_states', #30, #'encoder_states',
+                        return_encoder_states = True,
+                        prompt = [bos_id],
+                        bos_id = bos_id,
+                        #eos_id=999999999999999,
+                        return_ctc_states = False,
+                        remove_prompt = False,   
+                        sample=sample,
+                        temperature=temperature,       
+                    )         
+                    out_sequence = output['text_sequence']
+                    encoder_states = output['encoder_states']    
+                    probs = torch.tensor(output['probs'])
+                
+                    # get inidices of the smallest n probs
+                    k = len(probs) // 5
+                    probs = torch.randn_like(probs)
+                    min_probs, min_indices = probs.topk(k, largest=False)
+         
+                    print(f'synthetic history: {tokenizer.decode(out_sequence[1:])}') if verbose else None
+                    out_sequence = [0]+ [el if i not in min_indices else 1 for i, el in enumerate(out_sequence[1:])]
+
+                    #out_sequence = [prev_id] + torch.randint_like(torch.tensor(out_sequence), 1, max(out_sequence)).tolist()[1:]
+
+                    print(out_sequence) if verbose else None
+                    prompt = out_sequence + [bos_id]
                     
 
                 output = self.generate(
@@ -1105,7 +1146,9 @@ class CrossAttnDecoder(nn.Module):
         self.bias_in_ff = bias_in_ff
         self.default_norm = default_norm
         self.flash_attn = kwargs.get('flash_attn', True)
+
         self.cross_attn_drop_p = kwargs.get('cross_attn_drop_p', 0.0)
+        self.cross_attn_kv_drop_p = kwargs.get('cross_attn_kv_drop_p', 0.0)
 
         additional_embeddings = kwargs.get('additional_embeddings', 0)
         self.embed = nn.Embedding(vocab_size + additional_embeddings, d_model)
@@ -1329,7 +1372,9 @@ class CrossAttnDecoder(nn.Module):
 
         if offsets != None and self.learnt_cache_size > 0: offsets = offsets - self.learnt_cache_size
 
-        x = self.embed(tokens)
+        if tokens.ndim == 2: x = self.embed(tokens)
+        else: x = tokens; assert tokens.ndim == 3, 'tokens must be 2D or 3D tensor if already embedded'
+
         if self.abs_pos_dec: x = self.pos_enc(x, lengths=lengths, position_offsets=offsets)
         x = F.dropout(x, p=self.dropout_emb, training=self.training)
         a_hidden = self.acoustic_norm(a_hidden)
@@ -1350,8 +1395,10 @@ class CrossAttnDecoder(nn.Module):
         cache_indices = self.get_cache_indices(x_len, cache_len, cache['cache'], x) if exists(cache) and self.cache_needs_gather else None
 
 
-        if a_lengths.max() == a_lengths.min(): kv_mask = None # if all the same length don't bother with the mask
+        if a_lengths.max() == a_lengths.min() and self.cross_attn_kv_drop_p > 0.0: kv_mask = None # if all the same length don't bother with the mask
         else: kv_mask = ~(torch.arange(a_hidden.shape[1], device=a_hidden.device).expand(a_hidden.size(0), a_hidden.shape[1]) >= a_lengths.unsqueeze(1))
+
+        #print(kv_mask)
 
         cross_attn_mask = None
         if (a_hidden.device.type != 'cuda' or not self.flash_attn) and kv_mask is not None: # create attention mask
@@ -1361,6 +1408,8 @@ class CrossAttnDecoder(nn.Module):
 
         kv_cache = []
 
+        # self.training = True
+        # self.cross_attn_drop_p = 100.
         if self.training and self.cross_attn_drop_p > 0.0: drop_probs = torch.rand(a_hidden.shape[0], device=a_hidden.device) < self.cross_attn_drop_p
 
 
@@ -1396,8 +1445,9 @@ class CrossAttnDecoder(nn.Module):
 
 
 class RLEncDecSconformerV2(EncDecSconformerV2):
+
     @torch.no_grad()
-    def batch_generate_rl_prompt(
+    def batch_generate_rl_prompt___(
         self,
         encoder_states:Dict[str, torch.Tensor], # encoder states
         temperature:float = 1.0, # temperature for sampling
@@ -1428,8 +1478,7 @@ class RLEncDecSconformerV2(EncDecSconformerV2):
 
         return generated_sequence
 
-
-    def calc_loss(
+    def calc_loss__(
             self, 
             audio_signal, # B, C, T
             text_sequence,
@@ -1446,18 +1495,6 @@ class RLEncDecSconformerV2(EncDecSconformerV2):
         if encoder_outputs is None:
             encoder_outputs = self(audio_signal, length=a_lengths)
 
-        repeats = 2
-        repeated_encoder_outputs = {
-            'a_hidden': encoder_outputs['a_hidden'].repeat(repeats, 1, 1),
-            'length': encoder_outputs['length'].repeat(repeats),
-        }
-
-        to_generate = kwargs.get('prefix_to_generate', 20)
-        prompt = self.batch_generate_rl_prompt(encoder_states=repeated_encoder_outputs, to_generate=to_generate)
-        if tokenizer is not None:
-            if random.random() < 0.05:
-                print('Generated Prompt (1):', tokenizer.decode(prompt[0, 1:].cpu().tolist()))
-                print('Generated Prompt (2):', tokenizer.decode(prompt[encoder_outputs['a_hidden'].shape[0], 1:].cpu().tolist()))
 
         if lm_text_sequence is None: # add bos to text sequence
             text_sequence_bos = F.pad(text_sequence, (1, 0), value=bos_id)
@@ -1467,21 +1504,14 @@ class RLEncDecSconformerV2(EncDecSconformerV2):
             text_sequence_bos = lm_text_sequence
             target_lengths_bos = lm_text_sequence_lengths
 
-        repeated_text_sequence_bos = text_sequence_bos.repeat(repeats, 1)
-        repeated_target_lengths = target_lengths_bos.repeat(repeats)
-        repeated_text_sequence_bos = torch.cat(
-            [prompt, repeated_text_sequence_bos], dim=1
-        )
-        prompt_length = prompt.shape[1]
-        repeated_target_lengths += prompt_length
         
         ctc_out = encoder_outputs['final_posteriors_ctc']
         a_length_out = encoder_outputs['length']
         
         lm_out = self.language_model_decoder(
-            tokens = repeated_text_sequence_bos,
-            a_hidden = repeated_encoder_outputs['a_hidden'],
-            a_lengths = repeated_encoder_outputs['length'],
+            tokens = text_sequence_bos,
+            a_hidden = encoder_outputs['a_hidden'],
+            a_lengths = encoder_outputs['length'],
             cache = None,
         )
         lm_out = lm_out['logits']
@@ -1512,13 +1542,21 @@ class RLEncDecSconformerV2(EncDecSconformerV2):
         else:
             ctc_loss_to_show, ctc_loss_to_bwd = 0, 0
 
-        targets = repeated_text_sequence_bos.clone()
-        targets[:, :-1] = repeated_text_sequence_bos[:, 1:]
-        if repeated_target_lengths.max() == repeated_target_lengths.min(): targets[:, -1] = 0
+
+        targets = text_sequence_bos.clone()
+        targets[:, :-1] = text_sequence_bos[:, 1:]
+        if target_lengths_bos.max() == target_lengths_bos.min(): targets[:, -1] = 0
         else:
-            targets = add_eos(targets, eos_id = eos_id, token_lens = repeated_target_lengths)
-        mask = token_lens_to_mask(repeated_target_lengths)
+            targets = add_eos(targets, eos_id = eos_id, token_lens = target_lengths_bos)
+        mask = token_lens_to_mask(target_lengths_bos)
         targets = mark_padding(targets, mask, pad_id = -100)
+        
+        lm_num_masked = 0
+        if lm_loss_mask is not None:
+            assert lm_loss_mask.shape == targets.shape, f'lm_loss_mask shape {lm_loss_mask.shape} does not match targets shape {targets.shape}'
+            lm_loss_mask = lm_loss_mask.to(targets.device)
+            targets = targets.masked_fill(lm_loss_mask, -100)
+            lm_num_masked = lm_loss_mask.sum()
 
             
         predictions = lm_out
@@ -1528,53 +1566,22 @@ class RLEncDecSconformerV2(EncDecSconformerV2):
             ignore_index = -100,
             reduction = 'none'
         )
-        lm_loss = rearrange(lm_loss, '(b n) -> b n', b = predictions.shape[0]).clone()
-        supervised_loss_scores = lm_loss[:, prompt_length:].sum(-1) / ((repeated_target_lengths - prompt_length).sum())
-        supervised_loss_scores = rearrange(supervised_loss_scores, '(r b) -> b r', r = repeats)
-        best_score_idx = supervised_loss_scores.argmin(dim=-1)
-        mask = F.one_hot(best_score_idx, num_classes=repeats).to(lm_loss.device, dtype=torch.bool)
-        
-        spread = (supervised_loss_scores[:, 0] - supervised_loss_scores[:, 1]).abs().mean().item()
-        
+        if kwargs.get('return_token_losses', False):
+            lm_loss = rearrange(lm_loss, '(b n) -> b n', b = predictions.shape[0])
+            other_outputs['lm_loss'] = lm_loss
+            other_outputs['lm_loss_mask'] = lm_loss_mask
 
-        mask = rearrange(mask, 'b r -> (r b)')
+        lm_loss = lm_loss.sum()
+        lm_loss_to_show = (lm_loss / (target_lengths_bos.sum() - lm_num_masked)).item() 
+        lm_loss_to_bwd = lm_loss / ((predictions.shape[0] * predictions.shape[1]) - lm_num_masked) 
 
-        prompt_probs = predictions[:, :prompt_length, :].softmax(dim=-1)
-        log_prompt_probs = prompt_probs.log()
-        prompt_entropy = -(prompt_probs * log_prompt_probs).sum(dim=-1)
-        entropy_beta = kwargs.get('entropy_beta', 0.005) # #0.002) .0005
-        negative_completion_weight = kwargs.get('negative_completion_weight', -0.01) # 0.0
-
-        prompt_entropy = prompt_entropy.mean() 
-        lm_loss[:, :prompt_length][~mask] *= -1.0
-
-
-        lm_loss_to_show = (lm_loss[mask][:, prompt_length:].sum() / (target_lengths_bos.sum())).item() # just lm loss excluding the prompt
-        negative_lm_loss_to_show = (lm_loss[~mask][:, prompt_length:].sum() / (target_lengths_bos.sum())).item() # just lm loss excluding the prompt
-        
-        prompt_loss_to_show = (lm_loss[mask][:, :prompt_length].sum() / (prompt_length * mask.shape[0])).item()
-
-        not_prompt_length = lm_loss[:, prompt_length:].shape[1]
-        batch_size = lm_loss.shape[0] / repeats
-
-        lm_loss_to_bwd = lm_loss[:, prompt_length:][mask].sum() / (not_prompt_length * batch_size)
-        lm_loss_to_bwd += (lm_loss[:, prompt_length:][~mask].sum() / (not_prompt_length * batch_size)) * negative_completion_weight
-
-        prompt_loss_to_bwd = lm_loss[:, :prompt_length].sum() / (prompt_length * batch_size)
-
-        prompt_weighting = kwargs.get('prompt_weighting', 0.01) # 0.01
-
-        loss_to_show = ctc_loss_to_show * self.ctc_loss_weight + prompt_loss_to_show  * prompt_weighting + lm_loss_to_show 
-        loss = ctc_loss_to_bwd * self.ctc_loss_weight + lm_loss_to_bwd + prompt_loss_to_bwd * prompt_weighting - prompt_entropy * entropy_beta * prompt_weighting   
+        loss_to_show = ctc_loss_to_show * self.ctc_loss_weight + lm_loss_to_show * (1 - self.ctc_loss_weight)
+        loss = ctc_loss_to_bwd * self.ctc_loss_weight + lm_loss_to_bwd 
 
         wandb_log_data = {
             'loss': loss_to_show,
             'ctc_loss': ctc_loss_to_show,
             'lm_loss': lm_loss_to_show,
-            'prompt_loss': prompt_loss_to_show,
-            'prompt_entropy': prompt_entropy.item(),
-            'negative_lm_loss': negative_lm_loss_to_show,
-            'spread': spread,
         }
 
         return {
@@ -1583,36 +1590,191 @@ class RLEncDecSconformerV2(EncDecSconformerV2):
             'ctc_posteriors': ctc_out,
             'lm_posteriors': lm_out,
             'length': a_length_out,
+            **other_outputs
         }
+
 
     @staticmethod # for converting enc dec for RL training
     def reformat_checkpoint(
         checkpoint_path:str,
         save_path:str,
-        to_generate=20,
     ):
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
         checkpoint['config']['model_class'] = "RLEncDecSconformerV2"
         checkpoint['config']['training']['loss_on_previous'] = False
         checkpoint['config']['training']['condition_on_previous'] = False
-        checkpoint['config']['training']['prefix_to_generate'] = to_generate
 
         torch.save(checkpoint, save_path)
         print(f"Checkpoint reformatted and saved to {save_path}")
+
+    @staticmethod
+    def match_vectors_to_embeddings(embedding_weight: torch.Tensor, vectors: torch.Tensor) -> torch.Tensor:
+        """
+        Matches each vector in `vectors` to the nearest index in the `embedding_weight` tensor
+        using cosine similarity.
+
+        Args:
+            embedding_weight (torch.Tensor): Tensor of shape (num_embeddings, embedding_dim)
+            vectors (torch.Tensor): Tensor of shape (batch_size, embedding_dim)
+
+        Returns:
+            torch.Tensor: Tensor of shape (batch_size,) containing the indices of the nearest embeddings
+        """
+        # Normalize both embeddings and vectors to unit vectors for cosine similarity
+        embedding_norm = F.normalize(embedding_weight, p=2, dim=1)  # (num_embeddings, dim)
+        vector_norm = F.normalize(vectors, p=2, dim=1)              # (batch_size, dim)
+
+        # Compute cosine similarity: (batch_size, num_embeddings)
+        similarity = torch.matmul(vector_norm, embedding_norm.T)
+
+        # Take the index of the highest similarity (closest match)
+        nearest_indices = similarity.argmax(dim=1)
+
+        return nearest_indices
+
+    def transcribe(
+            self,
+            audio_signal: Union[torch.Tensor, List[torch.Tensor]],
+            tokenizer: spm.SentencePieceProcessor,
+            targets: List[str] = None,
+            previous_text_conditioning: bool = False,
+            max_sequence_length: int = -1,
+            max_generate: int = 'encoder_states',
+            device: str = None,
+            verbose=True,
+            bos_id=0,
+            ctc_history=False,
+            synthetic_history=False,
+            sample=False,
+            temperature=0.2,
+            sample_synthetic_history=True,
+            temperature_synthetic_history=0.9,
+            eval_ctc=False,
+            first_pass_ctc=False,
+            min_seq_len = -1
+    ):
+        tensor_input = isinstance(audio_signal, torch.Tensor)
+        assert not tensor_input
+        if device == None:
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.to(device)
+        
+        elif isinstance(audio_signal, list) and all(isinstance(a, torch.Tensor) for a in audio_signal): audios = audio_signal
+        else: raise ValueError('audio_signal must be a torch.Tensor or a list of torch.Tensors')
+
+        results = []
+        prev_id = self.get_prev_id()
+        prompt = None
+
+
+        for i, audio in enumerate(audios):
+            if audio.shape[-1] < min_seq_len and min_seq_len > 0: audio = torch.cat((audio, torch.zeros(1, audio.shape[1], min_seq_len-audio.shape[2])), dim=-1)
+            audio = audio.to(device)
+            print(f'Audio shape: {audio.shape}') if verbose else None
+            assert audio.dim() == 3, f'Audio signal must be a 3D tensor (B, T, C) got {audio.dim()}'
+            assert audio.shape[0] == 1, f'currently only supports batch size of 1, got {audio.shape[0]}'    
+
+            if targets is not None:
+                target = targets[i]
+                #print(f'Target: {target}') if verbose else None
+                int_target = tokenizer.encode(target)
+                #print(f'Int target: {int_target}') if verbose else None
+                prompt = [bos_id] + int_target + [bos_id]
             
+
+                # prev_embed = self.language_model_decoder.embed(torch.LongTensor([bos_id]).to(audio.device).unsqueeze(0))
+                # bos_embed = self.language_model_decoder.embed(torch.LongTensor([bos_id]).to(audio.device).unsqueeze(0))
+                # average_emedding = self.language_model_decoder.embed.weight.mean(dim=0, keepdim=True).unsqueeze(0)
+                # average_emedding = average_emedding.repeat(1, 40, 1)
+                # prompt_sequence = average_emedding
+
+                # a_hidden = None
+                # for i in range(2):
+                #     prompt = torch.cat([prev_embed, prompt_sequence, bos_embed], dim=1)
+                #     prompt = nn.Parameter(prompt, requires_grad=True)
+                #     target_embedding = self.language_model_decoder.embed(torch.LongTensor(int_target).to(audio.device).unsqueeze(0))
+                #     text_input = torch.cat([prompt, target_embedding], dim=1)
+
+                #     target_sequence = int_target + [bos_id]
+                #     target_sequence_length = len(target_sequence)
+                #     target_sequence = torch.LongTensor(target_sequence).to(audio.device).unsqueeze(0)
+                    
+                #     if a_hidden is None:
+                #         out = self.forward(audio, text_input)
+                #         a_hidden = out['a_hidden']
+                #         preds = out['final_posteriors_lm'][:, -target_sequence_length:, :]
+                #     else:
+                #         out = self.language_model_decoder(
+                #             tokens= text_input,
+                #             a_hidden = a_hidden,
+                #             a_lengths = torch.tensor([audio.shape[1]]).to(audio.device),
+                #         )
+                #         preds = out['logits'][:, -target_sequence_length:, :]
+
+                #     loss = F.cross_entropy(
+                #         input = preds.reshape(-1, preds.shape[-1]),
+                #         target = target_sequence.reshape(-1),
+                #         ignore_index = -100,
+                #         reduction = 'mean'
+                #     )
+                #     # get gradient w.r.t. the prompt
+                #     grad = torch.autograd.grad(loss, prompt, retain_graph=False)[0]
+                    
+                    
+                #     prompt_sequence = prompt[:,1:-1, :].detach().clone()
+                #     prompt_sequence = prompt_sequence - grad[:, 1:-1, :].detach() * 5
+            
+                # nearest_ = self.match_vectors_to_embeddings(self.language_model_decoder.embed.weight, prompt_sequence.reshape(-1, prompt_sequence.shape[-1])).tolist()
+                # nearest = []
+                # for el in nearest_:
+                #     if el != 0: nearest.append(el)
+                #     else: break
+                # try:
+                #     print(f'decoded nearest: {tokenizer.decode(nearest)}') if verbose else None
+                # except:
+                #     print(f'failed to decode nearest: {nearest}') if verbose else None
+                # #print(nearest)
+      
+                # prompt = [bos_id] + nearest + [bos_id]
+                
+                # print(self.language_model_decoder.embed(prompt).shape) if verbose else None
+            
+            #prompt = [prev_id] + tokenizer.encode("hello how are you? not bad okay thats fine i dont mind whatever") + [bos_id]
+            output = self.generate(
+                audio_signal = audio,
+                max_generate = max_generate,
+                return_encoder_states = False,
+                prompt = prompt,
+                bos_id = bos_id,
+                return_ctc_states = ctc_history,
+                encoder_states=None,     
+                sample=sample,
+                temperature=temperature,    
+            )
+            out_sequence = output['text_sequence']
+            decoded_sequence = tokenizer.decode(out_sequence) 
+
+
+            if verbose: print(f'Decoded sequence: {decoded_sequence}')
+            results.append(decoded_sequence.strip())
+
+
+        return results
+
+
+       
 
 import argparse
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoint', type=str, default=None)
     parser.add_argument('--save_path', type=str, default=None)
-    parser.add_argument('--to_generate', type=int, default=20)
+
     args = parser.parse_args()
     if args.checkpoint is not None:
         RLEncDecSconformerV2.reformat_checkpoint(
             checkpoint_path=args.checkpoint,
             save_path=args.save_path,
-            to_generate=args.to_generate
         )
     else:
         # run debug tests
