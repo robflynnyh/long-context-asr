@@ -360,7 +360,7 @@ def main(args):
     checkpoint_dir = args.config['checkpointing']['dir']
     if not os.path.exists(checkpoint_dir): os.makedirs(checkpoint_dir); print(f'created checkpoint dir: {checkpoint_dir}')
 
-    tokenizer = lcasr.utils.audio_tools.load_tokenizer()
+    tokenizer = lcasr.utils.audio_tools.load_tokenizer(**({"tokenizer_path": args.config["training"]["tokenizer_path"]} if "tokenizer_path" in args.config["training"] else {}))
     # set random seed for initialization
     torch.manual_seed(12345), torch.cuda.manual_seed(12345)
     model = load_model(args.config, tokenizer.vocab_size(), get_model_class(config = args.config))
