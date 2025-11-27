@@ -155,6 +155,9 @@ def train(
         ###############################
         cur_podcast += audio.shape[0]
         podcasts_since_last_save += (cur_podcast - last_podcast)
+
+        if args.config["training"].get("max_steps", float("inf")) <= cur_podcast:
+            finished = True
         if podcasts_since_last_save > args.config['checkpointing']['save_every_n_steps']:
             torch.cuda.empty_cache() 
             save_model(
@@ -215,7 +218,7 @@ def train(
                 audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
                 txt, t_lengths = chunk_json['txt'], chunk_json['txt_lengths']
                 selection_mask = chunk_json['selection_mask']
-                print(tokenizer.decode(txt[0][:t_lengths[0]].tolist()))
+                # print(tokenizer.decode(txt[0][:t_lengths[0]].tolist())) debug
 
                 cur_selection_mask = None
                 if prev_selection_mask != None and not torch.allclose(selection_mask, prev_selection_mask):

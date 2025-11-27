@@ -68,7 +68,7 @@ training:
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
   random_seed: 6433
- 
+  tokenizer_path: /users/acp21rjf/long-context-asr/lcasr/artifacts/floras50/tokenizer.model
 
 sequence_scheduler:
   increase_every: 5000
