@@ -37,11 +37,11 @@ model:
 optimizer:
   name: madgrad
   args:
-    lr: 1e-6
+    lr: 1e-3
 scheduler:
-  warmup_steps: 3500
+  warmup_steps: 100
 audio_chunking:
-  size: 2048
+  size: 512
   overlap: 0
 wandb:
   use: false
@@ -61,7 +61,7 @@ data:
 
 training:
   start_spec_augment_after_n_epochs: 0
-  batch_size: 1
+  batch_size: 20
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0

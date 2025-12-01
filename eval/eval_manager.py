@@ -4,14 +4,18 @@ from lcasr.utils.omegaconf import OmegaConf
 import os
 import pandas as pd
 from tqdm import tqdm
-from lcasr.utils.helpers import ArgsClass
-from run import main as run_eval, datasets_functions
+import importlib
+
 accepted_splits = ['test', 'dev', 'train', 'all']
 
+class ArgsClass():
+    def __init__(self, args_dict):
+        self.__dict__.update(args_dict)
 
-    
+    def __contains__(self, key):
+        return key in self.__dict__.keys()
 
-def checks(config):
+def checks(config, datasets_functions):
     for dataset in config.datasets:
         assert dataset.name in datasets_functions.keys(), f'Dataset {dataset} not found! must be one of {datasets_functions.keys()}'
     for model in config.models:
@@ -56,13 +60,8 @@ def get_data_to_save(config, wers, split, dataset, model):
 
     return data
 
-def check_if_already_evaluated(model_save_path, cur_df, dataset, split, args):
-    '''
-    ADD CHECKS FOR DATASET ASWELL AND SPLIT AS MODEL CAN BE EVALUATED ON MULTIPLE DATASETS AND SPLITS (currently only checks model_save_path)
-    '''
-    # check if a model with the same checkpoint path has already been evaluated
-    if cur_df is None:
-        return False
+def check_if_already_evaluated(model_save_path, cur_df, dataset, split, args): # check if a model with the same checkpoint path has already been evaluated
+    if cur_df is None: return False
     
     cur_df = cur_df.loc[cur_df['checkpoint'] == model_save_path].loc[cur_df['dataset'] == dataset].loc[cur_df['split'] == split]
     cur_df = cur_df.loc[cur_df['seq_len'] == args.seq_len]
@@ -74,7 +73,10 @@ def check_if_already_evaluated(model_save_path, cur_df, dataset, split, args):
        
 def main(args, config):
     datasets = list(set([el.name for el in config.datasets]))
-    checks(config)
+    run_eval_with = config.get('args', {}).get('run_eval_with', args.run_eval_with)
+    run_eval_module = importlib.import_module(run_eval_with)
+    run_eval, datasets_functions = run_eval_module.main, run_eval_module.datasets_functions
+    checks(config, datasets_functions = datasets_functions)
 
     print(f'Running evals on datasets: {", ".join(datasets)}')
     print(f'Checkpoints to evaluate: {len(config.models)}')
@@ -108,6 +110,7 @@ def main(args, config):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-config', '--config', type=str, default='eval_config.yaml', help='path to config file for eval')
+    parser.add_argument('-run', '--run_eval_with', type=str, default='run', help='path to eval module, i.e run.py (without .py included)')
     args = parser.parse_args()
     args.log = ''
     

@@ -209,6 +209,8 @@ def train(
             if not scheduler.is_warmup and was_warmup:
                 scheduler.set_cosine_schedule(total_recordings=total_recordings, cur_podcast=cur_podcast)
         prev_selection_mask, last_kv_set = None, None # selection mask from previous chunk
+        if args.config["training"].get("shuffle_chunks", False):
+            random.shuffle(chunks)
         ################################
  
         try:
@@ -255,13 +257,12 @@ def train(
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
                 # check for nan in loss
                 if torch.isnan(loss):
-                    print('OH NO! NAN IN LOSS, SKIPPING') # TODO: set kv cache to None here
+                    print('OH NO! NAN IN LOSS, SKIPPING') 
                     wandb.log({'nan':True}) if wandb_config['use'] else None
                     optimizer.zero_grad() # clear gradients
                     nans_in_a_row += 1
                     if nans_in_a_row > 100:
-                        print('100 NANS in a row, exiting......')
-                        exit()
+                        raise ValueError('100 NANS in a row, exiting!')
                     continue
                 else:
                     nans_in_a_row = 0

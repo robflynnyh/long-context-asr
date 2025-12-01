@@ -49,7 +49,12 @@ def main(args):
 
     verbose = args.__dict__.get('verbose', True)   
 
-    tokenizer = lcasr.utils.audio_tools.load_tokenizer()
+    tokenizer = {}
+    if args.get("tokenizer_path", None) is not None:
+        tokenizer = {"tokenizer_path": args.tokenizer_path}
+        print("Using tokenizer path from args:", args.tokenizer_path)
+
+    tokenizer = lcasr.utils.audio_tools.load_tokenizer(**tokenizer)
     model = load_model(args.config, tokenizer.vocab_size(), model_class=get_model_class({'model_class': args.config.get('model_class', args.model_class)}))
     model.print_total_params()
     model.load_state_dict(checkpoint['model'], strict=False)
