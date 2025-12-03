@@ -15,6 +15,7 @@ from tedlium.run import get_text_and_audio as get_text_and_audio_tedlium
 from rev16.run import get_text_and_audio as get_text_and_audio_rev16
 from this_american_life.run import get_text_and_audio as get_text_and_audio_this_american_life
 from spotify.run import get_text_and_audio as get_text_and_audio_spotify
+from floras50.run import get_text_and_audio as get_text_and_audio_floras50
 
 datasets_functions = {
     'earnings22_full': get_text_and_audio_earnings22_full,
@@ -22,7 +23,8 @@ datasets_functions = {
     'tedlium': get_text_and_audio_tedlium,
     'rev16': get_text_and_audio_rev16,
     'this_american_life': get_text_and_audio_this_american_life,
-    'spotify': get_text_and_audio_spotify
+    'spotify': get_text_and_audio_spotify,
+    'floras50': get_text_and_audio_floras50,
 }
 
 
@@ -78,9 +80,8 @@ def main(args):
     pbar = tqdm(range(len(data)), total=len(data)) #if verbose else range(len(data))
     for rec in pbar:
         if verbose: print(f'Processing {rec+1}/{len(data)}')
-        
-        if verbose: print('\n-------\n'+data[rec]['id']+'\n-------\n')
 
+        if verbose: print('\n-------\n'+data[rec]['id']+'\n-------\n')
         
         audio_spec, gold_text = data[rec]['process_fn'](data[rec])
         

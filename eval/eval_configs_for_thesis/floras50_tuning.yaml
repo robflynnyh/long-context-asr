@@ -9,23 +9,23 @@ global:
 
 models:
 
-  - name: floras50tuning
+  - name: 8e4
     repeat: 1
     seq_len: 32768
     overlap_ratio: 0.875
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    path: /mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb_6epoch_/n_seq_sched_32768_rp_1_8e4/step_182892.pt
   
-  - name: floras50tuning
+  - name: 8e4
     repeat: 2
     seq_len: 32768
     overlap_ratio: 0.875
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    path: /mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb_6epoch/n_seq_sched_32768_rp_2_8e4/step_182892.pt
 
-  - name: floras50tuning
+  - name: 8e4
     repeat: 3
     seq_len: 32768
     overlap_ratio: 0.875
-    path: ${global.root_path}${.seq_len}_rp_${.repeat}/${global.checkpoint}
+    path: /mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb_6epoch/n_seq_sched_32768_rp_3_8e4/step_182892.pt
 
 
 
@@ -50,4 +50,6 @@ datasets:
   - name: rev16
     splits: [test]
   - name: earnings22
+    splits: [test, dev]
+  - name: floras50
     splits: [test, dev]

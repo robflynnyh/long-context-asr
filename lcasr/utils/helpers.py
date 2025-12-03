@@ -9,6 +9,10 @@ def exists(item):
 def load_json(jfile:str) -> Dict:
     with open(jfile, 'r') as f:
         return json.load(f)
+    
+def load_text(path:str) -> str:
+    with open(path, 'r', encoding='utf-8') as f:
+        return f.read()
 
 def load_pairs(pairs:str = '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json') -> Dict:
     return load_json(pairs)
@@ -25,3 +29,6 @@ class ArgsClass():
 
     def __contains__(self, key):
         return key in self.__dict__.keys()
+    
+    def get(self, key, default=None):
+        return self.__dict__.get(key, default)

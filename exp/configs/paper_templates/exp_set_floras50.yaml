@@ -56,7 +56,7 @@ model:
 optimizer:
   name: 'madgrad'
   args:
-    lr: 6e-4
+    lr: 1e-3
 
 scheduler:
   warmup_steps: 9000
@@ -91,9 +91,9 @@ wandb:
   use: true
   project_name: "floras50_long_context"
   name: [
-    'rb_f50_n_seq_sched_32768_rp_1',
-    'rb_f50_n_seq_sched_32768_rp_2',
-    'rb_f50_n_seq_sched_32768_rp_3',
+    'rb_f50_n_seq_sched_32768_rp_1_1e3',
+    'rb_f50_n_seq_sched_32768_rp_2_1e3',
+    'rb_f50_n_seq_sched_32768_rp_3_1e3',
     # 'rb_f50_n_seq_sched_65536_rp_1',
     # 'rb_f50_n_seq_sched_65536_rp_2',
     # 'rb_f50_n_seq_sched_65536_rp_3',
@@ -108,9 +108,9 @@ wandb:
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb_6epoch/n_seq_sched_32768_rp_1',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb_6epoch/n_seq_sched_32768_rp_2',  
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb_6epoch/n_seq_sched_32768_rp_3',
+    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb_6epoch_/n_seq_sched_32768_rp_1_1e3',
+    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb_6epoch/n_seq_sched_32768_rp_2_1e3',  
+    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb_6epoch/n_seq_sched_32768_rp_3_1e3',
     # '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_65536_rp_1',
     # '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_65536_rp_2',
     # '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_65536_rp_3',

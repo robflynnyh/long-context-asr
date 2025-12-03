@@ -5,15 +5,10 @@ import os
 import pandas as pd
 from tqdm import tqdm
 import importlib
+from lcasr.utils.helpers import ArgsClass
 
 accepted_splits = ['test', 'dev', 'train', 'all']
 
-class ArgsClass():
-    def __init__(self, args_dict):
-        self.__dict__.update(args_dict)
-
-    def __contains__(self, key):
-        return key in self.__dict__.keys()
 
 def checks(config, datasets_functions):
     for dataset in config.datasets:
