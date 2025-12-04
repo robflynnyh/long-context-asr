@@ -23,7 +23,7 @@ source activate /mnt/parscratch/users/acp21rjf/conda/main/
 """,
     'h100':f"""#!/bin/bash\n
 #SBATCH --time=96:00:00
-#SBATCH --mem=110GB
+#SBATCH --mem=130GB
 #SBATCH --partition=gpu-h100
 #SBATCH --gres=gpu:1   
 #SBATCH --qos=gpu
