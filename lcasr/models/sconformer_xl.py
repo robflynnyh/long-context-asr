@@ -166,7 +166,8 @@ class SCConformerXL(BaseModel):
             length = None, 
             cached_kvs = None, 
             cached_kv_lengths = None, 
-            return_logits = False
+            return_logits = False,
+            skip_vocab_projection = False, # for pretraining
         ):
         '''
         audio_signal: (batch_size, time, feat)
@@ -243,14 +244,17 @@ class SCConformerXL(BaseModel):
                 iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
                 audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))        
 
-        
-        audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
-        final_posts = decoder(x = audio_signal, logits = return_logits) # having decoder.norm should have been removed is sortof a bug but probably doesn't matter
+        if skip_vocab_projection:
+            output_dict = {'hidden_states': audio_signal, 'length': length,}
+        else:
+            audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
+            final_posts = decoder(x = audio_signal, logits = return_logits) 
+            output_dict = {'final_posteriors': final_posts, 'length': length,}
 
         if self.training and self.rotary_pos_emb is not None:
             self.rotary_pos_emb.reset_if_needed()
 
-        return {'final_posteriors': final_posts, 'length': length,}
+        return output_dict
 
 
 class ConformerLayer(nn.Module):

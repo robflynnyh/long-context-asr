@@ -1,0 +1,144 @@
+global:
+  root_path: "/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/"
+  name: rotary_pos_6l_768d_pre_windowed_floras_trained
+  seq_len: 360000
+  checkpoint: step_182892.pt
+  overlap_ratio: 0.875
+  description: "training (on FLORAS-50) + eval with windowed attention at fixed seq len and varying window sizes"
+  downsampling: 8
+
+models:
+ 
+  - name: ${global.name}
+    repeat: 1
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio} 
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+  # - name: ${global.name}
+  #   repeat: 2
+  #   window_size: 128
+  #   seq_len: ${global.seq_len}
+  #   overlap_ratio: ${global.overlap_ratio}
+  #   path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+  - name: ${global.name}  
+    repeat: 3
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+
+
+  - name: ${global.name}
+    repeat: 1
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+   
+  - name: ${global.name}
+    repeat: 2
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+   
+  - name: ${global.name} 
+    repeat: 3
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+   
+
+
+  - name: ${global.name}
+    repeat: 1
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+   
+  - name: ${global.name}
+    repeat: 2
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+    
+  - name: ${global.name}
+    repeat: 3
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+  
+
+
+  - name: ${global.name}
+    repeat: 1
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+    
+  - name: ${global.name}
+    repeat: 2
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+    
+  - name: ${global.name} # Not finished!!
+    repeat: 3
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+
+
+  - name: ${global.name}
+    repeat: 1
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: "/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_1_1e3/${global.checkpoint}"
+   
+  - name: ${global.name}
+    repeat: 2
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: "/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_2_1e3/${global.checkpoint}"
+   
+  - name: ${global.name}
+    repeat: 3
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: "/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_3_1e3/${global.checkpoint}"
+
+
+args:
+  verbose: true
+  model_class: SCConformerXL
+  evaluation_mode: windowed_attention
+  max_sequence_length: 3600000
+  save_dataframe_path: './results/thesis/floras50_final.csv'
+  tokenizer_path: "/users/acp21rjf/long-context-asr/lcasr/artifacts/floras50/tokenizer.model"
+  # run_eval_with: concat_tedlium_eval
+
+datasets:
+  - name: earnings22_full
+    splits: [test]
+  - name: this_american_life
+    splits: [test, dev]
+  - name: tedlium
+    splits: [test, dev]
+    args:
+      single_utterance: false
+      concat: false
+  - name: rev16
+    splits: [test]
+  - name: earnings22
+    splits: [test, dev]

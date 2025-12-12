@@ -32,24 +32,24 @@ models:
 args:
   verbose: true
   model_class: SCConformerXL
-  save_dataframe_path: './results/thesis/floras50_tuning.csv'
-  evaluation_mode: windowed_attention
+  save_dataframe_path: './results/thesis/floras50_tuning2.csv'
+  evaluation_mode: buffered
   max_sequence_length: 3600000
   tokenizer_path: "/users/acp21rjf/long-context-asr/lcasr/artifacts/floras50/tokenizer.model"
 
 datasets:
-  - name: earnings22_full
-    splits: [test]
-  - name: this_american_life
-    splits: [test, dev]
-  - name: tedlium
-    splits: [test, dev]
-    args:
-      single_utterance: false
-      concat: false
-  - name: rev16
-    splits: [test]
-  - name: earnings22
-    splits: [test, dev]
+  # - name: earnings22_full
+  #   splits: [test]
+  # - name: this_american_life
+  #   splits: [test, dev]
+  # - name: tedlium
+  #   splits: [test, dev]
+  #   args:
+  #     single_utterance: false
+  #     concat: false
+  # - name: rev16
+  #   splits: [test]
+  # - name: earnings22
+  #   splits: [test, dev]
   - name: floras50
     splits: [test, dev]

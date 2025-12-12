@@ -3,6 +3,8 @@ from typing import Dict
 import torch
 from omegaconf.omegaconf import OmegaConf
 
+
+
 def exists(item):
     return item is not None
 
@@ -32,3 +34,5 @@ class ArgsClass():
     
     def get(self, key, default=None):
         return self.__dict__.get(key, default)
+
+

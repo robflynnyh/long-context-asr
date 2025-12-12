@@ -94,8 +94,11 @@ def main(args, config):
                 if check_if_already_evaluated(model.path, cur_df, dataset=dataset_reference, split=split, args=args): print(f'Skipping {model.path} as it has already been evaluated'); continue
                 wers, model_config = run_eval(args = args)
                 data_to_save = get_data_to_save(config, wers, split, dataset_reference, model)
-                df = pd.DataFrame(data_to_save)
-                df.to_csv(config.args.save_dataframe_path, mode='a', header=not os.path.exists(config.args.save_dataframe_path)) if config.args.save_dataframe_path != '' else None
+                if config.args.save_dataframe_path != '':
+                    print(f'Saving results to {config.args.save_dataframe_path}')
+                    df = pd.DataFrame(data_to_save)
+                    df.to_csv(config.args.save_dataframe_path, mode='a', header=not os.path.exists(config.args.save_dataframe_path)) 
+
                 evals_completed += 1
                 pbar.update(1)
                 results.append(data_to_save)

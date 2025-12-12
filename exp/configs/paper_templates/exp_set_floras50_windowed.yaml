@@ -17,7 +17,7 @@ template_info:
   template_keys: [
     'checkpointing.dir', 
     'wandb.name', 
-    'sequence_scheduler.max_sequence_length',
+    'model.attention_window_size',
     'training.random_seed'
   ] # keys to use to create experiments
 
@@ -52,14 +52,28 @@ model:
   bias_in_ff: false
   checkpoint_every_n_layers: 0
   rotary_base_freq: 1500000 # https://arxiv.org/pdf/2309.16039.pdf
+  attention_window_size: [
+    128, # 2048
+    128,
+    128,
+    512, # 8192
+    512,
+    512,
+    2048, # 32768
+    2048,
+    2048,
+    8192, # 131072
+    8192,
+    8192,
+  ]
 
 optimizer:
   name: 'madgrad'
   args:
-    lr: 6e-4
+    lr: 1e-3
 
 scheduler:
-  warmup_steps: 9000
+  warmup_steps: 9600
 
 audio_chunking: # 360000 (max = 1 hour)
   size: 2048
@@ -69,26 +83,7 @@ sequence_scheduler:
   increase_every: 8000
   stop_after: 90000
   start_after: 0
-  max_sequence_length: [
-    # 2048,
-    # 2048,
-    # 2048,
-    8192,
-    8192,
-    8192,
-    32768,
-    32768,
-    32768,
-    65536,
-    65536,
-    65536,
-    131072,
-    131072,
-    131072,
-    360000,
-    360000,
-    360000,
-  ]
+  max_sequence_length: 360000
   increase_by_multiplier: 2
   batch_size_multiplier: 0.5
   interpolate_rotary: false
@@ -97,47 +92,35 @@ wandb:
   use: true
   project_name: "floras50_long_context"
   name: [
-    # 'rb_f50_n_seq_sched_2048_rp_1_6e4',
-    # 'rb_f50_n_seq_sched_2048_rp_2_6e4',
-    # 'rb_f50_n_seq_sched_2048_rp_3_6e4',
-    'rb_f50_n_seq_sched_8192_rp_1_6e4',
-    'rb_f50_n_seq_sched_8192_rp_2_6e4',
-    'rb_f50_n_seq_sched_8192_rp_3_6e4',
-    # 'rb_f50_n_seq_sched_32768_rp_1_6e3',
-    # 'rb_f50_n_seq_sched_32768_rp_2_6e3',
-    # 'rb_f50_n_seq_sched_32768_rp_3_6e3',
-    'rb_f50_n_seq_sched_65536_rp_1_6e4',
-    'rb_f50_n_seq_sched_65536_rp_2_6e4',
-    'rb_f50_n_seq_sched_65536_rp_3_6e4',
-    'rb_f50_n_seq_sched_131072_rp_1_6e4',
-    'rb_f50_n_seq_sched_131072_rp_2_6e4',
-    'rb_f50_n_seq_sched_131072_rp_3_6e4',
-    'rb_f50_n_seq_sched_360000_rp_1_6e4',
-    'rb_f50_seq_sched_360000_rp_2_6e4',
-    'rb_f50_seq_sched_360000_rp_3_6e4',
+    'f50_w128_1e3_rp_1',
+    'f50_w128_1e3_rp_2',
+    'f50_w128_1e3_rp_3',
+    'f50_w512_1e3_rp_1',
+    'f50_w512_1e3_rp_2',
+    'f50_w512_1e3_rp_3',
+    'f50_w2048_1e3_rp_1',
+    'f50_w2048_1e3_rp_2',
+    'f50_w2048_1e3_rp_3',
+    'f50_w8192_1e3_rp_1',
+    'f50_w8192_1e3_rp_2',
+    'f50_w8192_1e3_rp_3',
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    # '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_2048_rp_1_6e4',
-    # '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_2048_rp_2_6e4',
-    # '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_2048_rp_3_6e4',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_8192_rp_1_6e4',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_8192_rp_2_6e4',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_8192_rp_3_6e4',
-    # '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb_6epoch_/n_seq_sched_32768_rp_1_1e3',
-    # '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb_6epoch/n_seq_sched_32768_rp_2_1e3',  
-    # '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb_6epoch/n_seq_sched_32768_rp_3_1e3',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_65536_rp_1_6e4',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_65536_rp_2_6e4',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_65536_rp_3_6e4',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_131072_rp_1_6e4',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_131072_rp_2_6e4',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_131072_rp_3_6e4',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_1_6e4',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_2_6e4',
-    '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_3_6e4',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_1',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_3',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_1',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_3',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_1',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_3',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_1',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_3',
   ]
   save_every_n_steps: 2000
 
@@ -170,13 +153,13 @@ training:
   clip_value: 0.8
   intermediate_loss_weighting: 0.0
   random_seed: [
-    12341,
-    64321,
+    95417,
+    4324,
     98761, #1
-    96431,
-    4321,
+    964112331,
+    42321,
     671819, #2
-    8241,
+    82641,
     12233,
     4322, #3
     12135,
