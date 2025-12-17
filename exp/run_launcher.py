@@ -10,12 +10,12 @@ SAVE_DIR = './.tmp'
 
 run_strings = {
     'a100':f"""#!/bin/bash\n
-#SBATCH --time=90:00:00
-#SBATCH --mem=140GB
+#SBATCH --time=15:00:00
+#SBATCH --mem=52GB
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --qos=gpu
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=4
 
 module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main/
@@ -31,6 +31,18 @@ source activate /mnt/parscratch/users/acp21rjf/conda/main/
 
 module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main/
+
+""",
+    'h100nvl':f"""#!/bin/bash\n
+#SBATCH --time=90:00:00
+#SBATCH --mem=140GB
+#SBATCH --partition=gpu-h100-nvl
+#SBATCH --gres=gpu:h100:1   
+#SBATCH --qos=gpu
+#SBATCH --cpus-per-task=8
+
+module load Anaconda3/2022.10
+source activate /mnt/parscratch/users/acp21rjf/conda/main
 
 """
 }
@@ -67,7 +79,7 @@ def main(args):
 
     for i in range(len(copies)):
         OmegaConf.save(copies[i], os.path.join(SAVE_DIR, f'{names[i]}.yaml'))
-        run_string_cmd = f"\npython {args.launch} -config {os.path.join(SAVE_DIR, f'{names[i]}.yaml')}" # -debug_hooks
+        run_string_cmd = f"\npython {args.launch} -config {os.path.join(SAVE_DIR, f'{names[i]}.yaml')} --remove_scheduler --reset_step" 
         run_string = run_strings[args.mode] + run_string_cmd
         with open(os.path.join(SAVE_DIR, f'{names[i]}.sh'), 'w') as f:
             f.write(run_string)

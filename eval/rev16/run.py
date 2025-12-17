@@ -13,7 +13,10 @@ from lcasr.decoding.greedy import GreedyCTCDecoder
 normalize = EnglishTextNormalizer()
 
 DATA_PATH = '/mnt/parscratch/users/acp21rjf/rev_benchmark'
-TEST_IDS = '/mnt/parscratch/users/acp21rjf/rev_benchmark/test.txt'
+TEST_IDS = 'test.txt'
+TEST_IDS_LONG = 'test_long.txt'
+
+
 
 
 def open_txt(path:str):
@@ -21,7 +24,8 @@ def open_txt(path:str):
         return f.read().strip()
 
 def fetch_data(data_path:str = DATA_PATH, ids:str = TEST_IDS):
-    with open(TEST_IDS, 'r') as f:
+    full_path = os.path.join(data_path, ids)
+    with open(full_path, 'r') as f:
         IDS = f.read().strip().split(" ")
         IDS = [el.strip() for el in IDS if el.strip() != '']
 
@@ -47,8 +51,9 @@ def preprocess_transcript(text:str):
 def process_text_and_audio_fn(rec_dict): return processing_chain(rec_dict['audio']), preprocess_transcript(rec_dict['text'])
 
 def get_text_and_audio(split, **kwargs):
-    assert split in ['test'], 'Split must be test'
-    audio_files, text_files = fetch_data(data_path = DATA_PATH, ids = TEST_IDS)
+    assert split in ['test', 'test_long'], 'Split must be test or test_long'
+    ids = TEST_IDS if split == 'test' else TEST_IDS_LONG
+    audio_files, text_files = fetch_data(data_path = DATA_PATH, ids = ids)
     return_data = []
     for rec in range(len(audio_files)):
         return_data.append({
@@ -61,8 +66,8 @@ def get_text_and_audio(split, **kwargs):
     return return_data
 
 def main(args):
-    assert args.split in ['test'], 'Split must be test'
-    IDS = TEST_IDS
+    assert args.split in ['test', 'test_long'], 'Split must be test or test_long'
+    IDS = TEST_IDS if args.split == 'test' else TEST_IDS_LONG
     
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']

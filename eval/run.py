@@ -46,6 +46,8 @@ def main(args):
         args.config.model.attention_window_size = window_size
         args.seq_len = args.__dict__.get('max_sequence_length', 3600000) # 10 hours
     if args.__dict__.get('evaluation_mode', 'averaged_moving_window') == 'buffered': eval_fn = buffered_eval
+    if args.__dict__.get('overide_window_size', None) is not None:
+        args.config.model.attention_window_size = args.overide_window_size
     
     include_per_recording_evaluations = args.__dict__.get('include_per_recording_evaluations', False)
 

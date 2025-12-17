@@ -4,6 +4,8 @@ import argparse
 from tqdm import tqdm
 from typing import Dict, List, Tuple
 from lcasr.models.sconformer_xl import SCConformerXL
+from lcasr.models.BestRQ import BestRQ
+
 from omegaconf.omegaconf import OmegaConf
 import traceback
 from lcasr.utils.dataloading import VariableBatchSimpleDataloader, chunk_spectogram, chunk_text_json, reset_seen_ids
@@ -79,7 +81,7 @@ def get_dtype(dtype:str) -> torch.dtype:
 
 def train(
         args:argparse.Namespace,
-        model:torch.nn.Module, 
+        best_rq:BestRQ, 
         dataloader:torch.utils.data.DataLoader, 
         optimizer:torch.optim.Optimizer,
         scheduler:CosineLRScheduler,
@@ -88,7 +90,6 @@ def train(
         step:int = 0,
         seen_ids:List[str] = [],
         epoch:int = 0,
-        augmentation:SpecAugment = None,
     ):
     scaler = GradScaler() 
     clip_value = args.config['training'].get('clip_value', 0.8) 
@@ -98,27 +99,23 @@ def train(
     rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
     resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
 
-    model.train()
+    best_rq.train()
 
-    model_dtype = next(model.parameters()).dtype
-    ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
+    model_dtype = next(best_rq.parameters()).dtype
 
     backprop_every, backwards_every = args.config['training']['backprop_every'], args.config['training'].get('backwards_every', 1)
     assert backprop_every >= backwards_every, f'backprop_every ({backprop_every}) must be >= backwards_every ({backwards_every})'
     
     batch_size = args.config['training']['batch_size']
-    max_cache_length = args.config['training'].get('max_cache_length', 0)
 
     cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
 
-    tokenizer = dataloader.tokenizer
     chunk_size, chunk_overlap = args.config.audio_chunking['size'], 0 # previously args.config.audio_chunking['overlap'] though this is not used anymore
 
     if exists(sequence_scheduler):
         chunk_size = sequence_scheduler.cur_sequence_length
         batch_size = sequence_scheduler.cur_batch_size
 
-    pad_id = tokenizer.pad_id()
     last_podcast, cur_podcast, podcasts_since_last_save = step, step, 0
     max_epochs = args.config['training'].get('max_epochs', 1)
 
@@ -148,7 +145,7 @@ def train(
             continue
         ################################
 
-        audio, audio_lengths, txt, ids = batch
+        audio, audio_lengths, _, ids = batch
         seen_ids.extend(ids)
         cur_batch_size = audio.shape[0]
 
@@ -161,7 +158,7 @@ def train(
         if podcasts_since_last_save > args.config['checkpointing']['save_every_n_steps']:
             torch.cuda.empty_cache() 
             save_model(
-                model = model, 
+                model = best_rq.model, 
                 optimizer = optimizer, 
                 scheduler = scheduler, 
                 podcast_step = cur_podcast, 
@@ -169,6 +166,7 @@ def train(
                 sequence_scheduler = sequence_scheduler,
                 seen_ids = seen_ids,
                 epoch = epoch,
+                other = {'best_rq_out_projection': best_rq.out_projection.state_dict()},
             )
             podcasts_since_last_save = 0
         last_podcast = cur_podcast
@@ -356,8 +354,9 @@ def main(args):
         args.config['wandb']['id'] = wandb.run.id # add wandb config to args.config
         if wandb_config.get('update_config_with_wandb_id', False): OmegaConf.save(config=args.config, f=args.config_path)
 
-    model = model.to(device)
-    optimizer, scheduler = load_optimizer(args.config, model)
+    best_rq = BestRQ(model=model)
+    best_rq = model.to(device)
+    optimizer, scheduler = load_optimizer(args.config, best_rq)
 
     sequence_scheduler = None
     if 'sequence_scheduler' in args.config:
@@ -369,13 +368,24 @@ def main(args):
 
     seen_ids, step, epoch = load_checkpoint(
         args = args, 
-        model = model, 
+        model = best_rq.model, 
         optimizer = optimizer, 
         scheduler = scheduler, 
         sequence_scheduler = sequence_scheduler,
         path = args.config['checkpointing']['dir'],
         device = device
     )
+    _, _, _ = load_checkpoint(
+        args = args, 
+        model = best_rq.out_projection, 
+        optimizer = None, 
+        scheduler = None, 
+        sequence_scheduler = None,
+        path = args.config['checkpointing']['dir'],
+        model_key= 'best_rq_out_projection',
+        device = device
+    )
+
     if args.reset_step:
         seen_ids, step, epoch = [], 0, 0 
 
@@ -402,9 +412,6 @@ def main(args):
         random_seed = random_seed,
     )
 
-    # None if start_spec_augment_after_n_epochs == -1 or epoch < start_spec_augment_after_n_epochs else 
-    augmentation = SpecAugment(**args.config['spec_augment']) if 'spec_augment' in args.config else None
-    assert exists(augmentation) or start_spec_augment_after_n_epochs == -1, 'must have spec augment in config if start_spec_augment_after_n_epochs > 0'
 
     if args.debug_hooks:
         assert wandb_config['use'], 'must have wandb enabled when - arg.debug_hooks ==  True - to log debug hooks outputs'
@@ -417,7 +424,7 @@ def main(args):
 
     final_model = train(
         args = args, 
-        model = model, 
+        model = best_rq, 
         dataloader = dataloader, 
         optimizer = optimizer, 
         scheduler = scheduler,
@@ -425,7 +432,6 @@ def main(args):
         device = device, 
         seen_ids = seen_ids,
         step = step,
-        augmentation = augmentation,
         epoch = epoch
     )
 

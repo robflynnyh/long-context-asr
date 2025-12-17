@@ -10,6 +10,9 @@ except:
 
 from lcasr.models.base import BaseModel
 from lcasr.models.sconformer_xl import SCConformerXL
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def pad_feats(feats, divis_by): # pad from: https://github.com/speechbrain/speechbrain/blob/develop/recipes/LibriSpeech/self-supervised-learning/BEST-RQ/train.py
@@ -83,18 +86,18 @@ class BestRQ(BaseModel):
             codebook_dim = codebook_dim,      
             codebook_size = codebook_size    
         )
+        self.model = model
         
     def select_mask(self, B:int, T:int) -> torch.Tensor:
         frames_to_mask = self.frames_to_mask
-        masking_percentage = self.mask_percentage 
-        
+        masking_percentage = self.mask_percentage
         n_masks = T // frames_to_mask
         has_remainder = int((T % frames_to_mask) != 0)
         n_masks += has_remainder
 
         probs = torch.rand(B, n_masks)
         mask = probs < masking_percentage
-        mask = repeat(mask, 'b t -> b (t f)', frames_to_mask)[:, :T]
+        mask = repeat(mask, 'b t -> b (t f)', f=frames_to_mask)[:, :T]
         return mask
         
 
@@ -107,9 +110,10 @@ class BestRQ(BaseModel):
             length = None, 
         ):
         '''
-        audio_signal: (batch_size, time, feat) - mel spectrogram see lcasr.utils.audio_tools for how it is computed
+        audio_signal: (batch_size, feat, time) - mel spectrogram see lcasr.utils.audio_tools for how it is computed
         length: (batch_size,)
         '''
+        audio_signal = rearrange(audio_signal, 'b c t -> b t c')
         device = audio_signal.device
         audio_signal = pad_feats(audio_signal, self.downsampling_factor)
 
@@ -117,7 +121,7 @@ class BestRQ(BaseModel):
         ds = self.downsampling_factor
         T_stacked = T // ds
 
-        stacked_signal = audio_signal.view(B, T_stacked, C * self.downsampling_factor)
+        stacked_signal = audio_signal.reshape(B, T_stacked, C * self.downsampling_factor)
 
         # --- validity mask from lengths (assuming length is in mel frames) ---
         stacked_lengths = torch.div(length.to(device), ds, rounding_mode="floor").clamp(max=T_stacked)
@@ -128,10 +132,13 @@ class BestRQ(BaseModel):
         stacked_mask = stacked_mask & valid_stacked
 
         target_frames = stacked_signal[stacked_mask]  # (num_masked_frames, C * downsampling_factor)
-        if target_frames.shape[0] == 0: return
+        if target_frames.shape[0] == 0: 
+            logging.warning("no masked frames selected, returning zero loss")
+            return {'loss': torch.tensor(0.0, device=device, requires_grad=True)}
+        
         targets = self.quantizer(target_frames[None]).squeeze(0) # (num_masked_frames, 1)
 
-        mask = repeat(stacked_mask, 'b t -> b (t f)', self.downsampling_factor)
+        mask = repeat(stacked_mask, 'b t -> b (t f)', f=self.downsampling_factor)
         assert mask.shape == (B, T), f"Something went wrong, got mask shape {mask.shape}, expected {(B,T)}"
 
         mask_num = int(mask.sum().item())
@@ -142,38 +149,37 @@ class BestRQ(BaseModel):
                 size=(mask_num, C),
                 device=device,
             )
-
+        audio_signal = rearrange(audio_signal, 'b t c -> b c t')
         out = self.model(
             audio_signal = audio_signal,
             length = length,
+            skip_vocab_projection = True,
         )
-
-        downsampled_lengths = out["length"]
         hidden_stated = out["hidden_states"]
 
 
         x = self.out_projection(hidden_stated)
-        x_tgt = x[mask]  # (num_masked_frames, codebook_size)
+
+        x_tgt = x[stacked_mask]  # (num_masked_frames, codebook_size)
+
         loss = self.calc_loss(x_tgt, targets)
 
 
-
-
-        return {'length': length}
+        return {'loss': loss}
 
 
 
 if __name__ == '__main__':
     # run test
-    model = SCConformerXL(vocab_size=4096, head_dim=256, n_heads=3, attention_window_size=128)
+    model = SCConformerXL(vocab_size=4096, head_dim=256, n_heads=3)
     bestrq = BestRQ(model=model)
 
     audio = torch.randn(2, 80, 1000)
     lengths = torch.tensor([1000, 500])
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # model = model.to(device)
-    # audio = audio.to(device)
-    # lengths = lengths.to(device)
-    # out = model(audio, length=lengths)
-    # print(out['final_posteriors'].shape)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = model.to(device)
+    audio = audio.to(device)
+    lengths = lengths.to(device)
+    out = bestrq(audio, length=lengths)
+    logger.info(out['loss'])
     

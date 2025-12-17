@@ -1,5 +1,5 @@
 template_info:
-  create: 3 # number of experiments to create
+  create: 11 # number of experiments to create
   include_keys: [
     'model', 
     'optimizer', 
@@ -54,32 +54,32 @@ model:
   rotary_base_freq: 1500000 # https://arxiv.org/pdf/2309.16039.pdf
   attention_window_size: [
     # 128, # 2048
-    # 128,
-    # 128,
-    # 512, # 8192
-    # 512,
-    # 512,
-    # 2048, # 32768
-    # 2048,
-    # 2048,
-    # 8192, # 131072
-    # 8192,
-    # 8192,
-    16384, # 262144
-    16384,
-    16384,
+    128,
+    128,
+    512, # 8192
+    512,
+    512,
+    2048, # 32768
+    2048,
+    2048,
+    8192, # 131072
+    8192,
+    8192,
+    # -1,
+    # -1,
+    # -1,
   ]
 
 optimizer:
   name: 'madgrad'
   args:
-    lr: 1e-3
+    lr: 1e-4
 
 scheduler:
-  warmup_steps: 9600
+  warmup_steps: 1000
 
 audio_chunking: # 360000 (max = 1 hour)
-  size: 2048
+  size: 360000
   overlap: 0 # not using currently...
 
 sequence_scheduler:
@@ -95,48 +95,48 @@ wandb:
   use: true
   project_name: "floras50_long_context"
   name: [
-    # 'f50_w128_1e3_rp_1',
-    # 'f50_w128_1e3_rp_2',
-    # 'f50_w128_1e3_rp_3',
-    # 'f50_w512_1e3_rp_1',
-    # 'f50_w512_1e3_rp_2',
-    # 'f50_w512_1e3_rp_3',
-    # 'f50_w2048_1e3_rp_1',
-    # 'f50_w2048_1e3_rp_2',
-    # 'f50_w2048_1e3_rp_3',
-    # 'f50_w8192_1e3_rp_1',
-    # 'f50_w8192_1e3_rp_2',
-    # 'f50_w8192_1e3_rp_3',
-    'f50_w16384_1e3_rp_1',
-    'f50_w16384_1e3_rp_2',
-    'f50_w16384_1e3_rp_3',
+    # 'f50XLFT_w128_1e3_rp_1',
+    'f50XLFT_w128_1e3_rp_2',
+    'f50XLFT_w128_1e3_rp_3',
+    'f50XLFT_w512_1e3_rp_1',
+    'f50XLFT_w512_1e3_rp_2',
+    'f50XLFT_w512_1e3_rp_3',
+    'f50XLFT_w2048_1e3_rp_1',
+    'f50XLFT_w2048_1e3_rp_2',
+    'f50XLFT_w2048_1e3_rp_3',
+    'f50XLFT_w8192_1e3_rp_1',
+    'f50XLFT_w8192_1e3_rp_2',
+    'f50XLFT_w8192_1e3_rp_3',
+    # 'f50XLFT_wm1_1e3_rp_1',
+    # 'f50XLFT_wm1_1e3_rp_2',
+    # 'f50XLFT_wm1_1e3_rp_3',
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
     # '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_1',
-    # '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_2',
-    # '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_3',
-    # '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_1',
-    # '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_2',
-    # '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_3',
-    # '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_1',
-    # '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_2',
-    # '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_3',
-    # '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_1',
-    # '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_2',
-    # '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_3',
-    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w16384_1e3_rp_1',
-    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w16386_1e3_rp_2',
-    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w16384_1e3_rp_3',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_3',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_1',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_3',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_1',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_3',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_1',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/floras50/windowed/checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_3',
+    # '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_1_1e3/',
+    # '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_2_1e3/',  
+    # '/mnt/parscratch/users/acp21rjf/floras50/checkpoints_seq_scheduler_rb/n_seq_sched_360000_rp_3_1e3/',
   ]
   save_every_n_steps: 2000
 
 # full data: #'/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
 # 25% of corpus: '/users/acp21rjf/long-context-asr/reduced_pairs.json'
 data:
-  path: /users/acp21rjf/align_floras50/tmp/mapping.json
+  path: /users/acp21rjf/long-context-asr/lcasr/artifacts/floras50_long_only.json
 
 
 spec_augment:
@@ -151,11 +151,12 @@ spec_augment:
 
 
 training:
-  max_epochs: 6
+  max_epochs: 4
   tokenizer_path: /users/acp21rjf/long-context-asr/lcasr/artifacts/floras50/tokenizer.model
+  save_prefix: "long_context_finetune"
   shuffle_chunks: true
   start_spec_augment_after_n_epochs: -1 # -1 to disable
-  batch_size: 176
+  batch_size: 1
   backprop_every: 1
   backwards_every: 1
   max_seq_len: 0
