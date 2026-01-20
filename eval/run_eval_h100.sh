@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --time=90:00:00
+#SBATCH --time=20:00:00
 #SBATCH --mem=80GB
-#SBATCH --partition=gpu-h100
+#SBATCH --partition=gpu-h100-nvl
 #SBATCH --gres=gpu:h100:1   
 #SBATCH --qos=gpu
 #SBATCH --cpus-per-task=4

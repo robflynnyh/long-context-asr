@@ -4,7 +4,8 @@ from tqdm import tqdm
 from typing import List
 from lcasr.utils.audio_tools import processing_chain
 from lcasr.utils.general import load_model
-from lcasr.eval.utils import zero_out_spectogram, fetch_logits
+from lcasr.eval.utils import zero_out_spectogram
+from lcasr.eval.buffered_transcription import fetch_logits
 
 TEST_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/test/'
 DEV_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/dev/'

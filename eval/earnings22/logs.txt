@@ -1,0 +1,1 @@
+Cache Length: 64, alpha: 0.42, beta: 1.95, p: 2.96, Dev WER: 0.26263608087091755, Test WER: 0.16385842370769765

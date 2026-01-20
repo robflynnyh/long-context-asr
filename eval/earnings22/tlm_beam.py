@@ -3,6 +3,7 @@ from tqdm import tqdm
 from typing import List 
 from omegaconf.omegaconf import OmegaConf
 from lcasr.decoding import ctc_beam_search as beam_search
+from lcasr.decoding.greedy import GreedyCTCDecoder
 from lming.utils import general
 from lcasr.eval.wer import word_error_rate_detail 
 from functools import partial
@@ -71,8 +72,12 @@ def get_init_seq(args:argparse.Namespace, model, tokenizer):
     return prev_cache
 
 def main(args):
-    wandb.init()
-    ray.init(num_cpus=12, num_gpus=0 if not args.use_gpu else 1)
+    wandb.init() if args.use_wandb else None
+    if not args.no_ray:
+       ray.init(num_cpus=12, num_gpus=0 if not args.use_gpu else 1)
+       assert not args.debug_with_greedy, "Debug with greedy not setup with ray"
+        
+
 
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     checkpoint['model'] = general.convert_from_ddp(checkpoint['model'])
@@ -84,9 +89,14 @@ def main(args):
     
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
 
+    if args.debug_with_greedy:
+        greedy_decoder = GreedyCTCDecoder(tokenizer=tokenizer, blank_id=tokenizer.vocab_size())
+
+
     model = general.load_model(config=model_config, vocab_size=tokenizer.vocab_size())
+
     tparams = model.print_total_params()
-    model.load_state_dict(checkpoint['model'], strict=False)
+    model.load_state_dict(checkpoint['model'], strict=True)
     print(f'Loaded model from {args.checkpoint}')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.device = device
@@ -103,6 +113,9 @@ def main(args):
     
     with open(args.logits_path, 'rb') as f:
         all_logits = pkl.load(f)
+
+    if args.max_recordings > 0:
+        all_logits = all_logits[:args.max_recordings]
 
     init_cache = get_init_seq(args, model, tokenizer) if args.use_init_cache else None
     print(f"Initial cache/prompt: {init_cache['cache'].shape}") if init_cache else print("No initial cache/prompt")
@@ -125,53 +138,68 @@ def main(args):
         max_cache_length = max_len,
         cache_init = init_cache,
     )
-    beam_search_fn = ray.put(beam_search_fn)
+    if not args.no_ray: beam_search_fn = ray.put(beam_search_fn)
     random.seed(123456)
+    
 
-    if not args.use_gpu:
+    if not args.no_ray:
+        search_fn = run_search_gpu if args.use_gpu else run_search
         outputs = [
-            run_search.remote(
+            search_fn.remote(
                 beam_search_fn = beam_search_fn,
                 logits = all_logits[i]['logits'],
                 gold_text = all_logits[i]['gold']
             ) for i in range(len(all_logits))
         ]
+        outputs = ray.get(outputs)
     else:
-        outputs = [
-            run_search_gpu.remote(
-                beam_search_fn = beam_search_fn,
-                logits = all_logits[i]['logits'],
-                gold_text = all_logits[i]['gold']
-            ) for i in range(len(all_logits))
-        ]
+        outputs = []
+        for i in range(len(all_logits)):
+            if not args.debug_with_greedy:
+                beam_search_instance = beam_search_fn(log_probs = all_logits[i]['logits'])
+                beam_search_instance.run_search(use_tqdm=True)
+                text_out = normalize(beam_search_instance.return_text(idx = 0)).lower()
+            else:
+                text_out = greedy_decoder(emission = torch.as_tensor(all_logits[i]['logits']))
+                text_out = normalize(text_out).lower()
+            gold_text = normalize(all_logits[i]['gold']).lower()
+            outputs.append((text_out, gold_text))
+            print(f'Processed {i+1}/{len(all_logits)} recordings')
+        
 
-    outputs = ray.get(outputs)
+
     hyps, golds = zip(*outputs)
     hyps, golds = list(hyps), list(golds)    
     print(hyps[0])
 
     wer = word_error_rate_detail(hypotheses=hyps, references=golds)[0]
     print(f'WER: {wer}')
-    wandb.log({"wer": wer})
+    wandb.log({"wer": wer}) if args.use_wandb else None
 
     if args.log_path != "":
         log(args, wer, args.beam_width, alpha=args.alpha, beta=args.beta)
+
+    return wer
 
   
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.description = "CTC Beam Search Decoding with TLM"
+    parser.add_argument('-wandb', '--use_wandb', action='store_true', help='use wandb for logging')
     parser.add_argument('-c', '--checkpoint', type=str, default='/mnt/parscratch/users/acp21rjf/language_modelling/spotipile/512_1280/step_540012.pt', help='path to checkpoint')
     parser.add_argument('-gpu', '--use_gpu', action='store_true', help='use gpu')
     parser.add_argument('-beams', '--beam_width', type=int, default=25, help='beam width for decoding')
-    parser.add_argument('-logits', '--logits_path', type=str, default='/mnt/parscratch/users/acp21rjf/spotify/logits/earnings/n_seq_sched_8192_rp_1_dev.pt', help='path to logits')
+    parser.add_argument('-logits', '--logits_path', type=str, default='/mnt/parscratch/users/acp21rjf/logits/rb10k_8192_rp_1/earnings22/dev/logits.pkl', help='path to logits')
     parser.add_argument('-log', '--log_path', type=str, default='', help='path to log file')
     parser.add_argument('-max_len', '--max_len', type=int, default=1024, help='max sequence length')
     parser.add_argument('-alpha', '--alpha', type=float, default=0.42, help='alpha for beam search')
     parser.add_argument('-beta', '--beta', type=float, default=1.95, help='beta for beam search')
     parser.add_argument('-p', '--p', type=float, default=2.96, help='p for beam search')
     parser.add_argument('-dont_use_init_cache', '--dont_use_init_cache', action='store_true', help='dont use init cache')
-
+    parser.add_argument('--max_recorings', default=-1, type=int, help='maximum number of recordings to process')
+    parser.add_argument('--no_ray', action='store_true', help='do not use ray')
+    parser.add_argument('--debug_with_greedy', action='store_true', help='debug with greedy decoding')
 
     args = parser.parse_args()
     args.use_init_cache = not args.dont_use_init_cache

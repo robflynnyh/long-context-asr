@@ -10,12 +10,12 @@ SAVE_DIR = './.tmp'
 
 run_strings = {
     'a100':f"""#!/bin/bash\n
-#SBATCH --time=15:00:00
+#SBATCH --time=80:00:00
 #SBATCH --mem=52GB
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --qos=gpu
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 
 module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main/
@@ -35,7 +35,7 @@ source activate /mnt/parscratch/users/acp21rjf/conda/main/
 """,
     'h100nvl':f"""#!/bin/bash\n
 #SBATCH --time=90:00:00
-#SBATCH --mem=140GB
+#SBATCH --mem=130GB
 #SBATCH --partition=gpu-h100-nvl
 #SBATCH --gres=gpu:h100:1   
 #SBATCH --qos=gpu

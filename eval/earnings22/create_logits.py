@@ -6,6 +6,7 @@ from lcasr.models.sconformer_xl import SCConformerXL
 from lcasr.utils.audio_tools import processing_chain
 from lcasr.utils.general import load_model
 from pyctcdecode import build_ctcdecoder
+from lcasr.eval.buffered_transcription import fetch_logits 
 import os, re, json, torch
 
 TEST_PATH = '/mnt/parscratch/users/acp21rjf/earnings22/test_original'
@@ -32,93 +33,6 @@ def fetch_data(audio_path:str = TEST_PATH, txt_path:str = ALL_TEXT_PATH):
 
     return audio_files, text_files
 
-
-
-@torch.no_grad()
-def fetch_logits(args, model:SCConformerXL, spec:torch.Tensor, seq_len:int, overlap:int, tokenizer, use_tqdm=True):
-    spec_n = spec.shape[-1]
-    
-    downsampling_factor = args.config['model']['subsampling_factor']
-    assert overlap / downsampling_factor == overlap // downsampling_factor, 'Overlap must be a multiple of the downsampling factor'
-    seq_len = seq_len if seq_len != -1 else args.config['audio_chunking']['size']
-    if seq_len > spec_n:
-        seq_len = spec_n
-        overlap = 0
-    else:
-        overlap = overlap if overlap != -1 else args.config['audio_chunking']['overlap']
-    cache_len = args.cache_len if args.cache_len != -1 else args.config['training']['max_seq_len']
-    #assert overlap == 0 or cache_len == 0, 'Cannot use overlap and cache_len at the same time'
-
-    print(f'{spec_n} !!!')
-    
-    
-    print(f'Using seq_len: {seq_len} and overlap: {overlap} and cache_len: {cache_len}')
-
-    all_logits = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
-    logit_count = torch.zeros((1, spec_n//4 + seq_len, tokenizer.vocab_size() + 1))
-    
-    logit_position = 0
-    
-    prev_cache = None
-    last_ulen = None
-    kill_next = False
-    pbar = tqdm(range(0, spec_n, seq_len-overlap), total=len(range(0, spec_n, seq_len-overlap))) if use_tqdm else range(0, spec_n, seq_len-overlap)
-    for i in pbar:
-        audio_chunk = spec[:, :, i:i+seq_len]
-        u_len = audio_chunk.shape[-1]
-
-        if kill_next:
-            break
-        if last_ulen != None and u_len < last_ulen:
-            kill_next = True
-        last_ulen = u_len
-
-        # if u_len < (seq_len - overlap):
-        #     continue
-
-        audio_chunk = audio_chunk.to(model.device)
-        out = model(
-            audio_signal = audio_chunk,
-            cached_kvs = prev_cache,
-            cached_kv_lengths = None if prev_cache is None else torch.LongTensor([prev_cache.shape[1]] * prev_cache.shape[0]).to(prev_cache.device)
-        )
-
-        if cache_len != 0:
-            prev_cache = out['kvs_to_cache'][:, -cache_len:].clone()
-
-        logits = out['final_posteriors'].detach().cpu()
-        # convert to prob
-        logits = torch.exp(logits)
-        ds_len = logits.shape[-2]
-
-        ratio = u_len / ds_len
-        overlap_ds = int(overlap / ratio)
-        if i != 0:
-            logit_position -= overlap_ds
-
-        #logit_position = i 
-        #print(all_logits.shape, ds_len, logit_position, logit_position+ds_len, logits.shape)
-      
-        logit_count[:, logit_position:logit_position+ds_len, :] += 1
-        all_logits[:, logit_position:logit_position+ds_len, :] += logits
-        logit_position += ds_len 
-
-        #print(logit_position, overlap_ds, '()', u_len, i, i+seq_len, audio_chunk.shape, ratio, ds_len)
-        
-        
-    B,N,C = all_logits.shape
-    all_logits = all_logits[logit_count.sum(dim=-1) != 0]
-    all_logits = all_logits.reshape(B,-1,C)
-    logit_count = logit_count[logit_count.sum(dim=-1) != 0]
-    logit_count = logit_count.reshape(B,-1,C)
-    logits = all_logits / logit_count
-    # convert to log 
-    logits = torch.log(logits)
-    # blank_id = logits.shape[-1]-1
-    # logits = logits.argmax(dim=-1)[0].tolist()
-    # print(tokenizer.decode([el for el in logits if el != blank_id]))
-    
-    return logits.squeeze(0).numpy()
 
 def preprocess_transcript(text:str):
     text = text.lower()
@@ -156,8 +70,6 @@ def main(args):
     model = model.to(device)
     model.eval()
 
-    vocab = [tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""] # "" = blank
-    decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
 
     audio_files, text_files = fetch_data(audio_path=data_path, txt_path=ALL_TEXT_PATH)
     meetings_keys = [el['meeting'] for el in audio_files]
@@ -179,7 +91,6 @@ def main(args):
         logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
 
         ds_factor = audio_spec.shape[-1] / logits.shape[0]
-      
 
         to_save.append({
             'name': cur_meetings,
@@ -187,7 +98,6 @@ def main(args):
             'logits': logits,
             'ds_factor': ds_factor  
         })
-        #break
         
         
     with open(args.save_path, 'wb') as f:
@@ -200,7 +110,6 @@ if __name__ == '__main__':
     parser.add_argument('-split', '--split', type=str, default='test', help='test or dev split')
     parser.add_argument('-seq', '--seq_len', type=int, default=-1, help='-1 to use setting from config in checkpoint file')
     parser.add_argument('-overlap', '--overlap', type=int, default=0, help='-1 to use setting from config in checkpoint file')
-    parser.add_argument('-cache_len', '--cache_len', type=int, default=-1, help='cache length for decoding')
     
     parser.add_argument('-s', '--save_path', type=str, default='./logits/test_logits.pkl', help='path to save logits')
     
