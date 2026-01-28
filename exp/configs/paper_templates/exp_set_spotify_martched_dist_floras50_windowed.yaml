@@ -22,7 +22,7 @@ template_info:
   ] # keys to use to create experiments
 
 model_class: 'SCConformerXL'
-description: "Here we are looking at testing training on spotify with only 10k hours of longest audio files"
+description: "Here we are looking at testing training on spotify with only 10k hours of longest audio files -- 12 epochs different scheduler"
 
 model:
   feat_in: 80
@@ -80,14 +80,14 @@ optimizer:
     lr: 1e-3
 
 scheduler:
-  warmup_steps: 9600
+  warmup_steps: 15000
 
 audio_chunking: # 360000 (max = 1 hour)
   size: 2048
   overlap: 0 # not using currently...
 
 sequence_scheduler:
-  increase_every: 8000
+  increase_every: 7000
   stop_after: 90000
   start_after: 0
   max_sequence_length: 360000
@@ -99,44 +99,44 @@ wandb:
   use: true
   project_name: "spotify_long_only_long_context"
   name: [
-    'fS50_w128_1e3_rp_1',
-    'fS50_w128_1e3_rp_2',
-    'fS50_w128_1e3_rp_3',
-    'fS50_w512_1e3_rp_1',
-    'fS50_w512_1e3_rp_2',
-    'fS50_w512_1e3_rp_3',
-    'fS50_w2048_1e3_rp_1',
-    'fS50_w2048_1e3_rp_2',
-    'fS50_w2048_1e3_rp_3',
-    'fS50_w8192_1e3_rp_1',
-    'fS50_w8192_1e3_rp_2',
-    'fS50_w8192_1e3_rp_3',
-    'fS50_w22500_1e3_rp_1',
-    'fS50_w22500_1e3_rp_2',
-    'fS50_w22500_1e3_rp_3',
-    # 'fS50_wm1_1e3_rp_1',
-    # 'fS50_wm1_1e3_rp_2',
-    # 'fS50_wm1_1e3_rp_3',
+    '12_epoch_fS50_w128_1e3_rp_1',
+    '12_epoch_fS50_w128_1e3_rp_2',
+    '12_epoch_fS50_w128_1e3_rp_3',
+    '12_epoch_fS50_w512_1e3_rp_1',
+    '12_epoch_fS50_w512_1e3_rp_2',
+    '12_epoch_fS50_w512_1e3_rp_3',
+    '12_epoch_fS50_w2048_1e3_rp_1',
+    '12_epoch_fS50_w2048_1e3_rp_2',
+    '12_epoch_fS50_w2048_1e3_rp_3',
+    '12_epoch_fS50_w8192_1e3_rp_1',
+    '12_epoch_fS50_w8192_1e3_rp_2',
+    '12_epoch_fS50_w8192_1e3_rp_3',
+    '12_epoch_fS50_w22500_1e3_rp_1',
+    '12_epoch_fS50_w22500_1e3_rp_2',
+    '12_epoch_fS50_w22500_1e3_rp_3',
+    # '12_epoch_fS50_wm1_1e3_rp_1',
+    # '12_epoch_fS50_wm1_1e3_rp_2',
+    # '12_epoch_fS50_wm1_1e3_rp_3',
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_3',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_3',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_3',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_3',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w22500_1e3_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w22500_1e3_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/f50_w22500_1e3_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w128_1e3_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w512_1e3_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w2048_1e3_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w8192_1e3_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w22500_1e3_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w22500_1e3_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/f50_w22500_1e3_rp_3',
     # '/mnt/parscratch/users/acp21rjf/spotify/matched_dist_floras/checkpoints_seq_scheduler_rb/f50_wm1_1e3_rp_1',
     # '/mnt/parscratch/users/acp21rjf/spotify/matched_dist_floras/checkpoints_seq_scheduler_rb/f50_wm1_1e3_rp_2',
     # '/mnt/parscratch/users/acp21rjf/spotify/matched_dist_floras/checkpoints_seq_scheduler_rb/f50_wm1_1e3_rp_3',
@@ -161,7 +161,7 @@ spec_augment:
 
 
 training:
-  max_epochs: 6
+  max_epochs: 12
   # tokenizer_path: /users/acp21rjf/long-context-asr/lcasr/artifacts/floras50/tokenizer.model
   shuffle_chunks: true
   start_spec_augment_after_n_epochs: -1 # -1 to disable
