@@ -1,10 +1,10 @@
 global:
-  root_path: "/mnt/parscratch/users/acp21rjf/spotify/long_only/12_epoch_checkpoints_seq_scheduler_rb/"
+  root_path: "/mnt/parscratch/users/acp21rjf/spotify/long_only/checkpoints_seq_scheduler_rb/"
   name: rotary_pos_6l_768d_pre_windowed_longonly_spotify
   seq_len: 360000
-  checkpoint: step_95052.pt
+  checkpoint: step_47526.pt
   overlap_ratio: 0.875
-  description: "training (on spotify with 10K longest recordings) + eval with windowed attention at fixed seq len and varying window sizes (reduced steps) -- 12 epochs"
+  description: "training (on spotify with 10K longest recordings) + eval with windowed attention at fixed seq len and varying window sizes (reduced steps)"
   downsampling: 8
 
 models:
@@ -82,19 +82,19 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
     
-  # - name: ${global.name}
-  #   repeat: 2
-  #   window_size: 8192
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: ${global.overlap_ratio}
-  #   path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+  - name: ${global.name}
+    repeat: 2
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
     
-  # - name: ${global.name} # Not finished!!
-  #   repeat: 3
-  #   window_size: 8192
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: 0.875
-  #   path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+  - name: ${global.name} # Not finished!!
+    repeat: 3
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
 
 
   - name: ${global.name}
@@ -111,12 +111,12 @@ models:
     overlap_ratio: ${global.overlap_ratio}
     path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
    
-  # - name: ${global.name}
-  #   repeat: 3
-  #   window_size: 22500
-  #   seq_len: ${global.seq_len}
-  #   overlap_ratio: 0.875
-  #   path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
+  - name: ${global.name}
+    repeat: 3
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: 0.875
+    path: ${global.root_path}f50_w${.window_size}_1e3_rp_${.repeat}/${global.checkpoint}
 
 
 
@@ -126,7 +126,7 @@ args:
   model_class: SCConformerXL
   evaluation_mode: windowed_attention
   max_sequence_length: 3600000
-  save_dataframe_path: './results/thesis/spotify_long_only_12epoch.csv'
+  save_dataframe_path: './results/thesis/spotify_long_only.csv'
   # include_per_recording_evaluations: true
   # tokenizer_path: "/users/acp21rjf/long-context-asr/lcasr/artifacts/floras50/tokenizer.model"
   # run_eval_with: concat_tedlium_eval

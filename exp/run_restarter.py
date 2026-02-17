@@ -10,8 +10,8 @@ random.seed(int(time.time()*10000))
 
 run_strings = {
     'a100':f"""#!/bin/bash\n
-#SBATCH --time=90:00:00
-#SBATCH --mem=140GB
+#SBATCH --time=60:00:00
+#SBATCH --mem=110GB
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --qos=gpu
