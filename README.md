@@ -2,7 +2,7 @@
 
 Note latest codebase which contains additional results is located in the "dev" branch -- this corresponds to the latest journal paper for this work: <b>Beyond the Utterance: An Empirical Study of Very Long Context Speech Recognition</b> - available at https://arxiv.org/abs/2602.09044 and https://ieeexplore.ieee.org/abstract/document/11365972
 
-However the current main branch contains all of the code needed to reproduce the results in the conference and journal paper (excluding the synthetic experiments in the journal). The dev branch will be updated to main at some point in the future. 
+However the current main branch contains all of the code needed to reproduce the results in the conference and journal paper (excluding the synthetic and floras-50 dataset experiments in the journal). The dev branch will be updated to main at some point in the future. 
 
 --------
 
