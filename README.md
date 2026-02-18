@@ -1,3 +1,11 @@
+--------
+
+Note latest codebase which contains additional results is located in the "dev" branch -- this corresponds to the latest journal paper for this work: <b>Beyond the Utterance: An Empirical Study of Very Long Context Speech Recognition</b> - available at https://arxiv.org/abs/2602.09044 and https://ieeexplore.ieee.org/abstract/document/11365972
+
+However the current main branch contains most of the code needed to reproduce the results both in the conference and journal paper (excluding the synthetic experiments in the journal). The dev branch will be updated to main at some point in the future. 
+
+--------
+
 # Code for the paper: How Much Context Does My Attention-Based ASR System Need? (Interspeech 2024)
 ![figure 1.0 from paper](https://github.com/robflynnyh/long-context-asr/blob/main/eval/results/IS_paper/weracross_data.png)
 - Current Pre-Print accepted at Interspeech 2024 available on [arXiv](https://arxiv.org/abs/2310.15672) 
