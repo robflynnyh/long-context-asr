@@ -285,7 +285,7 @@ def train(
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
             
-                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward()
+                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size*steps_since_backwards)) * 100).backward()
                   
                     last_kv_set.detach_() if last_kv_set != None else None
                     steps_since_backwards = 0

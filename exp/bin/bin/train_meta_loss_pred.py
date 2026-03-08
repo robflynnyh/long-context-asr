@@ -284,7 +284,7 @@ def train(
                 
                 #_,_,_=model.meta_decoder.v_bank(repr_grads)
 
-                (((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
+                (((backwards_every_loss) / (chunk_size*batch_size*steps_since_backwards)) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
                 last_kv_set.detach_() if last_kv_set != None else None
                 steps_since_backwards = 0
                 backwards_every_loss = 0

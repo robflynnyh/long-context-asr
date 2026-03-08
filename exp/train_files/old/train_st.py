@@ -271,8 +271,8 @@ def train(
                 cur_tokens_in_loss += sum(a_lengths) # total number of acoustic frames in batch
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
-                    #scaler.scale(((backwards_every_loss + backwards_every_aux_loss*(n_augmentations+1)) / (chunk_size*batch_size)*steps_since_backwards*(n_augmentations+1)) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
-                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
+                    #scaler.scale(((backwards_every_loss + backwards_every_aux_loss*(n_augmentations+1)) / (chunk_size*batch_size*steps_since_backwards)*(n_augmentations+1)) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
+                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size*steps_since_backwards)) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
 
                     last_kv_set.detach_() if last_kv_set != None else None
                     steps_since_backwards = 0

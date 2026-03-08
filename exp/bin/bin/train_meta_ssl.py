@@ -284,7 +284,7 @@ def train(
                     # meta_grad_pred = model.reprs.grad.clone()
                     # model.reprs.grad.zero_()
 
-                    fl = ((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100
+                    fl = ((backwards_every_loss) / (chunk_size*batch_size*steps_since_backwards)) * 100
                     fl = (fl + ssl_loss) /2
                     scaler.scale(fl).backward()
                   

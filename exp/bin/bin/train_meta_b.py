@@ -282,7 +282,7 @@ def train(
                     # meta_grad_pred = model.reprs.grad.clone()
                     # model.reprs.grad.zero_()
 
-                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward(retain_graph=True, inputs=[p for p in model.meta_decoder.parameters()] + [p for p in model.meta_residual_proj.parameters()])
+                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size*steps_since_backwards)) * 100).backward(retain_graph=True, inputs=[p for p in model.meta_decoder.parameters()] + [p for p in model.meta_residual_proj.parameters()])
 
                     torch.autograd.backward(tensors=model.reprs, grad_tensors=model.grad_preds, inputs=[p for p in model.meta_layers.parameters()])
 

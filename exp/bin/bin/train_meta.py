@@ -282,7 +282,7 @@ def train(
                     # meta_grad_pred = model.reprs.grad.clone()
                     # model.reprs.grad.zero_()
 
-                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward()
+                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size*steps_since_backwards)) * 100).backward()
                     #torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                     
                     # inv_scale = 1./scaler.get_scale()

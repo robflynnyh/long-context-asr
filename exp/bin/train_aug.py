@@ -319,7 +319,7 @@ def train(
 
 
                 #backwards_with_respect_to = list(augmentation_model.parameters())
-                scaler.scale(((loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward()#inputs = backwards_with_respect_to)
+                scaler.scale(((loss) / (chunk_size*batch_size*steps_since_backwards)) * 100).backward()#inputs = backwards_with_respect_to)
              
                 for k, v in asr_model.named_parameters():
                     print(k, v.grad)

@@ -11,7 +11,7 @@ SAVE_DIR = './.tmp'
 run_strings = {
     'a100':f"""#!/bin/bash\n
 #SBATCH --time=80:00:00
-#SBATCH --mem=52GB
+#SBATCH --mem=82GB
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --qos=gpu

@@ -336,7 +336,7 @@ def train(
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
                     backwards_with_respect_to = list(augmentation_model.parameters())
-                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward(inputs=backwards_with_respect_to) # divide by chunk*batch_size constant to weight smaller batches less
+                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size*steps_since_backwards)) * 100).backward(inputs=backwards_with_respect_to) # divide by chunk*batch_size constant to weight smaller batches less
                     last_kv_set.detach_() if last_kv_set != None else None
                     steps_since_backwards = 0
                     backwards_every_loss = 0

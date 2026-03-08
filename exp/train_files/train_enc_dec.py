@@ -477,7 +477,7 @@ def train(
                 wandb_loss_accum = {k: wandb_loss_accum.get(k, 0) + v for k, v in out['display_losses'].items()} 
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
-                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*counter['steps_since_backwards']) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
+                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size*counter['steps_since_backwards'])) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
                     last_kv_set.detach_() if last_kv_set != None else None
                     counter['steps_since_backwards'] = 0
                     backwards_every_loss = 0

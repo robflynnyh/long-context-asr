@@ -80,7 +80,7 @@ def get_dtype(dtype:str) -> torch.dtype:
 def train(
         args:argparse.Namespace,
         model:torch.nn.Module, 
-        dataloader:torch.utils.data.DataLoader, 
+        dataloader:torch.utils.data.DataLoader,  # type: ignore
         optimizer:torch.optim.Optimizer,
         scheduler:CosineLRScheduler,
         sequence_scheduler:SequenceWarmupManager,
@@ -88,7 +88,7 @@ def train(
         step:int = 0,
         seen_ids:List[str] = [],
         epoch:int = 0,
-        augmentation:SpecAugment = None,
+        augmentation:SpecAugment|None = None,
     ):
     scaler = GradScaler() 
     clip_value = args.config['training'].get('clip_value', 0.8) 
@@ -277,7 +277,7 @@ def train(
                 cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
-                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size)*steps_since_backwards) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
+                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size*steps_since_backwards)) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
                     last_kv_set.detach_() if last_kv_set != None else None
                     steps_since_backwards = 0
                     backwards_every_loss = 0
@@ -366,7 +366,8 @@ def main(args):
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer(**({"tokenizer_path": args.config["training"]["tokenizer_path"]} if "tokenizer_path" in args.config["training"] else {}))
     # set random seed for initialization
-    torch.manual_seed(12345), torch.cuda.manual_seed(12345)
+    torch.manual_seed(12345)
+    torch.cuda.manual_seed(12345)
     model = load_model(args.config, tokenizer.vocab_size(), get_model_class(config = args.config))
     tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
@@ -397,6 +398,10 @@ def main(args):
             initial_sequence_length = args.config['audio_chunking']['size'],
             **args.config['sequence_scheduler']
         )
+    
+    checkpoint_path = args.config['checkpointing']['dir'] 
+    if 'pretrained' in args.config['checkpointing'] and args.config['checkpointing']['pretrained'] != None:
+        checkpoint_path = args.config['checkpointing']['pretrained']
 
     seen_ids, step, epoch = load_checkpoint(
         args = args, 
@@ -404,7 +409,7 @@ def main(args):
         optimizer = optimizer, 
         scheduler = scheduler, 
         sequence_scheduler = sequence_scheduler,
-        path = args.config['checkpointing']['dir'],
+        path = checkpoint_path,
         device = device
     )
     if args.reset_step:
