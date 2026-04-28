@@ -178,6 +178,7 @@ if __name__ == '__main__':
     lengths = torch.tensor([1000, 500])
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
+    bestrq = bestrq.to(device)
     audio = audio.to(device)
     lengths = lengths.to(device)
     out = bestrq(audio, length=lengths)

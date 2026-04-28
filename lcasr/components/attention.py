@@ -537,6 +537,9 @@ class Attention(nn.Module):
             assert self.left_window == -1 and self.right_window == -1, "windowed attention not supported in CPU mode (yet)"
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
+            if attn_mask is not None and attn_mask.dim() == 2:
+                attn_mask = (~attn_mask).to(dtype=q.dtype)
+                attn_mask = rearrange(attn_mask, 'b s -> b 1 1 s') * -torch.finfo(q.dtype).max
             if not self.return_attention_weights:
                 out = nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=self.causal)
             else:

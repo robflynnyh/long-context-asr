@@ -260,7 +260,7 @@ def train(
                     print(f'loss: {full_loss}')
                     
                     backwards_pass(
-                        model = model,
+                        model = best_rq.model,
                         clip_value = clip_value,
                         optimizer = optimizer,
                         scheduler = scheduler,
@@ -303,14 +303,14 @@ def train(
                     seen_ids = seen_ids,
                 )
                 if args.config['model']['use_rotary'] and args.config['sequence_scheduler'].get('interpolate_rotary', False):
-                    model.rotary_pos_emb.rotary_interpolation_factor = model.rotary_pos_emb.rotary_interpolation_factor * sequence_scheduler.increase_by_multiplier
+                    best_rq.model.rotary_pos_emb.rotary_interpolation_factor = best_rq.model.rotary_pos_emb.rotary_interpolation_factor * sequence_scheduler.increase_by_multiplier
                 dataloader_iter = iter(dataloader)
                 pbar.total = len(dataloader) # update total of tqdm
                 
         del chunks
         
     save_model( # save final model
-        model = model, 
+        model = best_rq.model, 
         optimizer = optimizer, 
         scheduler = scheduler, 
         podcast_step = cur_podcast,
@@ -318,8 +318,9 @@ def train(
         sequence_scheduler = sequence_scheduler,
         seen_ids = seen_ids,
         epoch = epoch,
+        other = {'best_rq_out_projection': best_rq.out_projection.state_dict()},
     )
-    return model
+    return best_rq
             
             
 
@@ -340,6 +341,8 @@ def main(args):
 
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if args.anomaly:
+        torch.autograd.set_detect_anomaly(True)
     
     wandb_config = args.config['wandb']
     if wandb_config['use']:
@@ -354,8 +357,7 @@ def main(args):
         args.config['wandb']['id'] = wandb.run.id # add wandb config to args.config
         if wandb_config.get('update_config_with_wandb_id', False): OmegaConf.save(config=args.config, f=args.config_path)
 
-    best_rq = BestRQ(model=model)
-    best_rq = model.to(device)
+    best_rq = BestRQ(model=model).to(device)
     optimizer, scheduler = load_optimizer(args.config, best_rq)
 
     sequence_scheduler = None
@@ -422,9 +424,9 @@ def main(args):
         print('WARNING: dataloader batch size does not match sequence scheduler batch size, updating dataloader batch size')
         dataloader.update(batch_size = sequence_scheduler.cur_batch_size, seen_ids = seen_ids)
 
-    final_model = train(
+    train(
         args = args, 
-        model = best_rq, 
+        best_rq = best_rq, 
         dataloader = dataloader, 
         optimizer = optimizer, 
         scheduler = scheduler,
