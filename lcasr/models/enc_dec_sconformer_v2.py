@@ -307,95 +307,309 @@ class EncDecSconformerV2(BaseModel):
         
     @torch.no_grad()
     def generate(
-            self, 
-            audio_signal, 
-            max_generate='encoder_states', 
-            bos_id=0, 
+            self,
+            audio_signal=None,
+            max_generate='encoder_states',
+            bos_id=0,
             eos_id=0,
-            return_encoder_states=False, 
+            return_encoder_states=False,
             return_ctc_states=False,
-            prompt:List[int]=None,
-            encoder_states:torch.Tensor=None,
-            remove_prompt=True, # whether to remove the prompt from the final output
+            prompt:Union[List[int], List[List[int]], torch.LongTensor]=None,
+            encoder_states:Dict[str, torch.Tensor]=None,
+            remove_prompt=True,
             sample=False,
             temperature=1.0,
-        ) -> Dict[str, Union[torch.Tensor, List[int]]]:
+            num_rollouts:int=1,
+            beam_width:int=1,
+            length_penalty:float=0.0,
+            eos_bias:float=0.0,
+            repetition_penalty:float=0.0,
+            no_repeat_ngram_size:int=0,
+            return_beam_scores:bool=False,
+        ) -> Dict[str, Union[torch.Tensor, List[List[int]], List[List[float]]]]:
         '''
-        greedy generation only! audio_signal should be a single batch
-        max_generate: maximum number of tokens to generate 'encoder_states' means we cap at the size of the encoder states, assumes that no more than 8x downsampling is used (otherwise this can be too small)
-        bos_id: beginning of sequence id
-        eos_id: we use this to stop generation prior to the max_generate limit
-        return_encoder_states: whether to return the encoder states and lengths
-        return_ctc_states: whether to return the ctc states (will only work if ctc_loss_weight > 0)
-        prompt: list of tokens/ints to use as a prompt for the generation, if not provided we willl add in a bos token
-        encoder_states: encoder states to use for generation, if not provided we will run the encoder on the audio signal
-        remove_prompt: whether to remove the prompt from the final output
-        sample: whether to sample from the distribution or take the argmax
-        temperature: temperature for sampling
+        Batched, kv-cached generation. Supports both greedy and multinomial sampling,
+        with per-row early-exit on EOS (finished rows are dropped from the active batch).
+
+        audio_signal: (B, ...) — required if encoder_states not provided
+        max_generate: max tokens per sequence; 'encoder_states' caps at the encoder length
+        bos_id / eos_id: tokens for prompt seeding / early termination
+        return_encoder_states / return_ctc_states: include encoder/ctc outputs
+        prompt: None (use bos), List[int] (broadcast across rows), List[List[int]]
+            (per-row, must share length), or LongTensor of shape (B*num_rollouts, P)
+        encoder_states: dict {'a_hidden', 'length'} to skip the encoder forward
+        remove_prompt: strip the prompt tokens from each returned sequence
+        sample: True -> multinomial sampling; False -> argmax (temperature ignored)
+        temperature: softmax temperature when sampling
+        num_rollouts: replicate each input row this many times in parallel (e.g. RL rollouts)
+        beam_width: 1 -> greedy/sample path; >1 -> autoregressive beam search
+        length_penalty: normalize beam scores by generated length**length_penalty
+        eos_bias: added to EOS log-prob during beam search; positive encourages shorter outputs
+        repetition_penalty: subtract from log-probs for tokens already generated in a beam
+        no_repeat_ngram_size: block tokens that would repeat an ngram of this size
+        return_beam_scores: include selected beam scores in the output dict
+
+        Returns a dict with:
+            text_sequence: List[List[int]]   — length B*num_rollouts
+            probs:         List[List[float]] — chosen-token probability per step, per row
+            beam_scores (optional)           — selected beam score per row
+            encoder_states (optional), ctc_states (optional)
         '''
 
         if encoder_states is None:
             encoder_out = self.forward(audio_signal=audio_signal)
             a_hidden, length = encoder_out['a_hidden'], encoder_out['length']
-        else: a_hidden, length = encoder_states['a_hidden'], encoder_states['length']
+        else:
+            encoder_out = encoder_states
+            a_hidden, length = encoder_states['a_hidden'], encoder_states['length']
+
+        if num_rollouts > 1:
+            a_hidden = a_hidden.repeat_interleave(num_rollouts, dim=0)
+            length = length.repeat_interleave(num_rollouts, dim=0)
+
+        B = a_hidden.shape[0]
+        device = a_hidden.device
 
         if max_generate == 'encoder_states': max_generate = length.max().item()
-        
-        if prompt is None: text_sequence = torch.LongTensor([[bos_id]])
-        elif isinstance(prompt, list): text_sequence = torch.LongTensor([prompt])
-        else: text_sequence = prompt
-        text_sequence = text_sequence.to(a_hidden.device)
+
+        # Build (B, P) prompt tensor.
+        if prompt is None:
+            text_sequence = torch.full((B, 1), bos_id, dtype=torch.long, device=device)
+        elif isinstance(prompt, torch.Tensor):
+            text_sequence = prompt.to(device)
+            if text_sequence.ndim == 1:
+                text_sequence = text_sequence.unsqueeze(0).expand(B, -1).contiguous()
+        elif isinstance(prompt, list):
+            if len(prompt) == 0 or isinstance(prompt[0], int):
+                text_sequence = torch.LongTensor([prompt] * B).to(device)
+            else:
+                text_sequence = torch.LongTensor(prompt).to(device)
+        else:
+            raise TypeError(f"Unsupported prompt type: {type(prompt)}")
+
+        if beam_width > 1:
+            if sample:
+                raise ValueError("Beam search does not support sample=True")
+            outputs = self._generate_beam_search(
+                a_hidden=a_hidden,
+                length=length,
+                prompt=text_sequence,
+                max_generate=max_generate,
+                eos_id=eos_id,
+                remove_prompt=remove_prompt,
+                beam_width=beam_width,
+                length_penalty=length_penalty,
+                eos_bias=eos_bias,
+                repetition_penalty=repetition_penalty,
+                no_repeat_ngram_size=no_repeat_ngram_size,
+                return_beam_scores=return_beam_scores,
+            )
+            if return_encoder_states: outputs['encoder_states'] = {'a_hidden': a_hidden, 'length': length}
+            if return_ctc_states: outputs['ctc_states'] = encoder_out['final_posteriors_ctc']
+            return outputs
 
         prompt_length = text_sequence.shape[1]
-            
-        finished = False
-        #generated = 0
+        if sample is False: temperature = 1.0
+
+        final_seqs = [text_sequence[i].tolist() for i in range(B)]
+        final_probs = [[] for _ in range(B)]
+
+        active_orig = list(range(B))
+        cur_input = text_sequence
+        a_hidden_active = a_hidden
+        length_active = length
         cache = None
-        if text_sequence.ndim == 3: prompt_length = 0; final_text_sequence = torch.LongTensor([[]]).to(a_hidden.device)
-        else: final_text_sequence = text_sequence.clone()
-        if sample == False: temperature = 1.0
         steps = 0
-        all_probs = []
 
-        while not finished:
-            
+        while len(active_orig) > 0 and steps < max_generate:
             decoder_out = self.language_model_decoder(
-                tokens = text_sequence,
-                a_hidden = a_hidden,
-                a_lengths = length,
+                tokens = cur_input,
+                a_hidden = a_hidden_active,
+                a_lengths = length_active,
                 cache = cache,
-                text_lengths = torch.tensor([text_sequence.shape[1]]).to(a_hidden.device),
+                text_lengths = torch.full(
+                    (cur_input.shape[0],), cur_input.shape[1],
+                    dtype=torch.long, device=device,
+                ),
             )
-            decoder_logits = decoder_out['logits']
+            logits = decoder_out['logits'][:, -1, :]
             cache = decoder_out['kv_cache']
-            
-            logits = decoder_logits[0, -1, :]
-            probs = (logits / temperature).softmax(dim=-1)
-            if sample == False: decoder_pred = probs.argmax(dim=-1)
-            else: decoder_pred = probs.multinomial(num_samples=1).squeeze(0)
 
-            probability = probs[decoder_pred].item()
-            all_probs.append(probability)
+            probs = (logits / temperature).softmax(dim=-1)
+            if sample:
+                pred = probs.multinomial(num_samples=1).squeeze(-1)
+            else:
+                pred = probs.argmax(dim=-1)
+            pred_probs = probs.gather(1, pred.unsqueeze(-1)).squeeze(-1)
 
             steps += 1
-            #generated += 1
-            #print(f'Generated {generated} tokens: {decoder_pred.item()}')
-            if decoder_pred == eos_id or (steps > max_generate):
-                finished = True
-            else:
-                text_sequence = decoder_pred.unsqueeze(0).unsqueeze(0)
-                final_text_sequence = torch.cat([final_text_sequence, text_sequence], dim=1)
+            is_eos = (pred == eos_id)
+            is_last_step = (steps >= max_generate)
 
-        final_text_sequence = final_text_sequence.squeeze(0).cpu().tolist()
-        if remove_prompt: final_text_sequence = final_text_sequence[prompt_length:] # remove prompt
+            keep_idx = []
+            pred_cpu = pred.tolist()
+            eos_cpu = is_eos.tolist()
+            prob_cpu = pred_probs.tolist()
+            for j, orig_i in enumerate(active_orig):
+                final_probs[orig_i].append(prob_cpu[j])
+                if eos_cpu[j]:
+                    continue  # finalize without appending eos
+                final_seqs[orig_i].append(pred_cpu[j])
+                if not is_last_step:
+                    keep_idx.append(j)
 
-        outputs = {}
+            if is_last_step or len(keep_idx) == 0:
+                break
+
+            keep_idx_t = torch.tensor(keep_idx, dtype=torch.long, device=device)
+            active_orig = [active_orig[j] for j in keep_idx]
+            a_hidden_active = a_hidden_active.index_select(0, keep_idx_t)
+            length_active = length_active.index_select(0, keep_idx_t)
+            if cache is not None:
+                # cache layout: [L, KV=2, B, H, N, D]; batch dim is axis 2.
+                cache = {
+                    'cache': cache['cache'].index_select(2, keep_idx_t),
+                    'cache_lengths': cache['cache_lengths'].index_select(0, keep_idx_t),
+                }
+            cur_input = pred.index_select(0, keep_idx_t).unsqueeze(1)
+
+        if remove_prompt:
+            final_seqs = [seq[prompt_length:] for seq in final_seqs]
+
+        outputs = {'text_sequence': final_seqs, 'probs': final_probs}
         if return_encoder_states: outputs['encoder_states'] = {'a_hidden': a_hidden, 'length': length}
- 
         if return_ctc_states: outputs['ctc_states'] = encoder_out['final_posteriors_ctc']
-        outputs['text_sequence'] = final_text_sequence
-        outputs['probs'] = all_probs
 
+        return outputs
+
+    def _beam_score(self, score:float, generated_len:int, length_penalty:float) -> float:
+        if length_penalty == 0.0:
+            return score
+        return score / (max(generated_len, 1) ** length_penalty)
+
+    def _tokens_that_repeat_ngram(self, seq:List[int], prompt_length:int, ngram_size:int) -> set:
+        generated = seq[prompt_length:]
+        if ngram_size <= 0 or len(generated) < ngram_size - 1:
+            return set()
+
+        prefix = tuple(generated[-(ngram_size - 1):]) if ngram_size > 1 else tuple()
+        banned = set()
+        for idx in range(0, len(generated) - ngram_size + 1):
+            ngram = tuple(generated[idx:idx + ngram_size])
+            if ngram_size == 1 or ngram[:-1] == prefix:
+                banned.add(ngram[-1])
+        return banned
+
+    @torch.no_grad()
+    def _generate_beam_search(
+            self,
+            a_hidden:torch.Tensor,
+            length:torch.Tensor,
+            prompt:torch.Tensor,
+            max_generate:int,
+            eos_id:int,
+            remove_prompt:bool,
+            beam_width:int,
+            length_penalty:float,
+            eos_bias:float,
+            repetition_penalty:float,
+            no_repeat_ngram_size:int,
+            return_beam_scores:bool,
+        ) -> Dict[str, Union[List[List[int]], List[List[float]], List[float]]]:
+        prompt_length = prompt.shape[1]
+        final_seqs, final_probs, final_scores = [], [], []
+
+        for row_idx in range(a_hidden.shape[0]):
+            row_a_hidden = a_hidden[row_idx:row_idx + 1]
+            row_length = length[row_idx:row_idx + 1]
+            row_prompt = prompt[row_idx:row_idx + 1]
+            beams = [{
+                'tokens': row_prompt,
+                'seq': row_prompt.squeeze(0).tolist(),
+                'probs': [],
+                'score': 0.0,
+                'cache': None,
+                'finished': False,
+            }]
+
+            for _ in range(max_generate):
+                expanded = []
+                for beam in beams:
+                    if beam['finished']:
+                        expanded.append(beam)
+                        continue
+
+                    decoder_out = self.language_model_decoder(
+                        tokens=beam['tokens'],
+                        a_hidden=row_a_hidden,
+                        a_lengths=row_length,
+                        cache=beam['cache'],
+                        text_lengths=torch.LongTensor([beam['tokens'].shape[1]]).to(row_a_hidden.device),
+                    )
+                    logits = decoder_out['logits'][:, -1, :]
+                    log_probs = logits.log_softmax(dim=-1).squeeze(0)
+                    if eos_bias != 0.0:
+                        log_probs[eos_id] = log_probs[eos_id] + eos_bias
+                    if repetition_penalty != 0.0:
+                        generated_tokens = set(beam['seq'][prompt_length:])
+                        if len(generated_tokens) > 0:
+                            penalty_idx = torch.LongTensor(list(generated_tokens)).to(log_probs.device)
+                            log_probs[penalty_idx] = log_probs[penalty_idx] - repetition_penalty
+                    banned_tokens = self._tokens_that_repeat_ngram(
+                        seq=beam['seq'],
+                        prompt_length=prompt_length,
+                        ngram_size=no_repeat_ngram_size,
+                    )
+                    if len(banned_tokens) > 0:
+                        banned_idx = torch.LongTensor(list(banned_tokens)).to(log_probs.device)
+                        log_probs[banned_idx] = -torch.inf
+
+                    next_log_probs, next_tokens = torch.topk(log_probs, k=min(beam_width, log_probs.shape[-1]))
+                    next_probs = next_log_probs.exp()
+
+                    for token, token_log_prob, token_prob in zip(
+                        next_tokens.tolist(),
+                        next_log_probs.tolist(),
+                        next_probs.tolist(),
+                    ):
+                        is_eos = token == eos_id
+                        expanded.append({
+                            'tokens': torch.LongTensor([[token]]).to(row_a_hidden.device),
+                            'seq': beam['seq'] if is_eos else beam['seq'] + [token],
+                            'probs': beam['probs'] + [token_prob],
+                            'score': beam['score'] + token_log_prob,
+                            'cache': decoder_out['kv_cache'],
+                            'finished': is_eos,
+                        })
+
+                expanded.sort(
+                    key=lambda b: self._beam_score(
+                        b['score'],
+                        len(b['seq']) - prompt_length,
+                        length_penalty,
+                    ),
+                    reverse=True,
+                )
+                beams = expanded[:beam_width]
+                if all(beam['finished'] for beam in beams):
+                    break
+
+            best = max(
+                beams,
+                key=lambda b: self._beam_score(
+                    b['score'],
+                    len(b['seq']) - prompt_length,
+                    length_penalty,
+                ),
+            )
+            seq = best['seq'][prompt_length:] if remove_prompt else best['seq']
+            final_seqs.append(seq)
+            final_probs.append(best['probs'])
+            final_scores.append(best['score'])
+
+        outputs = {'text_sequence': final_seqs, 'probs': final_probs}
+        if return_beam_scores:
+            outputs['beam_scores'] = final_scores
         return outputs
 
     def get_prev_id(self) -> int: return self.language_model_decoder.embed.weight.shape[0] - 1
