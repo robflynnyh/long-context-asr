@@ -83,6 +83,28 @@ python run.py \
 - Treat WERs as valid only when extracted from output artifacts or the script's returned data. Do not infer metrics from partial logs.
 - `include_per_recording_evaluations: true` in manager args makes `eval/run.py` include per-recording rows before the aggregate `recording: all` row.
 
+For ROB-26, the Tedlium manager output is expected at:
+
+```text
+/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/eval/tedlium_rl_floras50_3k.csv
+```
+
+Extract the aggregate metric programmatically from the `recording == "all"` row:
+
+```bash
+python - <<'PY'
+import pandas as pd
+
+path = "/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/eval/tedlium_rl_floras50_3k.csv"
+df = pd.read_csv(path)
+row = df.loc[(df["dataset"] == "tedlium") & (df["split"] == "test") & (df["recording"] == "all")].tail(1)
+if row.empty:
+    raise SystemExit("No aggregate Tedlium test row found")
+cols = ["wer", "words", "ins_rate", "del_rate", "sub_rate", "checkpoint"]
+print(row[cols].to_string(index=False))
+PY
+```
+
 ## Common Caveats
 
 - `save_dataframe_path` parent directory must exist; `eval_manager.py` asserts this before running.
