@@ -18,6 +18,16 @@ Evaluation launchers:
 
 Preprocessing launchers under `job_scripts/preprocess/` are CPU jobs that call `python -m lcasr.utils.preprocess --ogg_path <path> --stage 0`.
 
+## ROB-26 GPU Queue Triage
+
+For the ROB-26 encoder-decoder RL run, `gpu-h100-nvl` was the best valid placement observed on 2026-05-01. `sbatch --test-only` checks showed:
+
+- `hp-h100-nvl`, `hp-h100`, and `hp-a100` failed with `Invalid account or account/partition combination specified`.
+- `gpu-h100` was valid but estimated later than the existing `gpu-h100-nvl` job.
+- General `gpu` / A100 placement was valid but estimated much later.
+
+Do not submit duplicate training jobs to the same checkpoint output directory. If changing placement, cancel the pending job first and record the old/new job IDs in Linear and the diary.
+
 ## Minimal Symphony Job Template
 
 Put custom job scripts and logs under parscratch for issue work:
