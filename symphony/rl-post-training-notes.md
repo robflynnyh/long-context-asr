@@ -13,6 +13,7 @@ Each optimizer step is one rollout batch:
 5. Recompute sequence log-probabilities with gradients and take exactly one optimizer update.
 
 No replay buffer, old-policy cache, or repeated update over the same rollout batch is used.
+Rollouts and gradient log-prob recomputation both run with the model in eval mode so decoder/encoder dropout does not make the recomputed policy differ from the sampled rollout policy. Gradients are still enabled for the log-prob pass.
 
 `rl.algorithm: max_rl` uses the MaxRL-style binary-verifier advantage:
 
@@ -64,6 +65,12 @@ CPU validation launcher:
 sbatch exp/configs/enc_dec/rl_floras50_3k_cpu_debug.sh
 ```
 
+CPU real-model rollout smoke launcher:
+
+```bash
+sbatch exp/configs/enc_dec/rl_floras50_3k_cpu_rollout_smoke.sh
+```
+
 GPU training launcher:
 
 ```bash
@@ -82,4 +89,10 @@ Before running the eval manager, create the output directory:
 mkdir -p /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/eval
 cd eval
 sbatch --export=CONFIG='./eval_configs/enc_dec_rl_tedlium.yaml' ./run_eval_h100.sh
+```
+
+The issue-specific launcher does the directory setup and uses the same config by default:
+
+```bash
+sbatch eval/run_eval_rob26_tedlium_h100.sh
 ```

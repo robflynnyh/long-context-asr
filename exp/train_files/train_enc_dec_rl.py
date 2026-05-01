@@ -20,6 +20,7 @@ from lcasr.utils.dataloading import (
     VariableBatchSimpleDataloader,
     chunk_spectogram,
     chunk_text_json,
+    load_sample,
     reset_seen_ids,
 )
 from lcasr.utils.general import (
@@ -423,16 +424,21 @@ def rl_update(
             loss = torch.zeros((), device=device, requires_grad=True)
             skipped_zero_advantage = True
         else:
-            model.train()
-            logprobs = sequence_logprobs(
-                model=model,
-                audio=audio,
-                audio_lengths=audio_lengths,
-                actions=actions,
-                num_rollouts=num_rollouts,
-                bos_id=bos_id,
-                pad_id=pad_id,
-            )
+            was_training = model.training
+            model.eval()
+            try:
+                logprobs = sequence_logprobs(
+                    model=model,
+                    audio=audio,
+                    audio_lengths=audio_lengths,
+                    actions=actions,
+                    num_rollouts=num_rollouts,
+                    bos_id=bos_id,
+                    pad_id=pad_id,
+                )
+            finally:
+                if was_training:
+                    model.train()
             loss = -(advantages.detach() * logprobs).mean()
             skipped_zero_advantage = False
 
@@ -640,6 +646,114 @@ def validate_config(args: argparse.Namespace) -> None:
     print("Config validation passed")
 
 
+def resolve_training_text(txt: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if "word_timestamps" in txt:
+        return txt["word_timestamps"]
+    return txt["results"][-1]["alternatives"][0]["words"]
+
+
+def smoke_rollout(args: argparse.Namespace) -> None:
+    config = OmegaConf.load(args.config)
+    config.wandb.use = False
+    config.rl.num_rollouts = int(args.smoke_num_rollouts)
+    config.rl.max_generate = int(args.smoke_max_generate)
+
+    tokenizer_kwargs = {}
+    if "tokenizer_path" in config.training:
+        tokenizer_kwargs["tokenizer_path"] = config.training.tokenizer_path
+    tokenizer = lcasr.utils.audio_tools.load_tokenizer(**tokenizer_kwargs)
+
+    device = torch.device("cpu")
+    config, model, optimizer, _, _, _, _ = load_or_initialize_model(
+        config=config,
+        tokenizer=tokenizer,
+        device=device,
+        reset_step=True,
+    )
+    model.train()
+
+    paired_data = lcasr.utils.audio_tools.load_json(config.data.path)
+    sample_id, sample = min(paired_data.items(), key=lambda item: item[1].get("duration", float("inf")))
+    audio, txt = load_sample(sample)
+    txt = resolve_training_text(txt)
+    audio = audio.squeeze(0) if audio.ndim == 3 and audio.shape[0] == 1 else audio
+    audio = audio.unsqueeze(0)
+    audio_lengths = torch.LongTensor([audio.shape[-1]])
+    normalizer = EnglishTextNormalizer() if EnglishTextNormalizer is not None else None
+
+    chunks = make_rl_chunks(
+        audio=audio,
+        audio_lengths=audio_lengths,
+        txt=[txt],
+        tokenizer=tokenizer,
+        chunk_size=int(config.audio_chunking.size),
+        chunk_overlap=int(config.audio_chunking.get("overlap", 0)),
+        pad_id=model.get_pad_id(),
+        normalizer=normalizer,
+    )
+    if len(chunks) == 0:
+        raise RuntimeError(f"no non-empty RL chunks produced for smoke sample {sample_id}")
+    chunk = chunks[0]
+
+    model_dtype = next(model.parameters()).dtype
+    audio_chunk = chunk["audio"].to(device, dtype=model_dtype)
+    audio_chunk_lengths = chunk["audio_lengths"].to(device)
+    num_rollouts = int(config.rl.num_rollouts)
+    bos_id = model.get_bos_id()
+    eos_id = model.get_eos_id()
+    pad_id = model.get_pad_id()
+
+    actions, _ = sample_rollouts(
+        model=model,
+        audio=audio_chunk,
+        audio_lengths=audio_chunk_lengths,
+        max_generate=int(config.rl.max_generate),
+        num_rollouts=num_rollouts,
+        temperature=float(config.rl.temperature),
+        bos_id=bos_id,
+        eos_id=eos_id,
+    )
+    hypotheses = [
+        decode_actions(action, tokenizer=tokenizer, eos_id=eos_id, pad_id=pad_id, normalizer=normalizer)
+        for action in actions
+    ]
+    references = [reference for reference in chunk["references"] for _ in range(num_rollouts)]
+    rewards = perfect_wer_rewards(hypotheses=hypotheses, references=references)
+    advantages = compute_advantages(
+        rewards=rewards,
+        group_size=num_rollouts,
+        algorithm=config.rl.algorithm,
+        eps=float(config.rl.get("advantage_eps", 1e-6)),
+    )
+
+    optimizer.zero_grad()
+    was_training = model.training
+    model.eval()
+    try:
+        logprobs = sequence_logprobs(
+            model=model,
+            audio=audio_chunk,
+            audio_lengths=audio_chunk_lengths,
+            actions=actions,
+            num_rollouts=num_rollouts,
+            bos_id=bos_id,
+            pad_id=pad_id,
+        )
+    finally:
+        if was_training:
+            model.train()
+    loss = -logprobs.mean()
+    loss.backward()
+    optimizer.step()
+
+    print(
+        "Smoke rollout passed "
+        f"(sample={sample_id}, chunk_batch={audio_chunk.shape[0]}, rollouts={len(actions)}, "
+        f"max_generate={config.rl.max_generate}, loss={float(loss.detach().cpu()):.4f}, "
+        f"reward_mean={float(rewards.mean()):.4f}, advantage_abs_mean={float(advantages.abs().mean()):.4f})"
+    )
+
+
 def self_test() -> None:
     rewards = torch.tensor([1.0, 0.0, 1.0, 1.0, 0.0, 0.0])
     max_rl_adv = compute_advantages(rewards, group_size=3, algorithm="max_rl", eps=1e-6)
@@ -721,6 +835,9 @@ if __name__ == "__main__":
     parser.add_argument("-prefetch", "--prefetch_factor", type=int, default=None)
     parser.add_argument("--validate_config_only", action="store_true")
     parser.add_argument("--validate_load_model", action="store_true")
+    parser.add_argument("--smoke_rollout", action="store_true")
+    parser.add_argument("--smoke_max_generate", type=int, default=4)
+    parser.add_argument("--smoke_num_rollouts", type=int, default=2)
     parser.add_argument("--self_test", action="store_true")
     parsed = parser.parse_args()
 
@@ -731,5 +848,7 @@ if __name__ == "__main__":
             raise ValueError("--config is required unless --self_test is set")
         if parsed.validate_config_only:
             validate_config(parsed)
+        elif parsed.smoke_rollout:
+            smoke_rollout(parsed)
         else:
             train(parsed)
