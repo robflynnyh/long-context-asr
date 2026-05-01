@@ -28,7 +28,7 @@ hooks:
     git reset --hard origin/dev
 agent:
   max_concurrent_agents: 5
-  max_turns: 30
+  max_turns: 60
 codex:
   command: >-
     module load conda_alma9_container/v1;
