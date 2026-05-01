@@ -83,6 +83,12 @@ python run.py \
 - Treat WERs as valid only when extracted from output artifacts or the script's returned data. Do not infer metrics from partial logs.
 - `include_per_recording_evaluations: true` in manager args makes `eval/run.py` include per-recording rows before the aggregate `recording: all` row.
 
+## ROB-27 18L Long-Only Finetune
+
+The 18L long-only Spotify finetuning launcher is `exp/configs/paper_templates/exp_set_spotify_L_FT.yaml`.
+It writes checkpoints under `/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w<window>-5e5-rp-<repeat>/`.
+The final checkpoint observed for all 15 window/repeat runs is `step_23763.pt`.
+
 ## Common Caveats
 
 - `save_dataframe_path` parent directory must exist; `eval_manager.py` asserts this before running.
