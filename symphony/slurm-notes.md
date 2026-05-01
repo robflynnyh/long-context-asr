@@ -30,6 +30,8 @@ Do not submit duplicate training jobs to the same checkpoint output directory. I
 
 On a 2026-05-01 21:32 BST resume check, queued job `10094511` had scheduler estimate `2026-05-02T08:58:11`. Fresh `sbatch --test-only --time=06:00:00` checks estimated `gpu-h100` at `2026-05-02T07:58:19`, `gpu-h100-nvl` at `2026-05-03T14:03:22`, and general `gpu` at `2026-05-27T04:03:37`. The possible `gpu-h100` improvement was only about one hour and estimate volatility made cancel/requeue unattractive, so keep `10094511` queued unless a materially better valid placement appears.
 
+On a 2026-05-01 22:03 BST follow-up, direct submission to `gpu-h100` with the 24h limit produced job `10097296`, but its actual scheduler estimate was `2026-05-02T19:25:00`, later than `10094511`. Job `10097296` was immediately canceled before start (`CANCELLED`, elapsed `00:00:00`), so `10094511` remains the active ROB-26 training job.
+
 ## Minimal Symphony Job Template
 
 Put custom job scripts and logs under parscratch for issue work:
