@@ -28,6 +28,8 @@ For the ROB-26 encoder-decoder RL run, `gpu-h100-nvl` was the best valid placeme
 
 Do not submit duplicate training jobs to the same checkpoint output directory. If changing placement, cancel the pending job first and record the old/new job IDs in Linear and the diary.
 
+Active ROB-26 jobs `10094511` and `10097287` were submitted from the shared Symphony workspace at `/mnt/parscratch/users/acp21rjf/symphony-workspaces/ROB-26`. The spooled batch script for `10094511` sets `REPO_DIR` to that path and does not pin a commit, so keep the workspace checked out on `symphony/ROB-26-rl-post-training` until the training and dependent eval jobs finish. Future long-running launchers should either set `REPO_DIR` to a stable issue-specific worktree under parscratch job artifacts or checkout the intended branch/commit inside the batch script before running Python.
+
 On a 2026-05-01 21:32 BST resume check, queued job `10094511` had scheduler estimate `2026-05-02T08:58:11`. Fresh `sbatch --test-only --time=06:00:00` checks estimated `gpu-h100` at `2026-05-02T07:58:19`, `gpu-h100-nvl` at `2026-05-03T14:03:22`, and general `gpu` at `2026-05-27T04:03:37`. The possible `gpu-h100` improvement was only about one hour and estimate volatility made cancel/requeue unattractive, so keep `10094511` queued unless a materially better valid placement appears.
 
 On a 2026-05-01 22:03 BST follow-up, direct submission to `gpu-h100` with the 24h limit produced job `10097296`, but its actual scheduler estimate was `2026-05-02T19:25:00`, later than `10094511`. Job `10097296` was immediately canceled before start (`CANCELLED`, elapsed `00:00:00`), so `10094511` remains the active ROB-26 training job.
