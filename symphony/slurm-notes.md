@@ -34,6 +34,8 @@ On a 2026-05-01 22:03 BST follow-up, direct submission to `gpu-h100` with the 24
 
 On a 2026-05-01 22:11 BST follow-up, `10094511` still estimated `2026-05-02T08:58:11`. Fresh `sbatch --test-only` checks for 24h, 12h, and 6h jobs estimated `gpu-h100-nvl` at `2026-05-12T05:03:22` and `gpu-h100` at `2026-05-03T03:58:19`, both worse than the existing active job. Keep `10094511` queued.
 
+On a 2026-05-01 22:27 BST continuation check, fresh `sbatch --test-only` estimated a new `gpu-h100` job at `2026-05-02T07:58:19`, while the active `gpu-h100-nvl` job `10094511` still estimated `2026-05-02T08:58:11`. Slurm accepted `scontrol update JobId=10094511 Partition=gpu-h100` and `scontrol update JobId=10097287 Partition=gpu-h100`, preserving the training/eval job IDs, dependency, commands, and log paths. The active training job's estimate remained `2026-05-02T08:58:11` after the in-place update.
+
 ## Minimal Symphony Job Template
 
 Put custom job scripts and logs under parscratch for issue work:
