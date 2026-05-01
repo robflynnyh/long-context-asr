@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=rob28-ssl
 #SBATCH --time=36:00:00
-#SBATCH --mem=100GB
-#SBATCH --partition=gpu-h100
-#SBATCH --gres=gpu:1
+#SBATCH --mem=130GB
+#SBATCH --partition=gpu-h100-nvl
+#SBATCH --gres=gpu:h100:1
 #SBATCH --qos=gpu
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=8
 #SBATCH --output=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-28/logs/ssl-%j.out
 #SBATCH --error=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-28/logs/ssl-%j.err
 
