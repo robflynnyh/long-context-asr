@@ -37,6 +37,16 @@ sbatch --export=CONFIG='./eval_configs_for_journal/eval_config_rb_windowed.yaml'
 
 It skips model/dataset/split combinations already present in `save_dataframe_path`, then appends rows with WER, word count, error rates, checkpoint path, sequence length, overlap ratio, and model metadata.
 
+For encoder-decoder checkpoints, `eval/run.py` calls `model.transcribe(...)` instead of the CTC moving-window decoder. Model entries can provide `args.transcribe_kwargs` in an eval-manager YAML to pass decoding options such as:
+
+```yaml
+args:
+  transcribe_kwargs:
+    masked_conditioning: false
+```
+
+Use `overlap_ratio: 0` for encoder-decoder benchmark configs unless a task explicitly asks for overlapping CTC-style decoding.
+
 ## Dataset Modules
 
 The generic `eval/run.py` imports these dataset loaders:

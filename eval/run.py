@@ -28,6 +28,18 @@ datasets_functions = {
 }
 
 
+def get_transcribe_kwargs(args, verbose):
+    transcribe_kwargs = args.__dict__.get('transcribe_kwargs', {})
+    if transcribe_kwargs is None:
+        transcribe_kwargs = {}
+    if not hasattr(transcribe_kwargs, 'items'):
+        raise TypeError('transcribe_kwargs must be a mapping')
+
+    transcribe_kwargs = {key: value for key, value in transcribe_kwargs.items()}
+    transcribe_kwargs.setdefault('verbose', verbose)
+    return transcribe_kwargs
+
+
 def main(args):
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
@@ -52,6 +64,7 @@ def main(args):
     include_per_recording_evaluations = args.__dict__.get('include_per_recording_evaluations', False)
 
     verbose = args.__dict__.get('verbose', True)   
+    transcribe_kwargs = get_transcribe_kwargs(args, verbose)
 
     tokenizer = {}
     if args.get("tokenizer_path", None) is not None:
@@ -89,7 +102,13 @@ def main(args):
         
 
         if hasattr(model, 'transcribe'):
-            all_text = model.transcribe(audio_spec, tokenizer, device=device, max_sequence_length=args.seq_len)
+            all_text = model.transcribe(
+                audio_spec,
+                tokenizer,
+                device=device,
+                max_sequence_length=args.seq_len,
+                **transcribe_kwargs,
+            )
             out = normalize(all_text).lower().strip()
             
         else: # assume ctc
@@ -163,4 +182,3 @@ if __name__ == '__main__':
 #python run.py -d earnings22 -r 3 -dfa -epochs 5 -kwargs optim_lr=0.00009 spec_augment_freq_mask_param=34 spec_augment_min_p=0.1879883950862319 spec_augment_n_time_masks=0 spec_augment_n_freq_masks=6
 
 #CUDA_VISIBLE_DEVICES="1" python run.py -dfa -epochs 5 -seq 16384 -o 14336 -split test --dataset earnings22 -r 3 -s "./results/earnings22.json" -kwargs optim_lr=9e-5 spec_augment_freq_mask_param=34 spec_augment_min_p=0.18 spec_augment_n_freq_masks=6  spec_augment_n_time_masks=0 
-

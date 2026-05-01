@@ -657,6 +657,13 @@ class EncDecSconformerV2(BaseModel):
         if self.ctc_loss_weight == 0: return None
         return self.ctc_decoder.ff.weight.shape[0] - 1
 
+    def _unwrap_generated_sequence(self, sequence):
+        if isinstance(sequence, torch.Tensor):
+            sequence = sequence.detach().cpu().tolist()
+        if len(sequence) == 1 and isinstance(sequence[0], (list, tuple)):
+            return list(sequence[0])
+        return sequence
+
     @torch.no_grad()
     def transcribe(
             self,
@@ -757,7 +764,7 @@ class EncDecSconformerV2(BaseModel):
                         sample=sample_synthetic_history,
                         temperature=temperature_synthetic_history,       
                     )         
-                    out_sequence = output['text_sequence']
+                    out_sequence = self._unwrap_generated_sequence(output['text_sequence'])
                     encoder_states = output['encoder_states']
                     #out_sequence = [prev_id] + torch.randint_like(torch.tensor(out_sequence), 1, max(out_sequence)).tolist()[1:]
 
@@ -814,14 +821,14 @@ class EncDecSconformerV2(BaseModel):
                         sample=sample,
                         temperature=temperature,       
                     )         
-                    out_sequence = output['text_sequence']
+                    out_sequence = self._unwrap_generated_sequence(output['text_sequence'])
                     encoder_states = output['encoder_states']    
-                    probs = torch.tensor(output['probs'])
+                    probs = torch.tensor(self._unwrap_generated_sequence(output['probs']))
                 
                     # get inidices of the smallest n probs
                     k = len(probs) // 5
                     probs = torch.randn_like(probs)
-                    min_probs, min_indices = probs.topk(k, largest=False)
+                    min_indices = set(probs.topk(k, largest=False).indices.tolist()) if k > 0 else set()
          
                     print(f'synthetic history: {tokenizer.decode(out_sequence[1:])}') if verbose else None
                     out_sequence = [0]+ [el if i not in min_indices else 1 for i, el in enumerate(out_sequence[1:])]
@@ -843,7 +850,7 @@ class EncDecSconformerV2(BaseModel):
                     sample=sample,
                     temperature=temperature,    
                 )
-                out_sequence = output['text_sequence']
+                out_sequence = self._unwrap_generated_sequence(output['text_sequence'])
                 decoded_sequence = tokenizer.decode(out_sequence) 
 
                 if previous_text_conditioning and not ctc_history: 
