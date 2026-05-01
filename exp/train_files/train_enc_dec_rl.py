@@ -334,14 +334,14 @@ def make_rl_chunks(
     culm_lengths_audio = torch.zeros_like(audio_lengths)
 
     for ix, cur_audio in enumerate(audio_chunks):
-        remove_mask = ~(culm_lengths_audio > audio_lengths)
+        remove_mask = culm_lengths_audio < audio_lengths
         cur_audio = cur_audio[remove_mask]
         cur_culm_lengths = culm_lengths_audio[remove_mask]
         cur_lengths = cur_audio.shape[-1] - (
             cur_culm_lengths + cur_audio.shape[-1] - audio_lengths[remove_mask] - chunk_overlap
         ).clamp(0)
 
-        references = [normalize_text(entry[ix], normalizer) for i, entry in enumerate(txt_chunks) if remove_mask[i]]
+        references = [normalize_text(entry[ix], normalizer) for i, entry in enumerate(txt_chunks) if bool(remove_mask[i].item())]
         tokenized = [tokenizer.encode(reference) for reference in references]
         token_lengths = torch.LongTensor([len(tokens) for tokens in tokenized])
         if len(token_lengths) == 0 or token_lengths.max() == 0:
@@ -764,6 +764,34 @@ def self_test() -> None:
     assert grpo_adv[:3].sum().abs() < 1e-5
     rewards = perfect_wer_rewards(["hello world", "hello"], ["hello world", "hello world"])
     assert rewards.tolist() == [1.0, 0.0]
+
+    class ToyTokenizer:
+        def encode(self, text):
+            return [1 for token in text.split() if token]
+
+        def decode(self, tokens):
+            return " ".join("tok" for _ in tokens)
+
+    chunks = make_rl_chunks(
+        audio=torch.zeros(2, 80, 8),
+        audio_lengths=torch.LongTensor([4, 8]),
+        txt=[
+            [{"start": 0.0, "end": 0.01, "text": "short"}],
+            [
+                {"start": 0.0, "end": 0.01, "text": "longone"},
+                {"start": 0.05, "end": 0.07, "text": "longtwo"},
+            ],
+        ],
+        tokenizer=ToyTokenizer(),
+        chunk_size=4,
+        chunk_overlap=0,
+        pad_id=0,
+        normalizer=None,
+    )
+    assert len(chunks) == 2
+    assert chunks[0]["audio_lengths"].tolist() == [4, 4]
+    assert chunks[1]["audio_lengths"].tolist() == [4]
+    assert all(chunk["audio_lengths"].min().item() > 0 for chunk in chunks)
 
     class ToyDecoder(torch.nn.Module):
         def __init__(self):
