@@ -1,0 +1,19 @@
+models:
+  - name: rob26_rl_floras50_3k
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0.0
+    path: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/checkpoints/rl_floras50_3k/step_3000.pt
+    description: baseline_rp_1 post-trained on floras-50 with on-policy RL
+
+args:
+  verbose: true
+  model_class: EncDecSconformerV2
+  save_dataframe_path: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/eval/tedlium_rl_floras50_3k.csv
+  evaluation_mode: averaged_moving_window
+
+datasets:
+  - name: tedlium
+    splits: [test]
+    args:
+      single_utterance: false
