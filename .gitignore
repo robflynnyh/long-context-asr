@@ -11,5 +11,7 @@ __pycache__
 *.pyc
 paths.yaml
 *.wav
+.claude/
+.~lock.*#
 
 !eval/synthetic_in_context_dataset/**/*.wav

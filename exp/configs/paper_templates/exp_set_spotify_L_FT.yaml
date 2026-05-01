@@ -28,9 +28,9 @@ description: "Here we are looking at testing finetuning with long-only data, whe
 
 model:
   feat_in: 80
-  n_layers: 6
-  d_model: 768
-  n_heads: 6
+  n_layers: 18
+  d_model: 1024
+  n_heads: 8
   head_dim: 128
   dropout_ff: 0.0 # dropout parameters
   dropout_attn: 0.0
@@ -52,7 +52,8 @@ model:
   default_norm: 'layer_norm'
   sandwich_norm: false
   bias_in_ff: false
-  checkpoint_every_n_layers: 0
+  checkpoint_every_n_layers: 1
+  ff_checkpoint_lvl: 2 # recompute pre_act and gelu_out in the bwd pass
   rotary_base_freq: 1500000 # https://arxiv.org/pdf/2309.16039.pdf
   attention_window_size: [
     128, # 2048
@@ -117,58 +118,58 @@ wandb:
   use: true
   project_name: "spotify_long_only_long_context"
   name: [
-    'spotify-L-FT_3epoch-w128-5e5-rp-1',
-    'spotify-L-FT_3epoch-w128-5e5-rp-2',
-    'spotify-L-FT_3epoch-w128-5e5-rp-3',
-    'spotify-L-FT_3epoch-w512-5e5-rp-1',
-    'spotify-L-FT_3epoch-w512-5e5-rp-2',
-    'spotify-L-FT_3epoch-w512-5e5-rp-3',
-    'spotify-L-FT_3epoch-w2048-5e5-rp-1',
-    'spotify-L-FT_3epoch-w2048-5e5-rp-2',
-    'spotify-L-FT_3epoch-w2048-5e5-rp-3',
-    'spotify-L-FT_3epoch-w8192-5e5-rp-1',
-    'spotify-L-FT_3epoch-w8192-5e5-rp-2',
-    'spotify-L-FT_3epoch-w8192-5e5-rp-3',
-    'spotify-L-FT_3epoch-w22500-5e5-rp-1',
-    'spotify-L-FT_3epoch-w22500-5e5-rp-2',
-    'spotify-L-FT_3epoch-w22500-5e5-rp-3',
+    'spotify-L-FT_3epoch-18L-w128-5e5-rp-1',
+    'spotify-L-FT_3epoch-18L-w128-5e5-rp-2',
+    'spotify-L-FT_3epoch-18L-w128-5e5-rp-3',
+    'spotify-L-FT_3epoch-18L-w512-5e5-rp-1',
+    'spotify-L-FT_3epoch-18L-w512-5e5-rp-2',
+    'spotify-L-FT_3epoch-18L-w512-5e5-rp-3',
+    'spotify-L-FT_3epoch-18L-w2048-5e5-rp-1',
+    'spotify-L-FT_3epoch-18L-w2048-5e5-rp-2',
+    'spotify-L-FT_3epoch-18L-w2048-5e5-rp-3',
+    'spotify-L-FT_3epoch-18L-w8192-5e5-rp-1',
+    'spotify-L-FT_3epoch-18L-w8192-5e5-rp-2',
+    'spotify-L-FT_3epoch-18L-w8192-5e5-rp-3',
+    'spotify-L-FT_3epoch-18L-w22500-5e5-rp-1',
+    'spotify-L-FT_3epoch-18L-w22500-5e5-rp-2',
+    'spotify-L-FT_3epoch-18L-w22500-5e5-rp-3',
   ]
   id: "" # leave empty if not resuming a previous run
 
 checkpointing:
   dir: [
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w128-5e5-rp-1',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w128-5e5-rp-2',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w128-5e5-rp-3',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w512-5e5-rp-1',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w512-5e5-rp-2',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w512-5e5-rp-3',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w2048-5e5-rp-1',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w2048-5e5-rp-2',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w2048-5e5-rp-3',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w8192-5e5-rp-1',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w8192-5e5-rp-2',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w8192-5e5-rp-3',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w22500-5e5-rp-1',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w22500-5e5-rp-2',
-    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/spotify-L-FT-w22500-5e5-rp-3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w128-5e5-rp-1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w128-5e5-rp-2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w128-5e5-rp-3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w512-5e5-rp-1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w512-5e5-rp-2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w512-5e5-rp-3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w2048-5e5-rp-1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w2048-5e5-rp-2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w2048-5e5-rp-3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w8192-5e5-rp-1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w8192-5e5-rp-2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w8192-5e5-rp-3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w22500-5e5-rp-1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w22500-5e5-rp-2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/spotify-L-FT-w22500-5e5-rp-3',
   ]
   pretrained: [
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_128_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_128_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_128_rp_3',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_512_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_512_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_512_rp_3',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_2048_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_2048_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_2048_rp_3',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_8192_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_8192_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_8192_rp_3',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_360000_rp_1',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_360000_rp_2',
-    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_360000_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_2048_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_2048_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_2048_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_8192_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_8192_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_8192_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_32768_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_32768_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_32768_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_131072_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_131072_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_131072_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_360000_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_360000_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_360000_rp_3',
   ]
   save_every_n_steps: 2000
 

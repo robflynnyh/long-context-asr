@@ -1,4 +1,4 @@
-  global:
+global:
   root_path: "/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch/"
   name: rotary_pos_6l_768d_pre_windowed_longonly_spotify
   seq_len: 360000

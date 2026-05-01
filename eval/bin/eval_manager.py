@@ -9,6 +9,15 @@ from run import main as run_eval, datasets_functions
 accepted_splits = ['test', 'dev', 'train', 'all']
 
 
+def get_model_metadata(model):
+    metadata = {}
+    for key, value in model.items():
+        if key in {'args', 'path'}:
+            continue
+        metadata[key] = value
+    return metadata
+
+
     
 
 def checks(config):
@@ -37,6 +46,7 @@ def get_args(config, split, model, dataset_config):
 
 
 def get_data_to_save(config, wers, split, dataset, model):
+    model_metadata = get_model_metadata(model)
     data = [{
         'dataset': dataset,
         'split': split,
@@ -54,19 +64,21 @@ def get_data_to_save(config, wers, split, dataset, model):
         'model_class': config.args.model_class,
     } for wer_data in wers]
 
+    for row in data:
+        for key, value in model_metadata.items():
+            if key not in row:
+                row[key] = value
+
     return data
 
-def check_if_already_evaluated(model_save_path, cur_df, dataset, split, args):
-    '''
-    ADD CHECKS FOR DATASET ASWELL AND SPLIT AS MODEL CAN BE EVALUATED ON MULTIPLE DATASETS AND SPLITS (currently only checks model_save_path)
-    '''
-    # check if a model with the same checkpoint path has already been evaluated
+def check_if_already_evaluated(model, cur_df, dataset, split):
     if cur_df is None:
         return False
     
-    cur_df = cur_df.loc[cur_df['checkpoint'] == model_save_path].loc[cur_df['dataset'] == dataset].loc[cur_df['split'] == split]
-    cur_df = cur_df.loc[cur_df['seq_len'] == args.seq_len]
-    cur_df = cur_df.loc[cur_df['overlap_ratio'] == args.overlap]
+    cur_df = cur_df.loc[cur_df['checkpoint'] == model.path].loc[cur_df['dataset'] == dataset].loc[cur_df['split'] == split]
+    for key, value in get_model_metadata(model).items():
+        if key in cur_df.columns:
+            cur_df = cur_df.loc[cur_df[key] == value]
 
     model = cur_df
     if len(model) == 0:return False
@@ -94,7 +106,7 @@ def main(args, config):
         for split in dataset_splits:
             for model in config.models:
                 args = get_args(config, split, model, dataset_config)
-                if check_if_already_evaluated(model.path, cur_df, dataset=dataset_reference, split=split, args=args): print(f'Skipping {model.path} as it has already been evaluated'); continue
+                if check_if_already_evaluated(model, cur_df, dataset=dataset_reference, split=split): print(f'Skipping {model.path} as it has already been evaluated'); continue
                 wers, model_config = run_eval(args = args)
                 data_to_save = get_data_to_save(config, wers, split, dataset_reference, model)
                 df = pd.DataFrame(data_to_save)

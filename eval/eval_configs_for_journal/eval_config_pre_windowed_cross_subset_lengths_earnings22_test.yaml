@@ -1,0 +1,1345 @@
+global:
+  root_path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes/rb_window_size_
+  name: rotary_pos_6l_768d_pre_windowed_cross_subset_lengths
+  seq_len: 360000
+  checkpoint: step_105360.pt
+  overlap_ratio: 0.875
+  description: "cross-eval of selected pre-windowed checkpoints across all selected eval window sizes"
+  downsampling: 8
+
+models:
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 32
+    repeat: 1
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 128
+    repeat: 1
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 512
+    repeat: 1
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 2048
+    repeat: 1
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 8192
+    repeat: 1
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 32768
+    repeat: 1
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 22500
+    repeat: 1
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 32
+    repeat: 2
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 128
+    repeat: 2
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 512
+    repeat: 2
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 2048
+    repeat: 2
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 8192
+    repeat: 2
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 32768
+    repeat: 2
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 22500
+    repeat: 2
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 32
+    repeat: 3
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 128
+    repeat: 3
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 512
+    repeat: 3
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 2048
+    repeat: 3
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 8192
+    repeat: 3
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 32768
+    repeat: 3
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32
+    eval_window_size: 22500
+    repeat: 3
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 32
+    repeat: 1
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 128
+    repeat: 1
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 512
+    repeat: 1
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 2048
+    repeat: 1
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 8192
+    repeat: 1
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 32768
+    repeat: 1
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 22500
+    repeat: 1
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 32
+    repeat: 2
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 128
+    repeat: 2
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 512
+    repeat: 2
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 2048
+    repeat: 2
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 8192
+    repeat: 2
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 32768
+    repeat: 2
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 22500
+    repeat: 2
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 32
+    repeat: 3
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 128
+    repeat: 3
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 512
+    repeat: 3
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 2048
+    repeat: 3
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 8192
+    repeat: 3
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 32768
+    repeat: 3
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 128
+    eval_window_size: 22500
+    repeat: 3
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}128_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 32
+    repeat: 1
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 128
+    repeat: 1
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 512
+    repeat: 1
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 2048
+    repeat: 1
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 8192
+    repeat: 1
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 32768
+    repeat: 1
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 22500
+    repeat: 1
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 32
+    repeat: 2
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 128
+    repeat: 2
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 512
+    repeat: 2
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 2048
+    repeat: 2
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 8192
+    repeat: 2
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 32768
+    repeat: 2
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 22500
+    repeat: 2
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 32
+    repeat: 3
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 128
+    repeat: 3
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 512
+    repeat: 3
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 2048
+    repeat: 3
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 8192
+    repeat: 3
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 32768
+    repeat: 3
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 512
+    eval_window_size: 22500
+    repeat: 3
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}512_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 32
+    repeat: 1
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 128
+    repeat: 1
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 512
+    repeat: 1
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 2048
+    repeat: 1
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 8192
+    repeat: 1
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 32768
+    repeat: 1
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 22500
+    repeat: 1
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 32
+    repeat: 2
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 128
+    repeat: 2
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 512
+    repeat: 2
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 2048
+    repeat: 2
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 8192
+    repeat: 2
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 32768
+    repeat: 2
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 22500
+    repeat: 2
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 32
+    repeat: 3
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 128
+    repeat: 3
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 512
+    repeat: 3
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 2048
+    repeat: 3
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 8192
+    repeat: 3
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 32768
+    repeat: 3
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 2048
+    eval_window_size: 22500
+    repeat: 3
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}2048_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 32
+    repeat: 1
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 128
+    repeat: 1
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 512
+    repeat: 1
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 2048
+    repeat: 1
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 8192
+    repeat: 1
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 32768
+    repeat: 1
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 22500
+    repeat: 1
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 32
+    repeat: 2
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 128
+    repeat: 2
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 512
+    repeat: 2
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 2048
+    repeat: 2
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 8192
+    repeat: 2
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 32768
+    repeat: 2
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 22500
+    repeat: 2
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 32
+    repeat: 3
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 128
+    repeat: 3
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 512
+    repeat: 3
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 2048
+    repeat: 3
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 8192
+    repeat: 3
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 32768
+    repeat: 3
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 8192
+    eval_window_size: 22500
+    repeat: 3
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}8192_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 32
+    repeat: 1
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 128
+    repeat: 1
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 512
+    repeat: 1
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 2048
+    repeat: 1
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 8192
+    repeat: 1
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 32768
+    repeat: 1
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 22500
+    repeat: 1
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 32
+    repeat: 2
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 128
+    repeat: 2
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 512
+    repeat: 2
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 2048
+    repeat: 2
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 8192
+    repeat: 2
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 32768
+    repeat: 2
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 22500
+    repeat: 2
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 32
+    repeat: 3
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 128
+    repeat: 3
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 512
+    repeat: 3
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 2048
+    repeat: 3
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 8192
+    repeat: 3
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 32768
+    repeat: 3
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 32768
+    eval_window_size: 22500
+    repeat: 3
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: ${global.description}
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 32
+    repeat: 1
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 128
+    repeat: 1
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 512
+    repeat: 1
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 2048
+    repeat: 1
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 8192
+    repeat: 1
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 32768
+    repeat: 1
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 22500
+    repeat: 1
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 32
+    repeat: 2
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 128
+    repeat: 2
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 512
+    repeat: 2
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 2048
+    repeat: 2
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 8192
+    repeat: 2
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 32768
+    repeat: 2
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 22500
+    repeat: 2
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 32
+    repeat: 3
+    window_size: 32
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 128
+    repeat: 3
+    window_size: 128
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 512
+    repeat: 3
+    window_size: 512
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 2048
+    repeat: 3
+    window_size: 2048
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 8192
+    repeat: 3
+    window_size: 8192
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 32768
+    repeat: 3
+    window_size: 32768
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+  - name: ${global.name}
+    checkpoint_window_size: 22500
+    eval_window_size: 22500
+    repeat: 3
+    window_size: 22500
+    seq_len: ${global.seq_len}
+    overlap_ratio: ${global.overlap_ratio}
+    path: ${global.root_path}32768_rp_${.repeat}/${global.checkpoint}
+    description: "22500 eval uses the 32768 checkpoint"
+
+args:
+  verbose: true
+  model_class: SCConformerXL
+  evaluation_mode: windowed_attention
+  max_sequence_length: 3600000
+  save_dataframe_path: './results/thesis/evals_rotary_pre_windowed_cross_subset_lengths_earnings22_test.csv'
+  run_eval_with: run
+
+datasets:
+  - name: earnings22
+    splits: [test]
