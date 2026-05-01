@@ -400,19 +400,21 @@ def main(args):
         )
     
     checkpoint_path = args.config['checkpointing']['dir'] 
+    load_training_state = args.config['checkpointing'].get('load_training_state', True)
     if 'pretrained' in args.config['checkpointing'] and args.config['checkpointing']['pretrained'] != None:
         checkpoint_path = args.config['checkpointing']['pretrained']
+        load_training_state = args.config['checkpointing'].get('load_training_state', False)
 
     seen_ids, step, epoch = load_checkpoint(
         args = args, 
         model = model, 
-        optimizer = optimizer, 
-        scheduler = scheduler, 
-        sequence_scheduler = sequence_scheduler,
+        optimizer = optimizer if load_training_state else None,
+        scheduler = scheduler if load_training_state else None,
+        sequence_scheduler = sequence_scheduler if load_training_state else None,
         path = checkpoint_path,
         device = device
     )
-    if args.reset_step:
+    if args.reset_step or not load_training_state:
         seen_ids, step, epoch = [], 0, 0 
 
     print(f'Starting from podcast: {len(seen_ids)}')
@@ -484,4 +486,3 @@ if __name__ == '__main__':
 
 
     main(args)
-      

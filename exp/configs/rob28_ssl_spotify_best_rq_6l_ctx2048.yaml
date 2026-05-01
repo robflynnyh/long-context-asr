@@ -1,0 +1,86 @@
+model_class: 'SCConformerXL'
+description: "ROB-28 BEST-RQ SSL pretraining on Spotify, fixed 2048-frame context, 6L ~90M acoustic model."
+
+model:
+  feat_in: 80
+  n_layers: 6
+  d_model: 768
+  n_heads: 6
+  head_dim: 128
+  dropout_ff: 0.0
+  dropout_attn: 0.0
+  dropout_conv: 0.0
+  subsampling_factor: 8
+  subsampling: 'dw_striding'
+  subsampling_act: 'silu'
+  subsampling_conv_channels: 256
+  self_condition_subsampling: false
+  subsampling_norm_out: false
+  conv_kernel_size: 9
+  qk_rms_norm: false
+  shift_kvs: false
+  self_conditioning: true
+  gated_sc: false
+  decoder_norm: true
+  use_rotary: true
+  encoder_mode: 'conformer'
+  default_norm: 'layer_norm'
+  sandwich_norm: false
+  bias_in_ff: false
+  checkpoint_every_n_layers: 0
+  rotary_base_freq: 1500000
+
+best_rq:
+  mask_percentage: 0.1
+  frames_to_mask: 5
+  downsampling_factor: 8
+  codebook_size: 8192
+  codebook_dim: 16
+
+optimizer:
+  name: 'madgrad'
+  args:
+    lr: 3e-3
+
+scheduler:
+  warmup_steps: 5000
+
+audio_chunking:
+  size: 2048
+  overlap: 0
+
+wandb:
+  use: true
+  project_name: "spotify_long_context_ssl"
+  name: "rob28_best_rq_6l_ctx2048_spotify_1epoch"
+  id: ""
+  dir: "/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-28/wandb"
+  update_config_with_wandb_id: false
+
+checkpointing:
+  dir: "/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-28/checkpoints/ssl_spotify_ctx2048"
+  save_every_n_steps: 2000
+
+data:
+  path: "/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json"
+
+spec_augment:
+  n_time_masks: 0
+  time_mask_param: 0
+  n_freq_masks: 2
+  freq_mask_param: 18
+  iid_masks: true
+  min_p: 0.0
+  max_p: 0.0
+  zero_masking: false
+
+training:
+  max_epochs: 1
+  start_spec_augment_after_n_epochs: -1
+  batch_size: 176
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
+  clip_value: 0.8
+  random_seed: 28028
+  dtype: "bfloat16"

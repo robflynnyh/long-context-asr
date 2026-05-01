@@ -46,7 +46,7 @@ def blank_p(logits, tokenizer):
 
 
 def backwards_pass(
-        model:SCConformerXL,
+        model:torch.nn.Module,
         clip_value:float,
         optimizer:torch.optim.Optimizer,
         scheduler:torch.optim.lr_scheduler._LRScheduler,
@@ -90,6 +90,7 @@ def train(
         step:int = 0,
         seen_ids:List[str] = [],
         epoch:int = 0,
+        augmentation:SpecAugment|None = None,
     ):
     scaler = GradScaler() 
     clip_value = args.config['training'].get('clip_value', 0.8) 
@@ -166,7 +167,10 @@ def train(
                 sequence_scheduler = sequence_scheduler,
                 seen_ids = seen_ids,
                 epoch = epoch,
-                other = {'best_rq_out_projection': best_rq.out_projection.state_dict()},
+                other = {
+                    'best_rq_out_projection': best_rq.out_projection.state_dict(),
+                    'best_rq_quantizer': best_rq.quantizer.state_dict(),
+                },
             )
             podcasts_since_last_save = 0
         last_podcast = cur_podcast
@@ -175,7 +179,7 @@ def train(
         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
 
         del audio
-        backwards_every_loss, steps_since_backwards = 0.0, 0
+        backwards_every_loss, steps_since_backwards, backwards_every_tokens = 0.0, 0, 0
         chunks, culm_lengths_audio, nans_in_a_row = [], torch.zeros_like(audio_lengths), 0
 
         ################################
@@ -215,14 +219,16 @@ def train(
                     audio = apply_augmentation(audio=audio, lengths=a_lengths, augmentation=augmentation, start_augment_after_n_epochs=start_spec_augment_after_n_epochs, epoch=epoch, is_warmup=scheduler.is_warmup)
                    
                     
-                    out = model(
+                    out = best_rq(
                         audio_signal = audio, 
                         length = a_lengths, 
                     )
 
-                    cur_probs = out['final_posteriors']
-                    B,N,C = cur_probs.shape 
-                    loss = None
+                    loss = out['loss']
+                    num_masked = out.get('num_masked', 0)
+
+                if num_masked == 0:
+                    continue
                     
                 # check for nan in loss
                 if torch.isnan(loss):
@@ -237,30 +243,30 @@ def train(
                     nans_in_a_row = 0
 
 
-                cur_loss += loss
+                cur_loss += loss.detach()
 
                 backwards_every_loss += loss
                 steps_since_backwards += 1
+                backwards_every_tokens += num_masked
                 
-                # cur_tokens_in_loss += B * N
-                cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch
+                cur_tokens_in_loss += num_masked
 
                 if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
-                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size*steps_since_backwards)) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
+                    scaler.scale(backwards_every_loss / max(backwards_every_tokens, 1)).backward()
                     last_kv_set.detach_() if last_kv_set != None else None
                     steps_since_backwards = 0
                     backwards_every_loss = 0
+                    backwards_every_tokens = 0
 
 
                 if (ix+1) % backprop_every == 0 or (ix+1) == len(chunks): 
                     full_loss = cur_loss 
-                    full_loss /= cur_tokens_in_loss
-                    full_loss *= 100
+                    full_loss /= max(cur_tokens_in_loss, 1)
                     loss_to_log = full_loss.item()
                     print(f'loss: {full_loss}')
                     
                     backwards_pass(
-                        model = best_rq.model,
+                        model = best_rq,
                         clip_value = clip_value,
                         optimizer = optimizer,
                         scheduler = scheduler,
@@ -318,7 +324,10 @@ def train(
         sequence_scheduler = sequence_scheduler,
         seen_ids = seen_ids,
         epoch = epoch,
-        other = {'best_rq_out_projection': best_rq.out_projection.state_dict()},
+        other = {
+            'best_rq_out_projection': best_rq.out_projection.state_dict(),
+            'best_rq_quantizer': best_rq.quantizer.state_dict(),
+        },
     )
     return best_rq
             
@@ -351,13 +360,14 @@ def main(args):
         wandb_dir = args.config['wandb'].get('dir', './wandb')
         config = OmegaConf.to_container(args.config, resolve=True)
         wandb.init(project=project_name, config=config, name=run_name, dir=wandb_dir) if w_id == '' else wandb.init(project=project_name, id=w_id, resume="must", config=config, allow_val_change=True, dir=wandb_dir)
-        wandb.watch(model, log="all") # sometimes this causes a crash ):
         wandb.config.update({'total_params': tparams}, allow_val_change=True)
         print(f'\nLoggging with Wandb id: {wandb.run.id}\n')
         args.config['wandb']['id'] = wandb.run.id # add wandb config to args.config
         if wandb_config.get('update_config_with_wandb_id', False): OmegaConf.save(config=args.config, f=args.config_path)
 
-    best_rq = BestRQ(model=model).to(device)
+    best_rq = BestRQ(model=model, **args.config.get('best_rq', {})).to(device)
+    if wandb_config['use']:
+        wandb.watch(best_rq, log="all") # sometimes this causes a crash ):
     optimizer, scheduler = load_optimizer(args.config, best_rq)
 
     sequence_scheduler = None
@@ -375,17 +385,11 @@ def main(args):
         scheduler = scheduler, 
         sequence_scheduler = sequence_scheduler,
         path = args.config['checkpointing']['dir'],
-        device = device
-    )
-    _, _, _ = load_checkpoint(
-        args = args, 
-        model = best_rq.out_projection, 
-        optimizer = None, 
-        scheduler = None, 
-        sequence_scheduler = None,
-        path = args.config['checkpointing']['dir'],
-        model_key= 'best_rq_out_projection',
-        device = device
+        device = device,
+        other = [
+            (best_rq.out_projection, 'best_rq_out_projection'),
+            (best_rq.quantizer, 'best_rq_quantizer'),
+        ],
     )
 
     if args.reset_step:
@@ -414,6 +418,8 @@ def main(args):
         random_seed = random_seed,
     )
 
+    augmentation = SpecAugment(**args.config['spec_augment']) if 'spec_augment' in args.config else None
+    assert exists(augmentation) or start_spec_augment_after_n_epochs == -1, 'must have spec augment in config if start_spec_augment_after_n_epochs > 0'
 
     if args.debug_hooks:
         assert wandb_config['use'], 'must have wandb enabled when - arg.debug_hooks ==  True - to log debug hooks outputs'
@@ -434,7 +440,8 @@ def main(args):
         device = device, 
         seen_ids = seen_ids,
         step = step,
-        epoch = epoch
+        epoch = epoch,
+        augmentation = augmentation,
     )
 
 
@@ -456,4 +463,3 @@ if __name__ == '__main__':
 
 
     main(args)
-      

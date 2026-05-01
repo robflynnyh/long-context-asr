@@ -1,0 +1,83 @@
+model_class: 'SCConformerXL'
+description: "ROB-28 ASR fine-tuning on floras-50 from the Spotify BEST-RQ SSL checkpoint, fixed 2048-frame context."
+
+model:
+  feat_in: 80
+  n_layers: 6
+  d_model: 768
+  n_heads: 6
+  head_dim: 128
+  dropout_ff: 0.0
+  dropout_attn: 0.0
+  dropout_conv: 0.0
+  subsampling_factor: 8
+  subsampling: 'dw_striding'
+  subsampling_act: 'silu'
+  subsampling_conv_channels: 256
+  self_condition_subsampling: false
+  subsampling_norm_out: false
+  conv_kernel_size: 9
+  qk_rms_norm: false
+  shift_kvs: false
+  self_conditioning: true
+  gated_sc: false
+  decoder_norm: true
+  use_rotary: true
+  encoder_mode: 'conformer'
+  default_norm: 'layer_norm'
+  sandwich_norm: false
+  bias_in_ff: false
+  checkpoint_every_n_layers: 0
+  rotary_base_freq: 1500000
+
+optimizer:
+  name: 'madgrad'
+  args:
+    lr: 6e-4
+
+scheduler:
+  warmup_steps: 9000
+
+audio_chunking:
+  size: 2048
+  overlap: 0
+
+wandb:
+  use: true
+  project_name: "floras50_long_context_ssl_finetune"
+  name: "rob28_floras50_from_best_rq_ctx2048_1epoch"
+  id: ""
+  dir: "/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-28/wandb"
+  update_config_with_wandb_id: false
+
+checkpointing:
+  dir: "/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-28/checkpoints/floras50_finetune_ctx2048"
+  pretrained: "/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-28/checkpoints/ssl_spotify_ctx2048"
+  load_training_state: false
+  save_every_n_steps: 2000
+
+data:
+  path: "/users/acp21rjf/align_floras50/tmp/mapping.json"
+
+spec_augment:
+  n_time_masks: 0
+  time_mask_param: 0
+  n_freq_masks: 2
+  freq_mask_param: 18
+  iid_masks: true
+  min_p: 0.0
+  max_p: 0.0
+  zero_masking: false
+
+training:
+  max_epochs: 1
+  tokenizer_path: "lcasr/artifacts/floras50/tokenizer.model"
+  shuffle_chunks: true
+  start_spec_augment_after_n_epochs: -1
+  batch_size: 176
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
+  clip_value: 0.8
+  random_seed: 28029
+  dtype: "bfloat16"

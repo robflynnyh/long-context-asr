@@ -49,7 +49,7 @@ def pad_feats(feats, divis_by): # pad from: https://github.com/speechbrain/speec
     # Initialize padding for all dimensions, have a look at the documentation of
     # torch.nn.functional.pad because the padding argument is quite special.
     padding = [0, 0, 0, 0, 0, 0]
-    padding[dim_to_pad * 2] = (
+    padding[dim_to_pad * 2 + 1] = (
         padding_needed  # Set padding for the chosen dimension
     )
 
@@ -78,7 +78,6 @@ class BestRQ(BaseModel):
             nn.Linear(model.d_model, codebook_size)
         )
         
-    
         from vector_quantize_pytorch import RandomProjectionQuantizer 
         self.quantizer = RandomProjectionQuantizer(
             dim = model.feat_in * downsampling_factor,  # input dimension -- 8 * 80 i.e 640 
@@ -102,7 +101,8 @@ class BestRQ(BaseModel):
         
 
     def calc_loss(self, x, targets) -> torch.Tensor:
-        return torch.nn.functional.cross_entropy(x, target=targets)
+        targets = targets.reshape(-1).long()
+        return F.cross_entropy(x.float(), target=targets, reduction='sum')
 
     def forward(
             self, 
@@ -124,7 +124,7 @@ class BestRQ(BaseModel):
         stacked_signal = audio_signal.reshape(B, T_stacked, C * self.downsampling_factor)
 
         # --- validity mask from lengths (assuming length is in mel frames) ---
-        stacked_lengths = torch.div(length.to(device), ds, rounding_mode="floor").clamp(max=T_stacked)
+        stacked_lengths = torch.div(length.to(device) + ds - 1, ds, rounding_mode="floor").clamp(max=T_stacked)
         valid_stacked = torch.arange(T_stacked, device=device)[None, :] < stacked_lengths[:, None]
 
 
@@ -134,9 +134,9 @@ class BestRQ(BaseModel):
         target_frames = stacked_signal[stacked_mask]  # (num_masked_frames, C * downsampling_factor)
         if target_frames.shape[0] == 0: 
             logging.warning("no masked frames selected, returning zero loss")
-            return {'loss': torch.tensor(0.0, device=device, requires_grad=True)}
+            return {'loss': torch.tensor(0.0, device=device, requires_grad=True), 'num_masked': 0}
         
-        targets = self.quantizer(target_frames[None]).squeeze(0) # (num_masked_frames, 1)
+        targets = self.quantizer(target_frames.float()[None]).squeeze(0) # (num_masked_frames, 1)
 
         mask = repeat(stacked_mask, 'b t -> b (t f)', f=self.downsampling_factor)
         assert mask.shape == (B, T), f"Something went wrong, got mask shape {mask.shape}, expected {(B,T)}"
@@ -148,6 +148,7 @@ class BestRQ(BaseModel):
                 std=0.1,
                 size=(mask_num, C),
                 device=device,
+                dtype=audio_signal.dtype,
             )
         audio_signal = rearrange(audio_signal, 'b t c -> b c t')
         out = self.model(
@@ -165,7 +166,7 @@ class BestRQ(BaseModel):
         loss = self.calc_loss(x_tgt, targets)
 
 
-        return {'loss': loss}
+        return {'loss': loss, 'num_masked': targets.numel()}
 
 
 
@@ -183,4 +184,3 @@ if __name__ == '__main__':
     lengths = lengths.to(device)
     out = bestrq(audio, length=lengths)
     logger.info(out['loss'])
-    

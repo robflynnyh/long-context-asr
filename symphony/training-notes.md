@@ -95,3 +95,10 @@ By default it randomizes `training.random_seed` to avoid repeatedly hitting the 
 - Many configs contain absolute checkpoint/data paths. Verify they exist before launching a long job.
 - `audio_chunking.overlap` is present in many configs, but `train.py` currently sets training chunk overlap to `0`.
 - Batch-size comments in configs are useful reference points: `512 -> 704`, `1024 -> 352`, `2048 -> 176`, `4096 -> 88`, `8192 -> 44`, `16384 -> 22`, `65536 -> 5`, `131072 -> 2`, `360000 -> 1`.
+
+## BEST-RQ SSL
+
+- SSL pretraining uses `exp/train_bestRQ.py` with `lcasr.models.BestRQ`. ROB-28 added fixed-context configs under `exp/configs/rob28_*`.
+- `train_bestRQ.py` saves the acoustic model under checkpoint key `model` so normal ASR fine-tuning can load it. It also saves `best_rq_out_projection` and `best_rq_quantizer` for SSL resume only.
+- For ASR fine-tuning from an SSL checkpoint, set `checkpointing.pretrained` to the SSL checkpoint directory and `checkpointing.load_training_state: false`; otherwise `train.py` may try to restore an optimizer state that includes SSL-only BEST-RQ parameters.
+- ROB-28 Slurm scripts write logs/checkpoints/WandB files under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-28/` and leave data paths read-only.
