@@ -118,8 +118,9 @@ Instructions:
    - Prefer adding or updating a small Slurm script when the command needs environment setup or will run for more than a few minutes.
    - Put Slurm stdout/stderr logs under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts` or another clearly named parscratch path.
    - Submit with `sbatch <script>` and record the job ID, script path, log paths, and purpose in the workpad.
-   - Monitor with `squeue -j <job_id>` while running, then confirm completion with `sacct -j <job_id> --format=JobID,JobName,State,ExitCode,Elapsed` when available.
-   - Inspect stdout/stderr logs after completion. Treat nonzero exit codes, failed/cancelled/timeout states, tracebacks, uncaught exceptions, and obvious error lines as validation failures.
+   - Monitor with `squeue -j <job_id>` while running, but avoid frequent polling for long training/evaluation jobs. Unless the next action is blocked on near-term completion, wait several minutes between checks and use `sacct -j <job_id> --format=JobID,JobName,State,ExitCode,Elapsed` after the job leaves the queue when available.
+   - Keep log inspection token-efficient. Do not dump entire Slurm stdout/stderr or training logs by default; start with bounded reads such as `tail -n 80 <log>` and targeted searches such as `grep -n -E "error|traceback|failed|exception|epoch|loss|wer" <log> | tail -n 40`. Read larger sections only when the bounded output identifies a specific reason.
+   - Inspect stdout/stderr logs after completion using bounded reads and targeted searches. Treat nonzero exit codes, failed/cancelled/timeout states, tracebacks, uncaught exceptions, and obvious error lines as validation failures.
    - If `sacct` is unavailable, rely on `squeue` disappearance plus the Slurm output logs and any generated success markers.
    - Do not move the issue to `Human Review`, mark it done, or claim validation passed until every Slurm job you launched for the issue has finished and its logs show no errors.
 11. Keep the repository research diary up to date.

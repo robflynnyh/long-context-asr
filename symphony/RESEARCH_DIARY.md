@@ -19,3 +19,4 @@ Agents should append dated entries for meaningful implementation changes, experi
 - ROB-25 Slurm validation: full TEDLIUM-test benchmark job `10094215` completed successfully in 1:34:24 with exit code `0:0`; parsed CSV has 84 data rows and 7 aggregate rows, all `overlap_ratio: 0`, with no failure lines in envcheck/smoke/full logs.
 - ROB-25 results: added `symphony/rob-25-encdec-benchmark-results.md`; best aggregate TEDLIUM test WER was `enc_dec_3l_no_anorm_v2` at `0.09803296119085593`.
 - ROB-25 PR handoff: rebased branch `symphony/ROB-25-benchmark-encdec` onto `origin/dev` `67d5b2c`, force-updated the issue branch after confirming the remote branch SHA because local Git lacks `--force-with-lease`, and opened draft PR https://github.com/robflynnyh/long-context-asr/pull/4.
+- ROB-32 on branch `symphony/ROB-32-reduce-token-usage`: added workflow and Slurm notes to prefer bounded log inspection and less frequent polling for long jobs. No Slurm jobs launched.

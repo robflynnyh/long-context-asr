@@ -49,7 +49,17 @@ squeue -j <job_id>
 sacct -j <job_id> --format=JobID,JobName,State,ExitCode,Elapsed
 ```
 
-After completion, inspect stdout/stderr. Treat nonzero exit codes, failed/cancelled/timeout states, tracebacks, uncaught exceptions, and obvious error lines as validation failures.
+For long training or evaluation jobs, do not poll more often than needed. If the next action is not likely to be unblocked immediately, wait several minutes between `squeue` checks and use `sacct` after the job leaves the queue.
+
+Keep log reads bounded by default:
+
+```bash
+tail -n 80 /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/<job>.out
+tail -n 80 /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/<job>.err
+grep -n -E "error|traceback|failed|exception|epoch|loss|wer" /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/<job>.out | tail -n 40
+```
+
+After completion, inspect stdout/stderr with bounded reads and targeted searches first. Treat nonzero exit codes, failed/cancelled/timeout states, tracebacks, uncaught exceptions, and obvious error lines as validation failures. Read larger log sections only when the bounded output points to a specific failure or metric location.
 
 ## Log And Artifact Rules
 
