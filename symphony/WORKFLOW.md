@@ -100,8 +100,11 @@ Instructions:
 7. Reproduce or identify the requested behavior before editing code.
 8. Keep changes narrowly scoped to the issue.
 9. Store large or non-committed working files under parscratch, not in the repo and not in `/tmp`.
+   - Hard data protection rule: never edit, delete, move, rename, overwrite, clean up, or reorganize any existing training data, evaluation data, manifests, checkpoints, logs, or experiment outputs under `/mnt/parscratch/users/acp21rjf` under any circumstance.
+   - Treat existing parscratch training/evaluation artifacts as read-only evidence. You may inspect paths and read files when needed, but do not mutate them.
    - Use `/mnt/parscratch/users/acp21rjf/symphony-tmp` for temporary files.
    - Use `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts` for job logs, generated outputs, checkpoints, downloaded data, and other non-commit artifacts.
+   - Only write new scratch/output artifacts inside the dedicated Symphony parscratch directories above, or inside a new issue-specific subdirectory there.
    - Before finishing the issue, remove temporary files you created under `/mnt/parscratch/users/acp21rjf/symphony-tmp` unless they are needed as explicit validation evidence. If retained, document the exact path and reason in the workpad.
    - Do not commit large generated files, model checkpoints, logs, datasets, caches, or local environment files.
 10. Use Slurm for long-running, CPU/GPU, or cluster-scale validation instead of running heavy work in the interactive agent process.
