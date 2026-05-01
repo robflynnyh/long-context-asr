@@ -41,8 +41,10 @@ exp/configs/enc_dec/rl_floras50_3k.yaml
 It starts from:
 
 ```text
-/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/baseline_rp_1/step_3937542.pt
+/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_no_anorm_V2_lr_2e3_ctcw_0_05/step_210720.pt
 ```
+
+This is the `enc_dec_3l_no_anorm_v2` checkpoint selected for ROB-26 after the benchmarking clarification in Linear.
 
 It reads floras-50 training pairs from the committed manifest:
 

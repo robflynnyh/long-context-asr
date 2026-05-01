@@ -21,14 +21,14 @@ audio_chunking:
 wandb:
   use: true
   project_name: floras50_enc_dec_rl
-  name: rob26-baseline-rp1-max-rl-3k
+  name: rob26-enc-dec-3l-no-anorm-v2-max-rl-3k
   id: ""
   dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/wandb
   update_config_with_wandb_id: false
 
 checkpointing:
-  pretrained: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/baseline_rp_1/step_3937542.pt
-  dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/checkpoints/rl_floras50_3k
+  pretrained: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_no_anorm_V2_lr_2e3_ctcw_0_05/step_210720.pt
+  dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/checkpoints/rl_floras50_3k_enc_dec_3l_no_anorm_v2
   save_every_n_steps: 500
 
 data:
