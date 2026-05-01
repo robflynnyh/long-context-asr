@@ -11,4 +11,4 @@ module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main/
 
 cd /users/acp21rjf/long-context-asr/exp
-python train_enc_dec.py -config /users/acp21rjf/long-context-asr/exp/configs/enc_dec/constant_seq/rl_5seq.yaml -num_workers 0
+python train_enc_dec.py -config /users/acp21rjf/long-context-asr/exp/configs/enc_dec/bin/experimental/constant_seq/prev_with_loss_with_warmup.yaml -num_workers 0
