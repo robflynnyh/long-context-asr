@@ -15,6 +15,8 @@ Each optimizer step is one rollout batch:
 No replay buffer, old-policy cache, or repeated update over the same rollout batch is used.
 Rollouts and gradient log-prob recomputation both run with the model in eval mode so decoder/encoder dropout does not make the recomputed policy differ from the sampled rollout policy. Gradients are still enabled for the log-prob pass.
 
+When variable-length recordings are batched together, RL chunking drops a recording from later chunks once its cumulative chunk offset reaches its true audio length. This avoids producing zero-length audio chunks for shorter recordings in the batch.
+
 `rl.algorithm: max_rl` uses the MaxRL-style binary-verifier advantage:
 
 ```text
