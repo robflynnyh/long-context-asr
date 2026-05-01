@@ -38,7 +38,7 @@ On a 2026-05-01 22:11 BST follow-up, `10094511` still estimated `2026-05-02T08:5
 
 On a 2026-05-01 22:30 BST follow-up, fresh `sbatch --test-only` estimates again made `gpu-h100` look competitive, but an actual replacement submission `10097465` estimated later than the existing active job. Job `10097465` was immediately canceled before start (`CANCELLED`, elapsed `00:00:00`). After cancellation, active training job `10094511` remained on `gpu-h100-nvl` with estimated start `2026-05-02T08:58:11`; eval job `10097287` remained pending on `afterok:10094511`. Treat test-only estimates for this workload as advisory only.
 
-On a 2026-05-01 23:03 BST follow-up, active job `10094511` still estimated `2026-05-02T08:58:11`. Fresh `sbatch --test-only --time=24:00:00` checks estimated new `gpu-h100-nvl` placement at `2026-05-11T23:03:22`, new `gpu-h100` placement at `2026-05-03T03:58:19`, and general `gpu` placement at `2026-05-25T04:29:22`, so keep `10094511` queued.
+On a 2026-05-01 23:03 BST follow-up, active job `10094511` still estimated `2026-05-02T08:58:11`. Fresh `sbatch --test-only --time=24:00:00` checks estimated new `gpu-h100-nvl` placement at `2026-05-11T23:03:22`, new `gpu-h100` placement at `2026-05-03T03:58:19`, and generic `gpu` placement with `--gres=gpu:1` at `2026-05-25T03:51:22`, so keep `10094511` queued.
 
 ## Minimal Symphony Job Template
 
