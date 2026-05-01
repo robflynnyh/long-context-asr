@@ -23,6 +23,8 @@ cd "${REPO}"
 module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main
 
+export PYTHONPATH="${REPO}:${PYTHONPATH:-}"
+
 CHECKPOINT=$(/mnt/parscratch/users/acp21rjf/conda/main/bin/python - <<'PY'
 import os
 import re

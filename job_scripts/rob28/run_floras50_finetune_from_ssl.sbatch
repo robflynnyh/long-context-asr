@@ -26,6 +26,7 @@ fi
 module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main
 
+export PYTHONPATH="${REPO}:${PYTHONPATH:-}"
 export WANDB_DIR="${ARTIFACT_ROOT}/wandb"
 export WANDB_PROJECT=floras50_long_context_ssl_finetune
 
