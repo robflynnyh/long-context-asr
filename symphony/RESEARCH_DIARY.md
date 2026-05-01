@@ -17,3 +17,4 @@ Agents should append dated entries for meaningful implementation changes, experi
 - ROB-26 checkpoint-load CPU validation completed: job `10094410` finished `COMPLETED 0:0`; load succeeded with `strict=False` and reported 16 missing/16 unexpected keys. Added key-name logging and launched follow-up CPU validation job `10094426`.
 - ROB-26 follow-up CPU validation completed: job `10094426` finished `COMPLETED 0:0`; mismatch was legacy decoder norm `.scale` keys vs current `.weight` keys. Added pretrained state-dict key remapping and launched CPU validation job `10094436`.
 - ROB-26 remap CPU validation completed: job `10094436` finished `COMPLETED 0:0`; checkpoint load validation now reports `missing=0, unexpected=0`.
+- ROB-26 draft PR opened: https://github.com/robflynnyh/long-context-asr/pull/3 from `symphony/ROB-26-rl-post-training` to `dev`; GPU job `10094361` remains queued pending post-training/eval results.
