@@ -20,13 +20,15 @@ Preprocessing launchers under `job_scripts/preprocess/` are CPU jobs that call `
 
 ## ROB-26 GPU Queue Triage
 
-For the ROB-26 encoder-decoder RL run, `gpu-h100-nvl` was the best valid placement observed on 2026-05-01. `sbatch --test-only` checks showed:
+For the ROB-26 encoder-decoder RL run, `gpu-h100-nvl` was the best valid placement observed before launch on 2026-05-01. `sbatch --test-only` checks showed:
 
 - `hp-h100-nvl`, `hp-h100`, and `hp-a100` failed with `Invalid account or account/partition combination specified`.
 - `gpu-h100` was valid but estimated later than the existing `gpu-h100-nvl` job.
 - General `gpu` / A100 placement was valid but estimated much later.
 
 Do not submit duplicate training jobs to the same checkpoint output directory. If changing placement, cancel the pending job first and record the old/new job IDs in Linear and the diary.
+
+On a 2026-05-01 21:32 BST resume check, queued job `10094511` had scheduler estimate `2026-05-02T08:58:11`. Fresh `sbatch --test-only --time=06:00:00` checks estimated `gpu-h100` at `2026-05-02T07:58:19`, `gpu-h100-nvl` at `2026-05-03T14:03:22`, and general `gpu` at `2026-05-27T04:03:37`. The possible `gpu-h100` improvement was only about one hour and estimate volatility made cancel/requeue unattractive, so keep `10094511` queued unless a materially better valid placement appears.
 
 ## Minimal Symphony Job Template
 
