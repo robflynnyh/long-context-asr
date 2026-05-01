@@ -500,6 +500,23 @@ class EncDecSconformerV2(BaseModel):
                 banned.add(ngram[-1])
         return banned
 
+    def _stack_beam_caches(self, caches:List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+        if len(caches) == 0 or caches[0] is None:
+            return None
+        return {
+            'cache': torch.cat([cache['cache'] for cache in caches], dim=2),
+            'cache_lengths': torch.cat([cache['cache_lengths'] for cache in caches], dim=0),
+        }
+
+    def _select_beam_cache(self, cache:Dict[str, torch.Tensor], idx:int) -> Dict[str, torch.Tensor]:
+        if cache is None:
+            return None
+        idx_t = torch.LongTensor([idx]).to(cache['cache'].device)
+        return {
+            'cache': cache['cache'].index_select(2, idx_t),
+            'cache_lengths': cache['cache_lengths'].index_select(0, idx_t),
+        }
+
     @torch.no_grad()
     def _generate_beam_search(
             self,
@@ -534,20 +551,37 @@ class EncDecSconformerV2(BaseModel):
 
             for _ in range(max_generate):
                 expanded = []
-                for beam in beams:
+                active_beams = []
+                for beam_idx, beam in enumerate(beams):
                     if beam['finished']:
                         expanded.append(beam)
-                        continue
+                    else:
+                        active_beams.append((beam_idx, beam))
+
+                if len(active_beams) > 0:
+                    active_tokens = torch.cat([beam['tokens'] for _, beam in active_beams], dim=0)
+                    active_a_hidden = row_a_hidden.expand(len(active_beams), -1, -1)
+                    active_length = row_length.expand(len(active_beams))
+                    active_cache = self._stack_beam_caches([beam['cache'] for _, beam in active_beams])
+                    active_text_lengths = torch.full(
+                        (len(active_beams),),
+                        active_tokens.shape[1],
+                        dtype=torch.long,
+                        device=row_a_hidden.device,
+                    )
 
                     decoder_out = self.language_model_decoder(
-                        tokens=beam['tokens'],
-                        a_hidden=row_a_hidden,
-                        a_lengths=row_length,
-                        cache=beam['cache'],
-                        text_lengths=torch.LongTensor([beam['tokens'].shape[1]]).to(row_a_hidden.device),
+                        tokens=active_tokens,
+                        a_hidden=active_a_hidden,
+                        a_lengths=active_length,
+                        cache=active_cache,
+                        text_lengths=active_text_lengths,
                     )
                     logits = decoder_out['logits'][:, -1, :]
-                    log_probs = logits.log_softmax(dim=-1).squeeze(0)
+                    all_log_probs = logits.log_softmax(dim=-1)
+
+                for active_idx, (beam_idx, beam) in enumerate(active_beams):
+                    log_probs = all_log_probs[active_idx].clone()
                     if eos_bias != 0.0:
                         log_probs[eos_id] = log_probs[eos_id] + eos_bias
                     if repetition_penalty != 0.0:
@@ -566,6 +600,7 @@ class EncDecSconformerV2(BaseModel):
 
                     next_log_probs, next_tokens = torch.topk(log_probs, k=min(beam_width, log_probs.shape[-1]))
                     next_probs = next_log_probs.exp()
+                    next_cache = self._select_beam_cache(decoder_out['kv_cache'], active_idx)
 
                     for token, token_log_prob, token_prob in zip(
                         next_tokens.tolist(),
@@ -578,7 +613,7 @@ class EncDecSconformerV2(BaseModel):
                             'seq': beam['seq'] if is_eos else beam['seq'] + [token],
                             'probs': beam['probs'] + [token_prob],
                             'score': beam['score'] + token_log_prob,
-                            'cache': decoder_out['kv_cache'],
+                            'cache': next_cache,
                             'finished': is_eos,
                         })
 
