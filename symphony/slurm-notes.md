@@ -69,6 +69,10 @@ sacct -j <job_id> --format=JobID,JobName,State,ExitCode,Elapsed
 
 After completion, inspect stdout/stderr. Treat nonzero exit codes, failed/cancelled/timeout states, tracebacks, uncaught exceptions, and obvious error lines as validation failures.
 
+## Queue Estimate Caveat
+
+`sbatch --test-only` can be materially optimistic for GPU placement. On ROB-26, a `gpu-h100` test-only check estimated an earlier slot than the active `gpu-h100-nvl` job, but the real submitted candidate `10097539` received a much later start estimate and was canceled before start. For replacement queue probes, submit only if worth checking, immediately compare real `squeue`/`scontrol` estimates, and cancel the worse pending chain before any duplicate training can run.
+
 ## Log And Artifact Rules
 
 - Do not commit Slurm output, checkpoints, generated CSV sweeps, datasets, caches, or WandB/local environment files.
