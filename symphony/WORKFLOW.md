@@ -19,6 +19,7 @@ polling:
 workspace:
   root: /mnt/parscratch/users/acp21rjf/symphony-workspaces
 hooks:
+  timeout_ms: 300000
   after_create: |
     git clone --branch dev /users/acp21rjf/long-context-asr .
     git remote set-url origin https://github.com/robflynnyh/long-context-asr.git
@@ -43,9 +44,9 @@ codex:
     --config model_reasoning_effort=xhigh
     app-server
   approval_policy: never
-  thread_sandbox: workspace-write
+  thread_sandbox: danger-full-access
   turn_sandbox_policy:
-    type: workspaceWrite
+    type: dangerFullAccess
 ---
 
 You are working on Linear ticket `{{ issue.identifier }}` for the long-context-asr repository.
