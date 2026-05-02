@@ -1,0 +1,57 @@
+model:
+  feat_in: 80
+  n_layers: 5
+  d_model: 768
+  ctc_loss_weight: 0.05
+  acoustic_norm: false
+  additional_embeddings: 0
+
+optimizer:
+  name: madgrad
+  args:
+    lr: 1e-5
+
+scheduler:
+  name: constant
+  warmup_steps: 0
+
+audio_chunking:
+  size: 2048
+  overlap: 0
+
+wandb:
+  use: true
+  project_name: floras50_enc_dec_rl
+  name: rob26-enc-dec-3l-no-anorm-v2-max-rl-30k-b6-r24-lr1e-5
+  id: ""
+  dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/wandb
+  update_config_with_wandb_id: false
+
+checkpointing:
+  pretrained: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_no_anorm_V2_lr_2e3_ctcw_0_05/step_210720.pt
+  dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/checkpoints/rl_floras50_30k_b6_r24_const_lr_1e-5
+  save_every_n_steps: 2000
+
+data:
+  path: lcasr/artifacts/floras50_long_only.json
+
+training:
+  max_steps: 30000
+  batch_size: 6
+  clip_value: 0.8
+  random_seed: 552268
+  dtype: bfloat16
+  num_workers: 0
+  pin_memory: true
+  prefetch_factor: null
+
+rl:
+  algorithm: max_rl
+  num_rollouts: 24
+  temperature: 0.8
+  max_generate: target_length
+  max_generate_buffer: 8
+  advantage_eps: 1e-6
+  shuffle_chunks: true
+
+model_class: EncDecSconformerV2

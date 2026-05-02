@@ -58,8 +58,10 @@ Many scripts contain Rob-specific parscratch defaults. Before running training o
 
 ## Symphony Handoff Hygiene
 
-- Start from `dev`, branch as `symphony/<ticket>-<slug>`, and keep changes narrow.
-- Keep large logs, generated outputs, checkpoints, downloaded data, and temporary validation artifacts out of the repo.
-- Use `/mnt/parscratch/users/acp21rjf/symphony-tmp` for temporary files and `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts` for job logs/artifacts.
-- Update `symphony/RESEARCH_DIARY.md` for meaningful implementation changes, Slurm launches/completions, validations, and PR handoffs.
-- For docs-only edits, lightweight validation such as `git diff --check` is usually enough. Do not run training/evals interactively on the login node.
+`symphony/WORKFLOW.md` is the authoritative workflow. Repo-specific reminders:
+
+- Use `/mnt/parscratch/users/acp21rjf/symphony-tmp` for temporary files and `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts` for job logs/artifacts. Keep large outputs, checkpoints, downloads, logs, and validation artifacts out of the repo.
+- Keep command output bounded with targeted `rg`, `head`, `tail`, `sed -n`, filtered Slurm fields, and `git diff --stat`. Summarize large artifacts and reference paths instead of loading raw output into context.
+- Use `symphony/RESEARCH_DIARY.md` for concise outcome summaries only. Put routine queue checks, repeated resume observations, and detailed troubleshooting trails in the Linear workpad when needed.
+- After launching long-running GPU training or evaluation, hand off with job IDs, log paths, expected outputs, and follow-up commands, then stop.
+- For docs-only edits, lightweight validation such as `git diff --check` is usually enough.

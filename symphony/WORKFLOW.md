@@ -99,7 +99,12 @@ Instructions:
 6. Create a working branch from `dev` named `symphony/{{ issue.identifier }}-<short-slug>` before committing changes. Do not commit directly to `dev`.
 7. Reproduce or identify the requested behavior before editing code.
 8. Keep changes narrowly scoped to the issue.
-9. Store large or non-committed working files under parscratch, not in the repo and not in `/tmp`.
+9. Be deliberate with context budget.
+   - Do not dump large logs, full Slurm outputs, large diffs, full CSVs, generated data, or broad search results into the Codex context unless the content is genuinely needed for the next decision.
+   - Prefer targeted commands such as `rg` with specific patterns, `head`, `tail`, `sed -n`, `squeue -j <job_id> -o <fields>`, `sacct -j <job_id> --format=<fields>`, and filtered `find` or `git diff --stat` output.
+   - When logs or outputs are large, inspect only the relevant slices, summarize the result, and reference the file path for follow-up. Keep raw artifacts in parscratch.
+   - Use strict output limits for exploratory commands and rerun with a narrower command if more detail is needed.
+10. Store large or non-committed working files under parscratch, not in the repo and not in `/tmp`.
    - Hard data protection rule: never edit, delete, move, rename, overwrite, clean up, or reorganize any existing training data, evaluation data, manifests, checkpoints, logs, or experiment outputs under `/mnt/parscratch/users/acp21rjf` under any circumstance.
    - Treat existing parscratch training/evaluation artifacts as read-only evidence. You may inspect paths and read files when needed, but do not mutate them.
    - Use `/mnt/parscratch/users/acp21rjf/symphony-tmp` for temporary files.
@@ -107,43 +112,40 @@ Instructions:
    - Only write new scratch/output artifacts inside the dedicated Symphony parscratch directories above, or inside a new issue-specific subdirectory there.
    - Before finishing the issue, remove temporary files you created under `/mnt/parscratch/users/acp21rjf/symphony-tmp` unless they are needed as explicit validation evidence. If retained, document the exact path and reason in the workpad.
    - Do not commit large generated files, model checkpoints, logs, datasets, caches, or local environment files.
-10. Use Slurm for long-running, CPU/GPU, or cluster-scale validation instead of running heavy work in the interactive agent process.
-   - Symphony is expected to run from a login node. All repository file inspection and file edits may be done on the login node, including normal searches, reads, patching, formatting, and small metadata checks.
-   - Use discretion for very large searches or scans. If a search may traverse large datasets, checkpoint trees, generated outputs, parscratch-wide paths, or otherwise run for more than a few minutes, put it in a CPU Slurm job instead of running it on the login node.
-   - Do not run meaningful compute, training, full evaluations, large data processing, or multi-minute validation directly on the login node.
-   - Use a CPU Slurm job for any significant non-GPU work, including heavier tests, dataset preprocessing, metric extraction, and reproductions/debugging that do not require CUDA.
-   - Use a GPU Slurm job for model training and most ASR evaluations.
-   - If the GPU queue is long, it is acceptable to use a CPU Slurm job to debug script errors, config parsing, data loading, path issues, lightweight dry-runs, or other failures that can be reproduced without CUDA.
-   - First look for existing repo scripts and patterns for `sbatch`, `srun`, partitions, modules, conda activation, log paths, and resource settings.
-   - Prefer adding or updating a small Slurm script when the command needs environment setup or will run for more than a few minutes.
-   - Put Slurm stdout/stderr logs under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts` or another clearly named parscratch path.
-   - Submit with `sbatch <script>` and record the job ID, script path, log paths, and purpose in the workpad.
-   - Monitor with `squeue -j <job_id>` while running, then confirm completion with `sacct -j <job_id> --format=JobID,JobName,State,ExitCode,Elapsed` when available.
-   - Inspect stdout/stderr logs after completion. Treat nonzero exit codes, failed/cancelled/timeout states, tracebacks, uncaught exceptions, and obvious error lines as validation failures.
-   - If `sacct` is unavailable, rely on `squeue` disappearance plus the Slurm output logs and any generated success markers.
-   - Do not move the issue to `Human Review`, mark it done, or claim validation passed until every Slurm job you launched for the issue has finished and its logs show no errors.
-11. Keep the repository research diary up to date.
+11. Use Slurm for long-running, CPU/GPU, or cluster-scale validation instead of running heavy work in the interactive agent process.
+   - Login-node work is limited to repository inspection, file edits, formatting, small metadata checks, and bounded searches. Put meaningful compute, training, full evals, large scans, data processing, and multi-minute validation in Slurm.
+   - Use CPU Slurm jobs for significant non-CUDA work and GPU Slurm jobs for model training or ASR evals. If the GPU queue is long, use CPU jobs to debug script, config, path, data-loading, or lightweight dry-run failures that do not require CUDA.
+   - Reuse existing repo `sbatch`/`srun` patterns for partitions, modules, conda activation, logs, and resources. Prefer a small Slurm script when the command needs environment setup or will run for more than a few minutes.
+   - Put Slurm stdout/stderr under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts`, submit with `sbatch <script>`, and record the job ID, script path, log paths, purpose, expected outputs, follow-up command, and current git state in the workpad.
+   - For short jobs, use bounded `squeue -j <job_id>` and `sacct -j <job_id> --format=JobID,JobName,State,ExitCode,Elapsed`, then inspect logs. If `sacct` is unavailable, rely on `squeue` disappearance, logs, and generated success markers.
+   - Treat nonzero exit codes, failed/cancelled/timeout states, tracebacks, uncaught exceptions, and obvious error lines as validation failures.
+   - Wait for Slurm jobs only when they are expected to finish within a short validation window and can be checked with a small number of bounded status/log commands.
+   - Do not keep Codex active for long-running jobs or GPU queue availability. After launching a job expected to queue or run for a long time, hand off in the workpad with the exact completion-check command and stop the agent turn.
+   - Do not repeatedly poll `squeue`, run replacement queue probes, or resume solely to see whether a pending GPU job has started. If queue placement is uncertain, perform at most one deliberate placement check, record the decision, and hand off.
+   - Do not move the issue to `Human Review`, mark it done, or claim validation passed until every required Slurm job has finished and its logs show no errors. For long-running training/eval jobs, leave the issue in progress with a clear handoff unless the job has already completed and the logs were inspected in this turn.
+12. Keep the repository research diary up to date.
    - Append concise dated entries to `symphony/RESEARCH_DIARY.md` for meaningful implementation changes, experiment launches, completed Slurm jobs, failed runs, fixes, validation outcomes, PR handoffs, and important interpretation updates.
    - Keep entries factual and brief: issue ID, branch, command/job ID when relevant, outcome, and links or paths to logs/artifacts.
+   - Do not use the diary as a live work log. Do not add routine queue polls, repeated resume checks, transient scheduler estimates, or every failed replacement probe. Summarize repeated attempts as one outcome-oriented entry.
    - Do not put credentials, raw data, large logs, or large generated output in the diary; reference parscratch paths instead.
-12. Document hard-won repo knowledge for future agents.
+13. Document hard-won repo knowledge for future agents.
    - If you spend meaningful time figuring out a non-obvious repo procedure, dependency, Slurm pattern, data/checkpoint location, evaluation command, failure mode, or environment setup, add or update a concise note under `symphony/`.
    - Prefer small focused docs such as `symphony/agent-notes.md`, `symphony/slurm-notes.md`, or `symphony/eval-notes.md` over long prose in the workpad.
-   - Include exact commands, relevant paths, and caveats, but do not include secrets or large outputs.
+   - Include reusable commands, relevant paths, and caveats, but avoid issue-specific blow-by-blow history. Keep raw investigation details in the Linear workpad unless they are broadly useful.
    - Reference the new or updated doc in the workpad and, when meaningful, in `symphony/RESEARCH_DIARY.md`.
-13. For experiment or evaluation work, preserve reproducibility:
+14. For experiment or evaluation work, preserve reproducibility:
    - Record exact commands, configs, checkpoint paths, input manifests, output paths, log paths, commit SHA, and Slurm job IDs in the workpad.
    - Extract metrics programmatically from output artifacts. Do not hand-compute, infer, or report metrics from impressions or partial logs.
    - If a result cannot be extracted programmatically yet, add the extraction gap to the workpad instead of writing an unsupported numeric conclusion.
-14. Run relevant validation before handoff.
-15. GitHub handoff is required for completed code changes:
+15. Run relevant validation before handoff.
+16. GitHub handoff is required for completed code changes:
    - Commit completed changes on the issue branch, not on `dev`.
    - Push the issue branch to `origin`.
    - Open a GitHub PR against `dev` with `gh pr create` when available.
    - Include the PR URL in the Linear workpad or completion comment.
    - If commit, push, or PR creation fails, do not move the issue to `Human Review`; record the exact failing command and error in the workpad as a blocker.
-16. Before ending, verify that the expected Linear workpad/completion comment exists and that the issue is in the intended state.
-17. When blocked by missing credentials, permissions, or unavailable infrastructure, record the blocker in the workpad and move the issue to `Human Review`.
-18. When implementation, validation, and GitHub handoff are complete, move the issue to `Human Review`.
+17. Before ending, verify that the expected Linear workpad/completion comment exists and that the issue is in the intended state.
+18. When blocked by missing credentials, permissions, or unavailable infrastructure, record the blocker in the workpad and move the issue to `Human Review`.
+19. When implementation, validation, and GitHub handoff are complete, move the issue to `Human Review`.
 
 Use the injected Linear tool for issue updates when available.
