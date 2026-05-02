@@ -30,6 +30,21 @@ class CosineLRScheduler(torch.optim.lr_scheduler._LRScheduler):
         else:
             return [self.final_value + 0.5 * (self.peak_value - self.final_value) * (1 + np.cos((self.last_epoch + self.offset) / (self.steps) * np.pi)) for _ in self.base_lrs]
 
+
+class ConstantLRScheduler(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer):
+        self.is_warmup = False
+        super().__init__(optimizer)
+
+    def is_warming_up(self):
+        return False
+
+    def set_cosine_schedule(self, total_recordings, cur_podcast):
+        return None
+
+    def get_lr(self):
+        return list(self.base_lrs)
+
         
 
 class SequenceWarmupManager():

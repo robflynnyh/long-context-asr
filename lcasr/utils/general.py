@@ -10,7 +10,7 @@ from lcasr.models.sconformer_test import SCConformerTest
 from lcasr.models.augmentation_model import SoftMaskNN
 # from lcasr.models.metaconformer import MetaConformer
 # from lcasr.models.stconformer import STConformer
-from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler
+from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler, ConstantLRScheduler
 import os
 from tqdm import tqdm
 
@@ -98,12 +98,18 @@ def load_optimizer(config:Dict, model:torch.nn.Module, and_scheduler=True):
         optimizer = madgrad.MirrorMADGRAD(param_groups, **optim_args)
 
     if and_scheduler:
-        sheduler = CosineLRScheduler(
-            optimizer = optimizer,
-            warmup_steps = config['scheduler']['warmup_steps'],
-            peak_value = config['optimizer']['args']['lr'],
-            final_value = 0.0, # decay to 0
-        )
+        scheduler_type = config.get('scheduler', {}).get('name', config.get('scheduler', {}).get('type', 'cosine'))
+        if scheduler_type == 'cosine':
+            sheduler = CosineLRScheduler(
+                optimizer = optimizer,
+                warmup_steps = config['scheduler']['warmup_steps'],
+                peak_value = config['optimizer']['args']['lr'],
+                final_value = 0.0, # decay to 0
+            )
+        elif scheduler_type == 'constant':
+            sheduler = ConstantLRScheduler(optimizer=optimizer)
+        else:
+            raise NotImplementedError(f'Unknown scheduler {scheduler_type}, must be one of [cosine, constant]')
         return optimizer, sheduler
     else:
         return optimizer, None
