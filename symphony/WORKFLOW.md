@@ -27,8 +27,8 @@ hooks:
     git checkout dev
     git reset --hard origin/dev
 agent:
-  max_concurrent_agents: 5
-  max_turns: 60
+  max_concurrent_agents: 1
+  max_turns: 10
 codex:
   command: >-
     module load conda_alma9_container/v1;
@@ -41,7 +41,7 @@ codex:
     exec codex
     --config shell_environment_policy.inherit=all
     --config 'model="gpt-5.5"'
-    --config model_reasoning_effort=xhigh
+    --config model_reasoning_effort=high
     app-server
   approval_policy: never
   thread_sandbox: danger-full-access
