@@ -12,7 +12,7 @@
 set -euo pipefail
 
 CONFIG="${CONFIG:?Set CONFIG to an RL config path}"
-REPO_DIR="${REPO_DIR:-/mnt/parscratch/users/acp21rjf/symphony-workspaces/ROB-26}"
+REPO_DIR="${REPO_DIR:-/users/acp21rjf/long-context-asr}"
 cd "${REPO_DIR}"
 export PYTHONPATH="${REPO_DIR}:${PYTHONPATH:-}"
 mkdir -p /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26
