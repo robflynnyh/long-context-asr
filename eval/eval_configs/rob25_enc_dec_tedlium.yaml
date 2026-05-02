@@ -1,0 +1,83 @@
+models:
+  - name: enc_dec_3l_no_anorm_v2
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_no_anorm_V2_lr_2e3_ctcw_0_05/step_210720.pt
+    description: EncDecSconformerV2 3-layer reference checkpoint from exp/configs/enc_dec/0_873621.yaml.
+    decoding: direct
+    args:
+      transcribe_kwargs:
+        masked_conditioning: false
+
+  - name: baseline_rp_1
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/baseline_rp_1/step_3937542.pt
+    description: EncDecSconformerV2 5-layer baseline from exp/configs/enc_dec/masking.yaml.
+    decoding: direct
+    args:
+      transcribe_kwargs:
+        masked_conditioning: false
+  - name: baseline_rp_2
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: 0
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/baseline_rp_2/step_3937542.pt
+    description: EncDecSconformerV2 5-layer baseline from exp/configs/enc_dec/masking.yaml.
+    decoding: direct
+    args:
+      transcribe_kwargs:
+        masked_conditioning: false
+  - name: baseline_rp_3
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: 0
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/baseline_rp_3/step_3937542.pt
+    description: EncDecSconformerV2 5-layer baseline from exp/configs/enc_dec/masking.yaml.
+    decoding: direct
+    args:
+      transcribe_kwargs:
+        masked_conditioning: false
+
+  - name: masking_rp_1
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/masking_rp_1/step_3937542.pt
+    description: EncDecSconformerV2 5-layer mask-pass checkpoint from exp/configs/enc_dec/masking.yaml.
+    decoding: masked_conditioning
+    args:
+      transcribe_kwargs:
+        masked_conditioning: true
+  - name: masking_rp_2
+    repeat: 2
+    seq_len: 2048
+    overlap_ratio: 0
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/masking_rp_2/step_3937542.pt
+    description: EncDecSconformerV2 5-layer mask-pass checkpoint from exp/configs/enc_dec/masking.yaml.
+    decoding: masked_conditioning
+    args:
+      transcribe_kwargs:
+        masked_conditioning: true
+  - name: masking_rp_3
+    repeat: 3
+    seq_len: 2048
+    overlap_ratio: 0
+    path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/masking_rp_3/step_3937542.pt
+    description: EncDecSconformerV2 5-layer mask-pass checkpoint from exp/configs/enc_dec/masking.yaml.
+    decoding: masked_conditioning
+    args:
+      transcribe_kwargs:
+        masked_conditioning: true
+
+args:
+  verbose: false
+  model_class: EncDecSconformerV2
+  save_dataframe_path: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-25/results/enc_dec_tedlium_test.csv
+  include_per_recording_evaluations: true
+
+datasets:
+  - name: tedlium
+    splits: [test]
