@@ -83,17 +83,17 @@ Follow-up constant-LR sweep after the 3K run:
 
 ```bash
 for lr in 3e-6 6e-6 1e-5 2e-5 4e-5 8e-5; do
-  cfg="exp/configs/enc_dec/rl_floras50_30k_b6_r24_const_lr_${lr}.yaml"
+  cfg="exp/configs/enc_dec/rl_floras50_30k_b18_r48_const_lr_${lr}.yaml"
   sbatch --job-name="ROB26-lr${lr}" \
     --export=ALL,CONFIG="${cfg}" \
-    exp/configs/enc_dec/rl_floras50_30k_b6_r24_const_lr_gpu.sh
+    exp/configs/enc_dec/rl_floras50_30k_b18_r48_const_lr_gpu.sh
 done
 ```
 
-These jobs use batch size 6, 24 rollouts, 30K max steps, constant LR, and save every 2K steps. Each LR writes to its own checkpoint directory under:
+These jobs use batch size 18, 48 rollouts, 30K max steps, constant LR, and save every 2K steps. Each LR writes to its own checkpoint directory under:
 
 ```text
-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/checkpoints/rl_floras50_30k_b6_r24_const_lr_<lr>
+/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/checkpoints/rl_floras50_30k_b18_r48_const_lr_<lr>
 ```
 
 The launcher pins `PYTHONPATH` to `/mnt/parscratch/users/acp21rjf/symphony-workspaces/ROB-26` so the job uses this checkout's `lcasr` package.

@@ -36,7 +36,7 @@ data:
 
 training:
   max_steps: 3000
-  batch_size: 2
+  batch_size: 6
   clip_value: 0.8
   random_seed: 552268
   dtype: bfloat16
@@ -46,7 +46,7 @@ training:
 
 rl:
   algorithm: max_rl
-  num_rollouts: 4
+  num_rollouts: 8
   temperature: 0.8
   max_generate: target_length
   max_generate_buffer: 8
