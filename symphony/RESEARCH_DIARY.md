@@ -23,6 +23,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-03
 
 - ROB-26 RL configs were scaled up for the next run: the 3K config now uses batch size 6 and 8 rollouts; the 30K constant-LR sweep configs were renamed to `exp/configs/enc_dec/rl_floras50_30k_b18_r48_const_lr_<lr>.yaml` and now use batch size 18 and 48 rollouts.
+- Added parallel 30K GRPO LR-sweep configs under `exp/configs/enc_dec/rl_floras50_30k_b18_r48_grpo_const_lr_<lr>.yaml`; these keep `rl.reward_threshold: 0.8`, while MaxRL configs no longer include that GRPO-only threshold field.
 
 ## 2026-05-02
 
