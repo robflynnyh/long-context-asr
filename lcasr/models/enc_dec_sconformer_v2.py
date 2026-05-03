@@ -683,7 +683,7 @@ class EncDecSconformerV2(BaseModel):
             temperature_synthetic_history=0.9,
             eval_ctc=False,
             first_pass_ctc=False,
-            masked_conditioning=True,
+            masked_conditioning=False,
             min_seq_len = -1,
             **kwargs
     ):
