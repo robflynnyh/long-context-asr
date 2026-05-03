@@ -52,6 +52,7 @@ rl:
   max_generate: target_length
   max_generate_buffer: 8
   advantage_eps: 1e-6
+  reward_threshold: 0.8
   shuffle_chunks: true
 
 model_class: EncDecSconformerV2

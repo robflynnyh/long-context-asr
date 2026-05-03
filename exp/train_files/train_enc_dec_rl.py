@@ -167,6 +167,34 @@ def perfect_wer_rewards(hypotheses: List[str], references: List[str]) -> torch.T
     return torch.tensor(rewards, dtype=torch.float32)
 
 
+def thresholded_wer_rewards(
+    hypotheses: List[str],
+    references: List[str],
+    threshold: float = 0.8,
+) -> torch.Tensor:
+    rewards = []
+    for hyp, ref in zip(hypotheses, references):
+        wer, *_ = word_error_rate_detail(hypotheses=[hyp], references=[ref])
+        reward = max(0.0, 1.0 - float(wer))
+        rewards.append(reward if reward > threshold else 0.0)
+    return torch.tensor(rewards, dtype=torch.float32)
+
+
+def compute_rewards(
+    hypotheses: List[str],
+    references: List[str],
+    algorithm: str,
+    reward_threshold: float = 0.8,
+) -> torch.Tensor:
+    if algorithm == "grpo":
+        return thresholded_wer_rewards(
+            hypotheses=hypotheses,
+            references=references,
+            threshold=reward_threshold,
+        )
+    return perfect_wer_rewards(hypotheses=hypotheses, references=references)
+
+
 def compute_advantages(rewards: torch.Tensor, group_size: int, algorithm: str, eps: float) -> torch.Tensor:
     grouped = rearrange(rewards, "(b g) -> b g", g=group_size)
     mean = grouped.mean(dim=1, keepdim=True)
@@ -412,7 +440,12 @@ def rl_update(
             for action in actions
         ]
         references = [reference for reference in chunk["references"] for _ in range(num_rollouts)]
-        rewards = perfect_wer_rewards(hypotheses=hypotheses, references=references).to(device)
+        rewards = compute_rewards(
+            hypotheses=hypotheses,
+            references=references,
+            algorithm=rl_config.algorithm,
+            reward_threshold=float(rl_config.get("reward_threshold", 0.8)),
+        ).to(device)
         advantages = compute_advantages(
             rewards=rewards,
             group_size=num_rollouts,
@@ -718,7 +751,12 @@ def smoke_rollout(args: argparse.Namespace) -> None:
         for action in actions
     ]
     references = [reference for reference in chunk["references"] for _ in range(num_rollouts)]
-    rewards = perfect_wer_rewards(hypotheses=hypotheses, references=references)
+    rewards = compute_rewards(
+        hypotheses=hypotheses,
+        references=references,
+        algorithm=config.rl.algorithm,
+        reward_threshold=float(config.rl.get("reward_threshold", 0.8)),
+    )
     advantages = compute_advantages(
         rewards=rewards,
         group_size=num_rollouts,
@@ -764,6 +802,12 @@ def self_test() -> None:
     assert grpo_adv[:3].sum().abs() < 1e-5
     rewards = perfect_wer_rewards(["hello world", "hello"], ["hello world", "hello world"])
     assert rewards.tolist() == [1.0, 0.0]
+    rewards = thresholded_wer_rewards(
+        ["hello world", "hello world now", "hello"],
+        ["hello world", "hello world", "hello world"],
+        threshold=0.8,
+    )
+    assert rewards.tolist() == [1.0, 0.0, 0.0]
 
     class ToyTokenizer:
         def encode(self, text):
