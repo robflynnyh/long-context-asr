@@ -970,6 +970,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-config", "--config", type=str, required=False, help="path to config file")
     parser.add_argument("-reset_step", "--reset_step", action="store_true", help="start from pretrained even if output checkpoints exist")
+    parser.add_argument(
+        "--remove_scheduler",
+        action="store_true",
+        help="accepted for exp/run_launcher.py compatibility; RL training uses the config scheduler directly",
+    )
     parser.add_argument("-num_workers", "--num_workers", type=int, default=0)
     parser.add_argument("-pin_memory", "--pin_memory", action="store_true")
     parser.add_argument("-prefetch", "--prefetch_factor", type=int, default=None)
