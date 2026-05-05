@@ -4,7 +4,7 @@ import random
 import resource
 import time
 from contextlib import nullcontext
-from typing import Any, Dict, List, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import lcasr
 import torch
@@ -167,11 +167,16 @@ def perfect_wer_rewards(hypotheses: List[str], references: List[str]) -> torch.T
     return torch.tensor(rewards, dtype=torch.float32)
 
 
-def wer_cer_rewards(
+def weighted_error_rewards(
     hypotheses: List[str],
     references: List[str],
     wer_weight: float = 0.7,
     cer_weight: float = 0.3,
+    reward_offset: float = 1.0,
+    reward_scale: float = 1.0,
+    reward_min: Optional[float] = 0.0,
+    reward_max: Optional[float] = None,
+    reward_positive_threshold: Optional[float] = None,
 ) -> torch.Tensor:
     rewards = []
     weight_sum = wer_weight + cer_weight
@@ -184,23 +189,45 @@ def wer_cer_rewards(
         wer, *_ = word_error_rate_detail(hypotheses=[hyp], references=[ref], use_cer=False)
         cer, *_ = word_error_rate_detail(hypotheses=[hyp], references=[ref], use_cer=True)
         error = wer_weight * float(wer) + cer_weight * float(cer)
-        rewards.append(max(0.0, 1.0 - error))
+        reward = reward_offset - reward_scale * error
+        if reward_min is not None:
+            reward = max(float(reward_min), reward)
+        if reward_max is not None:
+            reward = min(float(reward_max), reward)
+        if reward_positive_threshold is not None and reward <= reward_positive_threshold:
+            reward = 0.0
+        rewards.append(reward)
     return torch.tensor(rewards, dtype=torch.float32)
+
+
+def _optional_float(config: Any, key: str, default: Optional[float]) -> Optional[float]:
+    value = config.get(key, default)
+    if value is None:
+        return None
+    return float(value)
 
 
 def compute_rewards(
     hypotheses: List[str],
     references: List[str],
     algorithm: str,
-    wer_weight: float = 0.7,
-    cer_weight: float = 0.3,
+    reward_config: Any = None,
 ) -> torch.Tensor:
     if algorithm == "grpo":
-        return wer_cer_rewards(
+        reward_config = reward_config or {}
+        reward_type = reward_config.get("reward_type", "weighted_error")
+        if reward_type != "weighted_error":
+            raise ValueError(f"unknown GRPO reward_type {reward_type}")
+        return weighted_error_rewards(
             hypotheses=hypotheses,
             references=references,
-            wer_weight=wer_weight,
-            cer_weight=cer_weight,
+            wer_weight=float(reward_config.get("reward_wer_weight", 0.7)),
+            cer_weight=float(reward_config.get("reward_cer_weight", 0.3)),
+            reward_offset=float(reward_config.get("reward_offset", 1.0)),
+            reward_scale=float(reward_config.get("reward_scale", 1.0)),
+            reward_min=_optional_float(reward_config, "reward_min", 0.0),
+            reward_max=_optional_float(reward_config, "reward_max", None),
+            reward_positive_threshold=_optional_float(reward_config, "reward_positive_threshold", None),
         )
     return perfect_wer_rewards(hypotheses=hypotheses, references=references)
 
@@ -461,8 +488,7 @@ def rl_update(
             hypotheses=hypotheses,
             references=references,
             algorithm=rl_config.algorithm,
-            wer_weight=float(rl_config.get("reward_wer_weight", 0.7)),
-            cer_weight=float(rl_config.get("reward_cer_weight", 0.3)),
+            reward_config=rl_config,
         ).to(device)
         advantages = compute_advantages(
             rewards=rewards,
@@ -778,8 +804,7 @@ def smoke_rollout(args: argparse.Namespace) -> None:
         hypotheses=hypotheses,
         references=references,
         algorithm=config.rl.algorithm,
-        wer_weight=float(config.rl.get("reward_wer_weight", 0.7)),
-        cer_weight=float(config.rl.get("reward_cer_weight", 0.3)),
+        reward_config=config.rl,
     )
     advantages = compute_advantages(
         rewards=rewards,
@@ -827,11 +852,16 @@ def self_test() -> None:
     assert grpo_adv[:3].sum().abs() < 1e-5
     rewards = perfect_wer_rewards(["hello world", "hello"], ["hello world", "hello world"])
     assert rewards.tolist() == [1.0, 0.0]
-    rewards = wer_cer_rewards(
+    rewards = weighted_error_rewards(
         ["hello world", "hello world now", "hello"],
         ["hello world", "hello world", "hello world"],
         wer_weight=0.7,
         cer_weight=0.3,
+        reward_offset=1.0,
+        reward_scale=1.0,
+        reward_min=0.0,
+        reward_max=None,
+        reward_positive_threshold=None,
     )
     assert rewards[0].item() == 1.0
     assert rewards[1].item() < 1.0

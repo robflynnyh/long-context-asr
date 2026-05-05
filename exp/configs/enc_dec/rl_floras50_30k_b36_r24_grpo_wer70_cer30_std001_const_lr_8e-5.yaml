@@ -52,8 +52,17 @@ rl:
   max_generate: target_length
   max_generate_buffer: 8
   advantage_eps: 1e-6
+  # Reward is: clamp(reward_offset - reward_scale * (wer_weight * WER + cer_weight * CER)).
+  # Set reward_positive_threshold to recover the old thresholded behaviour; null disables it.
+  reward_type: weighted_error
   reward_wer_weight: 0.7
   reward_cer_weight: 0.3
+  reward_offset: 1.0
+  reward_scale: 1.0
+  reward_min: 0.0
+  reward_max: null
+  reward_positive_threshold: null
+  # Groups with rollout reward std <= this value get zeroed advantages/skipped.
   reward_std_min: 0.01
   shuffle_chunks: true
 
