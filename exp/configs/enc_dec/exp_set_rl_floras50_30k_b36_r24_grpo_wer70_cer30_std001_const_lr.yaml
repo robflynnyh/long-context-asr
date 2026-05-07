@@ -59,7 +59,7 @@ checkpointing:
   save_every_n_steps: 2000
 
 data:
-  path: lcasr/artifacts/floras50_long_only.json
+  path: /users/acp21rjf/align_floras50/tmp/mapping.json
 
 training:
   max_steps: 30000
