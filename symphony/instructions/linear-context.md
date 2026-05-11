@@ -26,7 +26,7 @@ after the latest completion, queue, or blocker comment.
 
 If a recent human comment asks a question or requests clarification rather than
 implementation, answer it in Linear first and do not move the issue to
-`Human Review`.
+`In Review`.
 
 If recent comments request rework on an existing PR or branch, inspect that PR
 or branch before editing.
