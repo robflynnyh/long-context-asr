@@ -12,6 +12,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-11
 
 - ROB-70 BEST-RQ SSL setup on branch `symphony/rob-70-setup-ssl-bestrq`: repaired `exp/train_bestRQ.py` so it trains the `BestRQ` wrapper directly, saves resumable wrapper checkpoints plus an `acoustic_model` state, and uses config-driven BEST-RQ params. Added 6L/2048 Spotify train and CPU-smoke configs plus Slurm wrappers with a Linear callback. Stanage CPU smoke job `10156554` completed `0:0`; logs are `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/smoke-10156554.{out,err}`, with loss `9.085878372192383` and smoke checkpoint `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/smoke-checkpoints/step_1.pt`.
+- ROB-70 one-epoch Spotify BEST-RQ training launched on Stanage as job `10156592` on `gpu-h100-nvl` after canceling worse pending general-GPU job `10156586`. The run uses commit `c94c5dc`, remote worktree `/mnt/parscratch/users/acp21rjf/symphony-workspaces-long-context-asr/ROB-70`, wrapper `symphony/rob70_bestrq_train_gpu.sbatch`, logs under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/`, checkpoints under `/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch`, and the wrapper-level callback posts to Linear then returns ROB-70 to `Todo`.
 
 ## 2026-05-01
 
