@@ -11,7 +11,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 ## 2026-05-11
 
-- ROB-78 on branch `symphony/rob-78-spotify-f-long-6epoch`: added a 15-run Spotify long-only fine-tuning template for the 6-epoch base model (`w128`, `w512`, `w2048`, `w8192`, and full-context `w360000`, each with 3 repeats), plus deterministic config expansion, Stanage CPU-smoke, GPU-array, and Linear callback finalizer scripts. Intended large artifacts live under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-78` and `/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch`.
+- ROB-78 on branch `symphony/rob-78-spotify-f-long-6epoch`: added a 15-run Spotify long-only fine-tuning template for the 6-epoch base model (`w128`, `w512`, `w2048`, `w8192`, and full-context `w360000`, each with 3 repeats), plus deterministic config expansion, Stanage CPU-smoke, GPU-array, and Linear callback finalizer scripts. CPU smoke job `10160987` completed successfully after loading the 6-epoch full-context checkpoint and running one derived 512-frame smoke sample. Queued GPU array `10161003_[0-14]` on `gpu-h100-nvl` with finalizer `10161005`; large artifacts live under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-78` and `/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch`.
 
 ## 2026-05-01
 
