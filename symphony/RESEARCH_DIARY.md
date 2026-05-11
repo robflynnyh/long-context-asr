@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-11
+
+- ROB-70 BEST-RQ SSL setup on branch `symphony/rob-70-setup-ssl-bestrq`: repaired `exp/train_bestRQ.py` so it trains the `BestRQ` wrapper directly, saves resumable wrapper checkpoints plus an `acoustic_model` state, and uses config-driven BEST-RQ params. Added 6L/2048 Spotify train and CPU-smoke configs plus Slurm wrappers with a Linear callback. Stanage CPU smoke job `10156554` completed `0:0`; logs are `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/smoke-10156554.{out,err}`, with loss `9.085878372192383` and smoke checkpoint `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/smoke-checkpoints/step_1.pt`.
+
 ## 2026-05-01
 
 - ROB-24 on branch `symphony/ROB-24-agent-docs`: added focused future-agent notes under `symphony/` for repo orientation, training, evaluation, and Slurm patterns. Opened PR https://github.com/robflynnyh/long-context-asr/pull/2 against `dev`. No Slurm jobs launched.
