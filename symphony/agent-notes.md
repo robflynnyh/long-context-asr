@@ -19,14 +19,11 @@ This repo is research code for long-context ASR experiments. Most operational kn
 
 ## Environment
 
-The Symphony workflow starts Codex with:
-
-```bash
-module load conda_alma9_container/v1
-eval "$(conda shell.bash hook)"
-conda activate /mnt/parscratch/users/acp21rjf/conda/main
-export TMPDIR=/mnt/parscratch/users/acp21rjf/symphony-tmp
-```
+The Symphony service is launched from Mimas and starts Codex with the local
+Codex app-server. Mimas is the coordination host for issue setup, repository
+edits, short inspections, and Linear updates. Stanage is the default execution
+target for long-context ASR compute; use SSH from Mimas and submit work through
+Slurm unless a human explicitly asks for Mimas/local execution.
 
 Older repo Slurm scripts usually use:
 
@@ -35,7 +32,8 @@ module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main
 ```
 
-Some legacy scripts use `source activate a100`; prefer the full conda path from `symphony/WORKFLOW.md` when creating new Symphony-specific jobs.
+Some legacy scripts use `source activate a100`; prefer the full conda path
+above when creating new Stanage Slurm jobs.
 
 ## Local Install And Imports
 
@@ -58,9 +56,10 @@ Many scripts contain Rob-specific parscratch defaults. Before running training o
 
 ## Symphony Handoff Hygiene
 
-`symphony/WORKFLOW.md` is the authoritative workflow. Repo-specific reminders:
+`symphony/WORKFLOW.md` and `symphony/instructions/` are the authoritative
+workflow. Repo-specific reminders:
 
-- Use `/mnt/parscratch/users/acp21rjf/symphony-tmp` for temporary files and `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts` for job logs/artifacts. Keep large outputs, checkpoints, downloads, logs, and validation artifacts out of the repo.
+- For default Stanage work, use `/mnt/parscratch/users/acp21rjf/symphony-tmp` for temporary files and `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts` for job logs/artifacts. Keep large outputs, checkpoints, downloads, logs, and validation artifacts out of the repo.
 - Keep command output bounded with targeted `rg`, `head`, `tail`, `sed -n`, filtered Slurm fields, and `git diff --stat`. Summarize large artifacts and reference paths instead of loading raw output into context.
 - Use `symphony/RESEARCH_DIARY.md` for concise outcome summaries only. Put routine queue checks, repeated resume observations, and detailed troubleshooting trails in the Linear workpad when needed.
 - After launching long-running GPU training or evaluation, hand off with job IDs, log paths, expected outputs, and follow-up commands, then stop.
