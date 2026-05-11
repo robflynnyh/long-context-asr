@@ -25,6 +25,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - ROB-26 RL configs were scaled up for the next run: the 3K config now uses batch size 6 and 8 rollouts; the 30K constant-LR sweep configs were renamed to `exp/configs/enc_dec/rl_floras50_30k_b18_r48_const_lr_<lr>.yaml` and now use batch size 18 and 48 rollouts.
 - Added parallel 30K GRPO LR-sweep configs under `exp/configs/enc_dec/rl_floras50_30k_b18_r48_grpo_const_lr_<lr>.yaml`; these keep `rl.reward_threshold: 0.8`, while MaxRL configs no longer include that GRPO-only threshold field.
 
+## 2026-05-11
+
+- ROB-76 on branch `symphony/ROB-76-streaming-decoder-asr`: added a decoder-only streaming ASR training path with causal subsampling, causal transformer decoding, previous-token teacher forcing into the next acoustic frame, delayed frame-synchronous targets from word timings, and an explicit silence class. The intended config `exp/configs/streaming_decoder_asr_100m.yaml` instantiates `StreamingDecoderASR` at 107.73M parameters. Stanage CPU smoke job `10159374` completed successfully on `interactive`; logs are under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-76/rob76-stream-smoke-10159374.{out,err}`.
+
 ## 2026-05-02
 
 - ROB-26 3K GPU training job `10094511` completed successfully (`COMPLETED 0:0`). Final checkpoint exists at `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/checkpoints/rl_floras50_3k_enc_dec_3l_no_anorm_v2/step_3000.pt`. The dependent Tedlium eval job `10097287` was canceled before running.
