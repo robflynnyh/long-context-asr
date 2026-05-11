@@ -4,7 +4,7 @@ import random
 import resource
 import time
 from contextlib import nullcontext
-from typing import Any, Dict, List, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import lcasr
 import torch
@@ -167,35 +167,78 @@ def perfect_wer_rewards(hypotheses: List[str], references: List[str]) -> torch.T
     return torch.tensor(rewards, dtype=torch.float32)
 
 
-def thresholded_wer_rewards(
+def weighted_error_rewards(
     hypotheses: List[str],
     references: List[str],
-    threshold: float = 0.8,
+    wer_weight: float = 0.7,
+    cer_weight: float = 0.3,
+    reward_offset: float = 1.0,
+    reward_scale: float = 1.0,
+    reward_min: Optional[float] = 0.0,
+    reward_max: Optional[float] = None,
+    reward_positive_threshold: Optional[float] = None,
 ) -> torch.Tensor:
     rewards = []
+    weight_sum = wer_weight + cer_weight
+    if weight_sum <= 0:
+        raise ValueError("reward weights must sum to a positive value")
+    wer_weight = wer_weight / weight_sum
+    cer_weight = cer_weight / weight_sum
+
     for hyp, ref in zip(hypotheses, references):
-        wer, *_ = word_error_rate_detail(hypotheses=[hyp], references=[ref])
-        reward = max(0.0, 1.0 - float(wer))
-        rewards.append(reward if reward > threshold else 0.0)
+        wer, *_ = word_error_rate_detail(hypotheses=[hyp], references=[ref], use_cer=False)
+        cer, *_ = word_error_rate_detail(hypotheses=[hyp], references=[ref], use_cer=True)
+        error = wer_weight * float(wer) + cer_weight * float(cer)
+        reward = reward_offset - reward_scale * error
+        if reward_min is not None:
+            reward = max(float(reward_min), reward)
+        if reward_max is not None:
+            reward = min(float(reward_max), reward)
+        if reward_positive_threshold is not None and reward <= reward_positive_threshold:
+            reward = 0.0
+        rewards.append(reward)
     return torch.tensor(rewards, dtype=torch.float32)
+
+
+def _optional_float(config: Any, key: str, default: Optional[float]) -> Optional[float]:
+    value = config.get(key, default)
+    if value is None:
+        return None
+    return float(value)
 
 
 def compute_rewards(
     hypotheses: List[str],
     references: List[str],
     algorithm: str,
-    reward_threshold: float = 0.8,
+    reward_config: Any = None,
 ) -> torch.Tensor:
     if algorithm == "grpo":
-        return thresholded_wer_rewards(
+        reward_config = reward_config or {}
+        reward_type = reward_config.get("reward_type", "weighted_error")
+        if reward_type != "weighted_error":
+            raise ValueError(f"unknown GRPO reward_type {reward_type}")
+        return weighted_error_rewards(
             hypotheses=hypotheses,
             references=references,
-            threshold=reward_threshold,
+            wer_weight=float(reward_config.get("reward_wer_weight", 0.7)),
+            cer_weight=float(reward_config.get("reward_cer_weight", 0.3)),
+            reward_offset=float(reward_config.get("reward_offset", 1.0)),
+            reward_scale=float(reward_config.get("reward_scale", 1.0)),
+            reward_min=_optional_float(reward_config, "reward_min", 0.0),
+            reward_max=_optional_float(reward_config, "reward_max", None),
+            reward_positive_threshold=_optional_float(reward_config, "reward_positive_threshold", None),
         )
     return perfect_wer_rewards(hypotheses=hypotheses, references=references)
 
 
-def compute_advantages(rewards: torch.Tensor, group_size: int, algorithm: str, eps: float) -> torch.Tensor:
+def compute_advantages(
+    rewards: torch.Tensor,
+    group_size: int,
+    algorithm: str,
+    eps: float,
+    min_group_std: float = 0.0,
+) -> torch.Tensor:
     grouped = rearrange(rewards, "(b g) -> b g", g=group_size)
     mean = grouped.mean(dim=1, keepdim=True)
 
@@ -204,8 +247,9 @@ def compute_advantages(rewards: torch.Tensor, group_size: int, algorithm: str, e
         advantages = torch.where(mean > 0, advantages, torch.zeros_like(advantages))
     elif algorithm == "grpo":
         std = grouped.std(dim=1, keepdim=True, unbiased=False)
+        active = std > max(eps, min_group_std)
         advantages = (grouped - mean) / std.clamp_min(eps)
-        advantages = torch.where(std > eps, advantages, torch.zeros_like(advantages))
+        advantages = torch.where(active, advantages, torch.zeros_like(advantages))
     else:
         raise ValueError(f"unknown RL algorithm {algorithm}")
 
@@ -444,13 +488,14 @@ def rl_update(
             hypotheses=hypotheses,
             references=references,
             algorithm=rl_config.algorithm,
-            reward_threshold=float(rl_config.get("reward_threshold", 0.8)),
+            reward_config=rl_config,
         ).to(device)
         advantages = compute_advantages(
             rewards=rewards,
             group_size=num_rollouts,
             algorithm=rl_config.algorithm,
             eps=float(rl_config.get("advantage_eps", 1e-6)),
+            min_group_std=float(rl_config.get("reward_std_min", 0.0)),
         ).to(device)
 
         if advantages.abs().sum() == 0:
@@ -484,11 +529,15 @@ def rl_update(
         optimizer.step()
 
     rewards_grouped = rearrange(rewards.detach().cpu(), "(b g) -> b g", g=num_rollouts)
+    reward_std_grouped = rewards_grouped.std(dim=1, unbiased=False)
+    reward_std_min = float(rl_config.get("reward_std_min", 0.0))
     return {
         "loss": float(loss.detach().cpu()),
         "reward_mean": float(rewards.mean().detach().cpu()),
         "reward_max": float(rewards.max().detach().cpu()),
         "reward_min": float(rewards.min().detach().cpu()),
+        "reward_group_std_mean": float(reward_std_grouped.mean().item()),
+        "skipped_low_reward_std": float((reward_std_grouped <= reward_std_min).float().mean().item()),
         "pass_at_group": float((rewards_grouped.max(dim=1).values > 0).float().mean().item()),
         "advantage_abs_mean": float(advantages.abs().mean().detach().cpu()),
         "max_generate": max_generate,
@@ -755,13 +804,14 @@ def smoke_rollout(args: argparse.Namespace) -> None:
         hypotheses=hypotheses,
         references=references,
         algorithm=config.rl.algorithm,
-        reward_threshold=float(config.rl.get("reward_threshold", 0.8)),
+        reward_config=config.rl,
     )
     advantages = compute_advantages(
         rewards=rewards,
         group_size=num_rollouts,
         algorithm=config.rl.algorithm,
         eps=float(config.rl.get("advantage_eps", 1e-6)),
+        min_group_std=float(config.rl.get("reward_std_min", 0.0)),
     )
 
     optimizer.zero_grad()
@@ -802,12 +852,30 @@ def self_test() -> None:
     assert grpo_adv[:3].sum().abs() < 1e-5
     rewards = perfect_wer_rewards(["hello world", "hello"], ["hello world", "hello world"])
     assert rewards.tolist() == [1.0, 0.0]
-    rewards = thresholded_wer_rewards(
+    rewards = weighted_error_rewards(
         ["hello world", "hello world now", "hello"],
         ["hello world", "hello world", "hello world"],
-        threshold=0.8,
+        wer_weight=0.7,
+        cer_weight=0.3,
+        reward_offset=1.0,
+        reward_scale=1.0,
+        reward_min=0.0,
+        reward_max=None,
+        reward_positive_threshold=None,
     )
-    assert rewards.tolist() == [1.0, 0.0, 0.0]
+    assert rewards[0].item() == 1.0
+    assert rewards[1].item() < 1.0
+    assert rewards[2].item() < 1.0
+
+    low_var_adv = compute_advantages(
+        torch.tensor([0.50, 0.51, 0.50, 0.90, 0.10, 0.50]),
+        group_size=3,
+        algorithm="grpo",
+        eps=1e-6,
+        min_group_std=0.02,
+    )
+    assert low_var_adv[:3].abs().sum() == 0
+    assert low_var_adv[3:].abs().sum() > 0
 
     class ToyTokenizer:
         def encode(self, text):
@@ -902,6 +970,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-config", "--config", type=str, required=False, help="path to config file")
     parser.add_argument("-reset_step", "--reset_step", action="store_true", help="start from pretrained even if output checkpoints exist")
+    parser.add_argument(
+        "--remove_scheduler",
+        action="store_true",
+        help="accepted for exp/run_launcher.py compatibility; RL training uses the config scheduler directly",
+    )
     parser.add_argument("-num_workers", "--num_workers", type=int, default=0)
     parser.add_argument("-pin_memory", "--pin_memory", action="store_true")
     parser.add_argument("-prefetch", "--prefetch_factor", type=int, default=None)
