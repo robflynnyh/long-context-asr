@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional
 
+from lcasr.components.attention import Attention
 from lcasr.components.helpers import get_act
 from lcasr.components.subsampling import ConvSubsampling, calc_length
 from lcasr.models.base import BaseModel
@@ -10,50 +11,7 @@ from lcasr.models.base import BaseModel
 try:
     from apex.normalization import FusedLayerNorm as LayerNorm
 except Exception:
-    from torch.nn import LayerNorm
-
-
-class CausalSelfAttention(nn.Module):
-    def __init__(self, d_model: int, n_heads: int, dropout: float = 0.0, qkv_bias: bool = False):
-        super().__init__()
-        assert d_model % n_heads == 0, "d_model must be divisible by n_heads"
-        self.n_heads = n_heads
-        self.head_dim = d_model // n_heads
-        self.dropout_p = dropout
-        self.qkv = nn.Linear(d_model, 3 * d_model, bias=qkv_bias)
-        self.out = nn.Linear(d_model, d_model, bias=False)
-
-    def forward(self, x: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        batch, length, width = x.shape
-        qkv = self.qkv(x).view(batch, length, 3, self.n_heads, self.head_dim)
-        q, k, v = qkv.unbind(dim=2)
-        q = q.transpose(1, 2)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
-
-        dropout_p = self.dropout_p if self.training else 0.0
-        if key_padding_mask is None:
-            out = F.scaled_dot_product_attention(q, k, v, dropout_p=dropout_p, is_causal=True)
-        else:
-            causal = torch.ones(length, length, dtype=torch.bool, device=x.device).triu(1)
-            attn_mask = torch.zeros(length, length, dtype=x.dtype, device=x.device)
-            attn_mask = attn_mask.masked_fill(causal, -torch.finfo(x.dtype).max)
-            attn_mask = attn_mask.view(1, 1, length, length)
-
-            key_mask = key_padding_mask.view(batch, 1, 1, length)
-            key_bias = torch.zeros(batch, 1, 1, length, dtype=x.dtype, device=x.device)
-            attn_mask = attn_mask + key_bias.masked_fill(key_mask, -torch.finfo(x.dtype).max)
-
-            out = F.scaled_dot_product_attention(
-                q,
-                k,
-                v,
-                attn_mask=attn_mask,
-                dropout_p=dropout_p,
-                is_causal=False,
-            )
-        out = out.transpose(1, 2).contiguous().view(batch, length, width)
-        return self.out(out)
+        from torch.nn import LayerNorm
 
 
 class CausalDecoderLayer(nn.Module):
@@ -67,8 +25,17 @@ class CausalDecoderLayer(nn.Module):
         activation: str = "silu",
     ):
         super().__init__()
+        assert d_model % n_heads == 0, "d_model must be divisible by n_heads"
         self.attn_norm = LayerNorm(d_model)
-        self.attn = CausalSelfAttention(d_model=d_model, n_heads=n_heads, dropout=dropout_attn)
+        self.attn = Attention(
+            n_feats=d_model,
+            head_dim=d_model // n_heads,
+            n_heads=n_heads,
+            dropout=dropout_attn,
+            causal=True,
+            qkv_bias=False,
+            bias=False,
+        )
         self.ff_norm = LayerNorm(d_model)
         hidden = d_model * expansion_factor
         self.ff = nn.Sequential(
@@ -80,7 +47,16 @@ class CausalDecoderLayer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        x = x + self.attn(self.attn_norm(x), key_padding_mask=key_padding_mask)
+        x_norm = self.attn_norm(x)
+        attn_mask = None if key_padding_mask is None else ~key_padding_mask
+        attn_lengths = None if attn_mask is None else attn_mask.sum(dim=-1)
+        x = x + self.attn(
+            x_norm,
+            attn_mask=attn_mask,
+            length=attn_lengths,
+            pad_mask=key_padding_mask,
+            flash_attn=True,
+        )
         x = x + self.ff(self.ff_norm(x))
         return x
 

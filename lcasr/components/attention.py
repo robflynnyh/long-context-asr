@@ -540,8 +540,15 @@ class Attention(nn.Module):
             if attn_mask is not None and attn_mask.dim() == 2:
                 attn_mask = (~attn_mask).to(dtype=q.dtype)
                 attn_mask = rearrange(attn_mask, 'b s -> b 1 1 s') * -torch.finfo(q.dtype).max
+            is_causal = self.causal
+            if attn_mask is not None and self.causal:
+                causal_mask = torch.ones(N, N, dtype=torch.bool, device=x.device).triu(1)
+                causal_bias = torch.zeros(N, N, dtype=q.dtype, device=x.device)
+                causal_bias = causal_bias.masked_fill(causal_mask, -torch.finfo(q.dtype).max)
+                attn_mask = attn_mask + rearrange(causal_bias, 'n m -> 1 1 n m')
+                is_causal = False
             if not self.return_attention_weights:
-                out = nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=self.causal)
+                out = nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=is_causal)
             else:
                 out, _ = self.return_attention_module(q, k, v, attn_mask, causal=self.causal)
             out = rearrange(out, "b h n d -> b n (h d)")
