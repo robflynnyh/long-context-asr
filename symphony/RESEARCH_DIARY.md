@@ -28,6 +28,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-11
 
 - ROB-76 on branch `symphony/ROB-76-streaming-decoder-asr`: added a decoder-only streaming ASR training path with causal subsampling, causal transformer decoding, previous-token teacher forcing into the next acoustic frame, delayed frame-synchronous targets from word timings, and an explicit silence class. The intended config `exp/configs/streaming_decoder_asr_100m.yaml` instantiates `StreamingDecoderASR` at 107.73M parameters. Stanage CPU smoke job `10159374` completed successfully on `interactive`; logs are under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-76/rob76-stream-smoke-10159374.{out,err}`.
+- ROB-76 review follow-up: clarified that the streaming decoder uses PyTorch SDPA, then changed unpadded self-attention to call SDPA with `is_causal=True` directly while retaining the explicit causal-plus-padding mask for padded batches. Local validation confirmed the native causal branch and padded-mask fallback both run, and the synthetic CPU training smoke still completes.
 
 ## 2026-05-02
 

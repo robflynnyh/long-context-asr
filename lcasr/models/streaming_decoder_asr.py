@@ -31,24 +31,27 @@ class CausalSelfAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
 
-        causal = torch.ones(length, length, dtype=torch.bool, device=x.device).triu(1)
-        attn_mask = torch.zeros(length, length, dtype=x.dtype, device=x.device)
-        attn_mask = attn_mask.masked_fill(causal, -torch.finfo(x.dtype).max)
-        attn_mask = attn_mask.view(1, 1, length, length)
+        dropout_p = self.dropout_p if self.training else 0.0
+        if key_padding_mask is None:
+            out = F.scaled_dot_product_attention(q, k, v, dropout_p=dropout_p, is_causal=True)
+        else:
+            causal = torch.ones(length, length, dtype=torch.bool, device=x.device).triu(1)
+            attn_mask = torch.zeros(length, length, dtype=x.dtype, device=x.device)
+            attn_mask = attn_mask.masked_fill(causal, -torch.finfo(x.dtype).max)
+            attn_mask = attn_mask.view(1, 1, length, length)
 
-        if key_padding_mask is not None:
             key_mask = key_padding_mask.view(batch, 1, 1, length)
             key_bias = torch.zeros(batch, 1, 1, length, dtype=x.dtype, device=x.device)
             attn_mask = attn_mask + key_bias.masked_fill(key_mask, -torch.finfo(x.dtype).max)
 
-        out = F.scaled_dot_product_attention(
-            q,
-            k,
-            v,
-            attn_mask=attn_mask,
-            dropout_p=self.dropout_p if self.training else 0.0,
-            is_causal=False,
-        )
+            out = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+                is_causal=False,
+            )
         out = out.transpose(1, 2).contiguous().view(batch, length, width)
         return self.out(out)
 
@@ -184,7 +187,9 @@ class StreamingDecoderASR(BaseModel):
         x = x + self.prev_token_embedding(prev_ids)
 
         key_padding_mask = torch.arange(x.size(1), device=x.device).expand(x.size(0), -1) >= out_lengths.unsqueeze(1)
-        x = x.masked_fill(key_padding_mask.unsqueeze(-1), 0)
+        key_padding_mask = key_padding_mask if key_padding_mask.any() else None
+        if key_padding_mask is not None:
+            x = x.masked_fill(key_padding_mask.unsqueeze(-1), 0)
         for layer in self.layers:
             x = layer(x, key_padding_mask=key_padding_mask)
         logits = self.decoder(self.norm(x))
