@@ -25,6 +25,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - ROB-26 RL configs were scaled up for the next run: the 3K config now uses batch size 6 and 8 rollouts; the 30K constant-LR sweep configs were renamed to `exp/configs/enc_dec/rl_floras50_30k_b18_r48_const_lr_<lr>.yaml` and now use batch size 18 and 48 rollouts.
 - Added parallel 30K GRPO LR-sweep configs under `exp/configs/enc_dec/rl_floras50_30k_b18_r48_grpo_const_lr_<lr>.yaml`; these keep `rl.reward_threshold: 0.8`, while MaxRL configs no longer include that GRPO-only threshold field.
 
+## 2026-05-11
+
+- ROB-69 on branch `symphony/ROB-69-18l-long-context-benchmark`: added an 18L long-only finetune benchmark config comparing `FT_3epoch_18L` checkpoints against matched 18L baseline checkpoints. Stanage CPU smoke job `10156237` completed successfully after seeding 75 baseline rows and checking 30 model entries, five dataset loaders, output paths, and sampled checkpoint metadata. Queued H100 eval job `10156464` with finalizer/callback job `10156465`; remote result path is `/mnt/parscratch/users/acp21rjf/symphony-workspaces-long-context-asr/ROB-69/eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`.
+
 ## 2026-05-02
 
 - ROB-26 3K GPU training job `10094511` completed successfully (`COMPLETED 0:0`). Final checkpoint exists at `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/checkpoints/rl_floras50_3k_enc_dec_3l_no_anorm_v2/step_3000.pt`. The dependent Tedlium eval job `10097287` was canceled before running.
