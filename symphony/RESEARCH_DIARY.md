@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-11
+
+- ROB-78 on branch `symphony/rob-78-spotify-f-long-6epoch`: added a 15-run Spotify long-only fine-tuning template for the 6-epoch base model (`w128`, `w512`, `w2048`, `w8192`, and full-context `w360000`, each with 3 repeats), plus deterministic config expansion, Stanage CPU-smoke, GPU-array, and Linear callback finalizer scripts. Intended large artifacts live under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-78` and `/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch`.
+
 ## 2026-05-01
 
 - ROB-24 on branch `symphony/ROB-24-agent-docs`: added focused future-agent notes under `symphony/` for repo orientation, training, evaluation, and Slurm patterns. Opened PR https://github.com/robflynnyh/long-context-asr/pull/2 against `dev`. No Slurm jobs launched.

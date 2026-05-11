@@ -1,0 +1,184 @@
+template_info:
+  create: 15
+  include_keys: [
+    'model',
+    'optimizer',
+    'scheduler',
+    'audio_chunking',
+    'wandb',
+    'checkpointing',
+    'data',
+    'training',
+    'description',
+    'model_class',
+    'spec_augment'
+  ]
+  template_keys: [
+    'checkpointing.dir',
+    'checkpointing.pretrained',
+    'wandb.name',
+    'model.attention_window_size',
+    'training.random_seed',
+  ]
+
+model_class: 'SCConformerXL'
+description: "ROB-78: Spotify long-only fine-tuning for the 6-epoch long-context base model."
+
+model:
+  feat_in: 80
+  n_layers: 6
+  d_model: 768
+  n_heads: 6
+  head_dim: 128
+  dropout_ff: 0.0
+  dropout_attn: 0.0
+  dropout_conv: 0.0
+  subsampling_factor: 8
+  subsampling: 'dw_striding'
+  subsampling_act: 'silu'
+  subsampling_conv_channels: 256
+  self_condition_subsampling: false
+  subsampling_norm_out: false
+  conv_kernel_size: 9
+  qk_rms_norm: false
+  shift_kvs: false
+  self_conditioning: true
+  gated_sc: false
+  decoder_norm: true
+  use_rotary: true
+  encoder_mode: 'conformer'
+  default_norm: 'layer_norm'
+  sandwich_norm: false
+  bias_in_ff: false
+  checkpoint_every_n_layers: 0
+  rotary_base_freq: 1500000
+  attention_window_size: [
+    128,
+    128,
+    128,
+    512,
+    512,
+    512,
+    2048,
+    2048,
+    2048,
+    8192,
+    8192,
+    8192,
+    -1,
+    -1,
+    -1,
+  ]
+
+optimizer:
+  name: 'madgrad'
+  args:
+    lr: 5e-5
+
+scheduler:
+  warmup_steps: 5000
+
+audio_chunking:
+  size: 360000
+  overlap: 0
+
+wandb:
+  use: true
+  project_name: "spotify_long_only_long_context"
+  name: [
+    'spotify-F-long-only-FT_3epoch-6epoch-w128-5e5-rp-1',
+    'spotify-F-long-only-FT_3epoch-6epoch-w128-5e5-rp-2',
+    'spotify-F-long-only-FT_3epoch-6epoch-w128-5e5-rp-3',
+    'spotify-F-long-only-FT_3epoch-6epoch-w512-5e5-rp-1',
+    'spotify-F-long-only-FT_3epoch-6epoch-w512-5e5-rp-2',
+    'spotify-F-long-only-FT_3epoch-6epoch-w512-5e5-rp-3',
+    'spotify-F-long-only-FT_3epoch-6epoch-w2048-5e5-rp-1',
+    'spotify-F-long-only-FT_3epoch-6epoch-w2048-5e5-rp-2',
+    'spotify-F-long-only-FT_3epoch-6epoch-w2048-5e5-rp-3',
+    'spotify-F-long-only-FT_3epoch-6epoch-w8192-5e5-rp-1',
+    'spotify-F-long-only-FT_3epoch-6epoch-w8192-5e5-rp-2',
+    'spotify-F-long-only-FT_3epoch-6epoch-w8192-5e5-rp-3',
+    'spotify-F-long-only-FT_3epoch-6epoch-w360000-5e5-rp-1',
+    'spotify-F-long-only-FT_3epoch-6epoch-w360000-5e5-rp-2',
+    'spotify-F-long-only-FT_3epoch-6epoch-w360000-5e5-rp-3',
+  ]
+  id: ""
+  dir: '/mnt/parscratch/users/acp21rjf/wandb_log/'
+
+checkpointing:
+  dir: [
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w128-5e5-rp-1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w128-5e5-rp-2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w128-5e5-rp-3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w512-5e5-rp-1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w512-5e5-rp-2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w512-5e5-rp-3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w2048-5e5-rp-1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w2048-5e5-rp-2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w2048-5e5-rp-3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w8192-5e5-rp-1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w8192-5e5-rp-2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w8192-5e5-rp-3',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w360000-5e5-rp-1',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w360000-5e5-rp-2',
+    '/mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_6epoch/spotify-F-long-only-FT-w360000-5e5-rp-3',
+  ]
+  pretrained: [
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_128_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_128_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_128_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_512_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_512_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_512_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_2048_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_2048_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_2048_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_8192_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_8192_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_8192_rp_3',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_360000_rp_1',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_360000_rp_2',
+    '/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_window_sizes_6epochs/rb_window_size_360000_rp_3',
+  ]
+  save_every_n_steps: 2000
+
+data:
+  path: /users/acp21rjf/long-context-asr/lcasr/artifacts/spotify_long_only.json
+
+spec_augment:
+  n_time_masks: 0
+  time_mask_param: 0
+  n_freq_masks: 2
+  freq_mask_param: 18
+  iid_masks: true
+  min_p: 0.0
+  max_p: 0.0
+  zero_masking: false
+
+training:
+  max_epochs: 3
+  shuffle_chunks: true
+  start_spec_augment_after_n_epochs: -1
+  batch_size: 1
+  backprop_every: 1
+  backwards_every: 1
+  max_seq_len: 0
+  clip_value: 0.8
+  intermediate_loss_weighting: 0.0
+  random_seed: [
+    95417,
+    4324,
+    98761,
+    964112331,
+    42321,
+    671819,
+    82641,
+    12233,
+    4322,
+    12135,
+    9877,
+    4323,
+    4232,
+    95417,
+    1123,
+  ]
