@@ -16,6 +16,17 @@ Follow `symphony/slurm-notes.md` and the repo's existing `exp/`, `eval/`, and
 `job_scripts/` Slurm patterns. Reuse existing partitions, module/conda setup,
 log locations, and resource requests when possible.
 
+Before queueing any Stanage GPU job, always run the smallest practical CPU
+smoke test on Stanage against the same code path, config family, data paths,
+checkpoint paths, imports, and output directory assumptions. This CPU smoke can
+be a reduced-recording, reduced-step, validation-only, syntax-plus-load, or
+callback-only job, but it must exercise the failure-prone setup that the GPU job
+will rely on. Do not submit the GPU job until that CPU smoke test completes
+successfully and its logs show no immediate setup, import, data-loading,
+checkpoint, permission, callback, or output-path errors. Stanage GPU jobs can
+wait in queue for a long time; a job that fails as soon as it is allocated is a
+waste of queue time.
+
 Keep Stanage stdout/stderr and generated artifacts under durable issue-specific
 paths on `/mnt/parscratch/users/acp21rjf/`, usually under
 `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts`. Use
