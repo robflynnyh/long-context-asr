@@ -16,6 +16,15 @@ ARTIFACT_DIR="${ARTIFACT_DIR:-/mnt/parscratch/users/acp21rjf/symphony-job-artifa
 CHECKPOINT_DIR="/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch"
 TRAIN_LOG="${ARTIFACT_DIR}/train-${SLURM_JOB_ID:-manual}.log"
 COMMAND="python exp/train_bestRQ.py -config exp/configs/ssl/bestrq_6l_2048_spotify.yaml --remove_scheduler --reset_step --num_workers ${ROB70_NUM_WORKERS:-0} --prefetch_factor ${ROB70_PREFETCH_FACTOR:-1}"
+LINEAR_ENV_FILE="${LINEAR_ENV_FILE:-}"
+
+if [[ -z "$LINEAR_ENV_FILE" ]]; then
+  if [[ -f "$HOME/.config/long-context-asr/linear.env" ]]; then
+    LINEAR_ENV_FILE="$HOME/.config/long-context-asr/linear.env"
+  elif [[ -f "$HOME/.config/sap-longcontext/linear.env" ]]; then
+    LINEAR_ENV_FILE="$HOME/.config/sap-longcontext/linear.env"
+  fi
+fi
 
 on_exit() {
   status=$?
@@ -50,6 +59,12 @@ set -e
 
 cd "$REPO_DIR"
 mkdir -p "$ARTIFACT_DIR" "$CHECKPOINT_DIR"
+
+if [[ -n "$LINEAR_ENV_FILE" && -f "$LINEAR_ENV_FILE" ]]; then
+  set -a
+  source "$LINEAR_ENV_FILE"
+  set +a
+fi
 
 module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main
