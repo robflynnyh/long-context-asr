@@ -14,7 +14,7 @@ model:
   subsampling_conv_channels: 256
   subsampling_norm_out: true
   decoder_norm: true
-  previous_token_dropout: 0.05
+  previous_token_dropout: 0.0
 
 optimizer:
   name: madgrad
