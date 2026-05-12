@@ -4,7 +4,7 @@
 #SBATCH --gres=gpu:h100:1
 #SBATCH --qos=gpu
 #SBATCH --time=36:00:00
-#SBATCH --mem=220GB
+#SBATCH --mem=140GB
 #SBATCH --cpus-per-task=8
 #SBATCH --output=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/gpu-%j.out
 #SBATCH --error=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/gpu-%j.err
