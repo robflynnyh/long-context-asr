@@ -110,7 +110,7 @@ def main(args, config):
                 wers, model_config = run_eval(args = args)
                 data_to_save = get_data_to_save(config, wers, split, dataset_reference, model)
                 df = pd.DataFrame(data_to_save)
-                df.to_csv(config.args.save_dataframe_path, mode='a', header=not os.path.exists(config.args.save_dataframe_path)) if config.args.save_dataframe_path != '' else None
+                df.to_csv(config.args.save_dataframe_path, mode='a', header=not os.path.exists(config.args.save_dataframe_path), index=False) if config.args.save_dataframe_path != '' else None
                 evals_completed += 1
                 pbar.update(1)
                 results.append(data_to_save)
