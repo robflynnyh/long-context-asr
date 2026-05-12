@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-12
+
+- ROB-70 retry repair on branch `symphony/rob-70-setup-ssl-bestrq`: failed GPU job `10156592` was confirmed as Slurm `OUT_OF_MEMORY` after `ReqMem=130G`, batch `MaxRSS=136315288K`, and a killed DataLoader worker at chunk `64/167`; the Linear callback did not post because the wrapper `EXIT` trap hit a `dry_args[@]` unbound-variable shell error under `set -u`. Patched `symphony/rob70_bestrq_train_gpu.sbatch` to use `gpu-h100-nvl`, request `220GB`, disable worker prefetch/pinned-memory pressure by default, and invoke the callback helper without an empty shell array; disabled `wandb.watch` for the Spotify SSL config. Validation: remote callback-only dry run through the actual wrapper succeeded, and Stanage CPU smoke job `10162428` completed `0:0` with loss `9.0858793258667`, logs `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/smoke-10162428.{out,err}`, and checkpoint `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/smoke-checkpoints/step_1.pt`.
+
 ## 2026-05-11
 
 - ROB-70 BEST-RQ SSL setup on branch `symphony/rob-70-setup-ssl-bestrq`: repaired `exp/train_bestRQ.py` so it trains the `BestRQ` wrapper directly, saves resumable wrapper checkpoints plus an `acoustic_model` state, and uses config-driven BEST-RQ params. Added 6L/2048 Spotify train and CPU-smoke configs plus Slurm wrappers with a Linear callback. Stanage CPU smoke job `10156554` completed `0:0`; logs are `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/smoke-10156554.{out,err}`, with loss `9.085878372192383` and smoke checkpoint `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/smoke-checkpoints/step_1.pt`.

@@ -55,6 +55,7 @@ wandb:
   name: "rob70_bestrq_6l_2048_1epoch"
   id: ""
   dir: '/mnt/parscratch/users/acp21rjf/wandb_log/'
+  watch_model: false
 
 checkpointing:
   dir: '/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch'
@@ -71,4 +72,3 @@ training:
   clip_value: 0.8
   random_seed: 1234
   dtype: 'bfloat16'
-
