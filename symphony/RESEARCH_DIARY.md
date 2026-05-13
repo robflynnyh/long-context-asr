@@ -54,6 +54,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-13
 
 - ROB-85 on branch `symphony/ROB-85-update-rules`: updated Symphony execution rules and agent notes to ban `/tmp` on Mimas. Future Mimas-local scratch should use repo-local `.tmp/` or another issue-specific user-owned path under `/exp/exp4/acp21rjf/`; Stanage scratch remains `/mnt/parscratch/users/acp21rjf/symphony-tmp`.
+- ROB-81 planning: identified `enc_dec_3l_no_anorm_v2` as the ROB-25 source checkpoint for normal supervised Floras-50 finetuning, confirmed the original checkpoint LR was `2e-3` from `exp/configs/enc_dec/enc_dec_test.yaml` and `exp/configs/enc_dec/0_873621.yaml`, and documented a conservative `1e-4` starting LR plus optional `5e-5`, `1e-4`, `2e-4` sweep in `symphony/rob-81-encdec-floras-finetune-plan.md`.
 
 ## 2026-05-12
 
