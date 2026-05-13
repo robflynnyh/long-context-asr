@@ -14,8 +14,9 @@ The required Symphony instruction files were read before planning:
 
 Directly relevant constraints:
 
-- ROB-81 had no recent Linear comments when the plan was prepared, so no later
-  comment changed the issue scope.
+- ROB-81 had no recent Linear comments when the first plan was prepared. A
+  later human comment on 2026-05-13 asked to check whether Floras has many OOV
+  words for the Spotify-trained encoder-decoder model before proceeding.
 - No `Branch/ref:` was supplied, so work should branch from `dev`.
 - Stanage is the default execution target for training. Do not run the finetune
   as Mimas/local GPU work unless a later human comment explicitly asks for it.
@@ -90,6 +91,64 @@ Verify this path on Stanage before preparing the final training config. The
 path was not present from the current Mimas workspace during planning, but that
 does not prove it is absent on Stanage.
 
+## Floras OOV Audit
+
+After the later Linear comment, a bounded Stanage CPU audit checked the prepared
+Floras labels against the Spotify-trained encoder-decoder tokenizer:
+
+```text
+script: symphony/rob81_floras_oov_audit.py
+slurm wrapper: symphony/rob81_floras_oov_audit.sbatch
+job: 10207037
+stdout: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/oov-audit-10207037.out
+stderr: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/oov-audit-10207037.err
+json: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/oov-audit-full.json
+mapping: /users/acp21rjf/align_floras50/tmp/mapping.json
+```
+
+The audit reads label JSON only; it does not load audio tensors or train. It
+counts a word occurrence as OOV if encoding that word emits tokenizer id `1`,
+the SentencePiece `[UNK]` id. It also reports a word-wise subword UNK rate, so
+the numbers are not a WER proxy.
+
+Results on all 30,482 prepared Floras records:
+
+| Tokenizer | Word occurrences with `[UNK]` | Word OOV rate | Unique OOV words | Records with `[UNK]` |
+| --- | ---: | ---: | ---: | ---: |
+| Spotify default tokenizer (`lcasr/artifacts/tokenizer.model`) | 714,172 / 87,774,712 | 0.8136% | 169,807 / 925,430 | 19,859 / 30,482 |
+| Floras tokenizer (`lcasr/artifacts/floras50/tokenizer.model`) | 13 / 87,774,712 | 0.0000148% | 13 / 925,430 | 8 / 30,482 |
+
+The Spotify-tokenizer OOVs are numerous by unique type and record coverage, but
+the occurrence rate is under 1%. The most frequent raw-label causes are markup
+or punctuation rather than ordinary lexical gaps:
+
+```text
+&gt;&gt; 23263
+it’s 16254
+I’m 12348
+– 12246
+don’t 11533
+that’s 9399
+you’re 7091
+It’s 6971
+we’re 5586
+[ 5164
+] 5152
+[Music] 4626
+```
+
+Do not switch the finetune to the Floras tokenizer without a deliberate
+checkpoint-compatibility decision. The source checkpoint's decoder embeddings
+and output head were trained against the Spotify tokenizer id semantics; the
+Floras tokenizer has the same vocabulary size but different pieces/ids.
+
+Recommended follow-up before launch: keep the Spotify tokenizer for checkpoint
+compatibility, but add or verify a label-normalization step for Floras labels
+before supervised finetuning. At minimum, normalize HTML escapes, curly
+apostrophes/quotes, dash variants, and bracketed transcript markup, then rerun
+this audit on the normalized text path. If normalized OOV remains high, treat
+tokenization as a blocker before spending GPU time.
+
 ## Implementation Plan
 
 1. Add a supervised `EncDecSconformerV2` Floras-50 finetune config starting from
@@ -112,6 +171,7 @@ does not prove it is absent on Stanage.
    - full Floras manifest existence and readability,
    - source checkpoint existence and model load compatibility,
    - output directory permissions,
+   - label normalization/tokenization behavior,
    - the smallest practical dataloader/model setup path.
 5. Add a GPU Slurm launcher only after the CPU smoke passes.
 6. Add and dry-run a callback or finalizer that posts success/failure evidence

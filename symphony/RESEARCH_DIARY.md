@@ -55,6 +55,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-85 on branch `symphony/ROB-85-update-rules`: updated Symphony execution rules and agent notes to ban `/tmp` on Mimas. Future Mimas-local scratch should use repo-local `.tmp/` or another issue-specific user-owned path under `/exp/exp4/acp21rjf/`; Stanage scratch remains `/mnt/parscratch/users/acp21rjf/symphony-tmp`.
 - ROB-81 planning: identified `enc_dec_3l_no_anorm_v2` as the ROB-25 source checkpoint for normal supervised Floras-50 finetuning, confirmed the original checkpoint LR was `2e-3` from `exp/configs/enc_dec/enc_dec_test.yaml` and `exp/configs/enc_dec/0_873621.yaml`, and documented a conservative `1e-4` starting LR plus optional `5e-5`, `1e-4`, `2e-4` sweep in `symphony/rob-81-encdec-floras-finetune-plan.md`.
+- ROB-81 OOV follow-up after a human Linear comment: added `symphony/rob81_floras_oov_audit.py` and `symphony/rob81_floras_oov_audit.sbatch`, then ran Stanage CPU job `10207037` over `/users/acp21rjf/align_floras50/tmp/mapping.json`. The Spotify default tokenizer produced `[UNK]` for 714,172 / 87,774,712 word occurrences (0.8136%), 169,807 / 925,430 unique word types, and 19,859 / 30,482 records, mostly markup/punctuation such as `&gt;&gt;`, curly apostrophes, dash variants, and bracketed markers. The Floras tokenizer was near-zero OOV but is not checkpoint-compatible by id semantics with the Spotify-trained encoder-decoder head. Results JSON: `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/oov-audit-full.json`.
 
 ## 2026-05-12
 
