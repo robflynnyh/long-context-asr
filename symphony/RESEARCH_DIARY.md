@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-13
+
+- ROB-85 on branch `symphony/ROB-85-update-rules`: updated Symphony execution rules and agent notes to ban `/tmp` on Mimas. Future Mimas-local scratch should use repo-local `.tmp/` or another issue-specific user-owned path under `/exp/exp4/acp21rjf/`; Stanage scratch remains `/mnt/parscratch/users/acp21rjf/symphony-tmp`.
+
 ## 2026-05-01
 
 - ROB-24 on branch `symphony/ROB-24-agent-docs`: added focused future-agent notes under `symphony/` for repo orientation, training, evaluation, and Slurm patterns. Opened PR https://github.com/robflynnyh/long-context-asr/pull/2 against `dev`. No Slurm jobs launched.

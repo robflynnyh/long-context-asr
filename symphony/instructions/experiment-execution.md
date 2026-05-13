@@ -8,6 +8,11 @@ repository edits, Linear updates, short inspections, and bounded local checks.
 Use the current Mimas server for compute only when the issue or a later human
 Linear comment explicitly asks for Mimas/local execution.
 
+Never use `/tmp` on Mimas for Symphony work. For short-lived local scratch on
+Mimas, use the repo-local ignored `.tmp/` directory or another issue-specific,
+user-owned path under `/exp/exp4/acp21rjf/`, and clean it up before handoff
+unless it is intentionally retained as validation evidence.
+
 For default Stanage work, use short bounded SSH commands from Mimas and submit
 meaningful compute through Slurm. Do not run training, ASR evaluation, large
 preprocessing, large scans, or multi-minute validation on a Stanage login node.
@@ -100,4 +105,5 @@ unchanged failing command.
 Use Mimas compute only when a human explicitly asks for it. In that case, use
 `/store/store5/software/simple-gpu-schedule/with-gpu` for cooperative GPU
 allocation, launch long jobs in durable detached `screen` sessions with log
-files, and follow the same callback/handoff discipline above.
+files, never write temporary files under `/tmp`, and follow the same
+callback/handoff discipline above.
