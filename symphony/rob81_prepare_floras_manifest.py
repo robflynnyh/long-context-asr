@@ -49,8 +49,28 @@ def iter_items(mapping: Dict[str, Dict[str, Any]], limit: int) -> Iterable[tuple
     return items
 
 
-def has_unk(tokenizer: spm.SentencePieceProcessor, words: Iterable[str], unk_id: int) -> bool:
-    return any(unk_id in tokenizer.encode(word) for word in set(words))
+def word_has_unk(
+    tokenizer: spm.SentencePieceProcessor,
+    word: str,
+    unk_id: int,
+    cache: Dict[str, bool],
+) -> bool:
+    if word not in cache:
+        cache[word] = unk_id in tokenizer.encode(word)
+    return cache[word]
+
+
+def oov_words(
+    tokenizer: spm.SentencePieceProcessor,
+    words: Iterable[str],
+    unk_id: int,
+    cache: Dict[str, bool],
+) -> list[str]:
+    return [
+        word
+        for word in sorted(set(words))
+        if word_has_unk(tokenizer, word, unk_id, cache)
+    ]
 
 
 def normalize_timestamps(timestamps: list[Dict[str, Any]]) -> tuple[list[Dict[str, Any]], list[str]]:
@@ -83,8 +103,10 @@ def main() -> None:
         "dropped_missing_text": 0,
         "dropped_empty_after_normalization": 0,
         "dropped_oov_after_normalization": 0,
+        "unique_words_checked": 0,
         "examples": [],
     }
+    unk_cache: Dict[str, bool] = {}
 
     for record_id, record in iter_items(mapping, args.limit):
         stats["input_records"] += 1
@@ -100,16 +122,12 @@ def main() -> None:
             stats["dropped_empty_after_normalization"] += 1
             continue
 
-        if has_unk(tokenizer, normalized_words, args.unk_id):
+        record_oov_words = oov_words(tokenizer, normalized_words, args.unk_id, unk_cache)
+        if record_oov_words:
             stats["dropped_oov_after_normalization"] += 1
             if len(stats["examples"]) < args.examples:
-                oov_words = [
-                    word
-                    for word in sorted(set(normalized_words))
-                    if args.unk_id in tokenizer.encode(word)
-                ][:20]
                 stats["examples"].append(
-                    {"record_id": record_id, "txt": txt_path, "oov_words": oov_words}
+                    {"record_id": record_id, "txt": txt_path, "oov_words": record_oov_words[:20]}
                 )
             continue
 
@@ -123,6 +141,7 @@ def main() -> None:
         filtered_mapping[record_id] = filtered_record
         stats["kept_records"] += 1
 
+    stats["unique_words_checked"] = len(unk_cache)
     write_json(args.output, filtered_mapping)
     write_json(args.summary_json, stats)
     print(json.dumps(stats, indent=2, ensure_ascii=False))

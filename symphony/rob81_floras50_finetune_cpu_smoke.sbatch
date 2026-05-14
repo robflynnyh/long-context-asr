@@ -18,6 +18,7 @@ SUMMARY_JSON="${MANIFEST_DIR}/floras50_safe_norm_drop_oov_summary.json"
 
 cd "${REPO_DIR}"
 mkdir -p "${ARTIFACT_DIR}" "${MANIFEST_DIR}" "${NORMALIZED_TXT_DIR}"
+rm -f "${NORMALIZED_TXT_DIR}"/*.json
 
 module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main
