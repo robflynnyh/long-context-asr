@@ -318,7 +318,7 @@ Required implementation before launch:
 CPU smoke submission:
 
 ```bash
-ssh stanage 'cd /users/acp21rjf/long-context-asr && git fetch origin symphony/ROB-81-finetune-best-encdec-floras && git checkout symphony/ROB-81-finetune-best-encdec-floras && mkdir -p /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81 && sbatch symphony/rob81_floras50_finetune_cpu_smoke.sbatch'
+ssh acp21rjf@stanage.shef.ac.uk 'cd /users/acp21rjf/long-context-asr && git fetch origin symphony/ROB-81-finetune-best-encdec-floras && git checkout -B symphony/ROB-81-finetune-best-encdec-floras FETCH_HEAD && mkdir -p /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81 && sbatch symphony/rob81_floras50_finetune_cpu_smoke.sbatch'
 ```
 
 GPU Slurm request:
@@ -327,7 +327,7 @@ Use one job with a comma-separated partition list so Slurm can place it on any
 of the requested GPU pools without running duplicate training jobs:
 
 ```bash
-ssh stanage 'cd /users/acp21rjf/long-context-asr && git fetch origin symphony/ROB-81-finetune-best-encdec-floras && git checkout symphony/ROB-81-finetune-best-encdec-floras && sbatch symphony/rob81_floras50_finetune_gpu.sbatch'
+ssh acp21rjf@stanage.shef.ac.uk 'cd /users/acp21rjf/long-context-asr && git fetch origin symphony/ROB-81-finetune-best-encdec-floras && git checkout -B symphony/ROB-81-finetune-best-encdec-floras FETCH_HEAD && sbatch symphony/rob81_floras50_finetune_gpu.sbatch'
 ```
 
 `symphony/rob81_floras50_finetune_gpu.sbatch` should use:
@@ -369,3 +369,36 @@ If `--partition=gpu,gpu-h100,gpu-h100-nvl` is rejected on Stanage, fall back to
 the same script on `gpu-h100-nvl` first, because that is the validated partition
 for recent ROB-26 encoder-decoder work, then record the rejection and the final
 chosen partition in Linear.
+
+## Queued Run
+
+The prelaunch CPU smoke was run on Stanage as job `10215207` and completed
+successfully in `00:46:01`. It materialized the filtered manifest at:
+
+```text
+/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/manifests/floras50_safe_norm_drop_oov.json
+```
+
+Manifest summary:
+
+- input records: `30,482`
+- kept records: `26,957`
+- dropped normalized-OOV records: `3,525`
+- dropped missing/empty records: `0`
+- unique words checked: `511,370`
+
+`sbatch --test-only` accepted the multi-partition request but estimated a
+general `gpu` placement around 2026-06-10, while `gpu-h100` estimated
+2026-05-23 and `gpu-h100-nvl` estimated 2026-06-22. The actual queued run uses
+`gpu-h100`.
+
+Queued jobs:
+
+```text
+GPU job: 10215377
+Finalizer job: 10215378
+Partition: gpu-h100
+GPU log stdout: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-10215377.out
+GPU log stderr: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-10215377.err
+Completion check: squeue -j 10215377,10215378 -o '%i|%j|%T|%R|%S|%M|%l|%P'
+```
