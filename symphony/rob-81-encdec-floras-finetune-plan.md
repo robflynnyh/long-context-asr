@@ -16,7 +16,10 @@ Directly relevant constraints:
 
 - ROB-81 had no recent Linear comments when the first plan was prepared. A
   later human comment on 2026-05-13 asked to check whether Floras has many OOV
-  words for the Spotify-trained encoder-decoder model before proceeding.
+  words for the Spotify-trained encoder-decoder model before proceeding. A
+  follow-up human comment on 2026-05-14 asked for an on-the-fly normalization
+  re-audit and an explicit check that the normalization is not harming the
+  transcript.
 - No `Branch/ref:` was supplied, so work should branch from `dev`.
 - Stanage is the default execution target for training. Do not run the finetune
   as Mimas/local GPU work unless a later human comment explicitly asks for it.
@@ -142,12 +145,69 @@ checkpoint-compatibility decision. The source checkpoint's decoder embeddings
 and output head were trained against the Spotify tokenizer id semantics; the
 Floras tokenizer has the same vocabulary size but different pieces/ids.
 
-Recommended follow-up before launch: keep the Spotify tokenizer for checkpoint
-compatibility, but add or verify a label-normalization step for Floras labels
-before supervised finetuning. At minimum, normalize HTML escapes, curly
-apostrophes/quotes, dash variants, and bracketed transcript markup, then rerun
-this audit on the normalized text path. If normalized OOV remains high, treat
-tokenization as a blocker before spending GPU time.
+After the 2026-05-14 follow-up comment, the audit was extended to compare raw
+labels against a conservative on-the-fly normalization:
+
+- recursively unescape HTML entities,
+- normalize common Unicode apostrophes, quotes, dashes, and non-breaking
+  spaces,
+- remove standalone speaker arrows,
+- strip bracket characters while preserving their contents,
+- trim leading/trailing token punctuation,
+- drop tokens with no alphanumeric content, and
+- collapse whitespace.
+
+The first normalized job (`10214935`) completed but exposed an overly noisy
+transcript-harm metric around double-escaped HTML. The v2 job fixed that metric,
+then the final v3 job also removed underscore-only placeholder tokens as
+no-alphanumeric markup. It wrote:
+
+```text
+job: 10215028
+stdout: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/oov-audit-10215028.out
+stderr: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/oov-audit-10215028.err
+json: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/oov-audit-normalized-v3-full.json
+elapsed: 00:07:14
+state: COMPLETED 0:0
+```
+
+Normalized Spotify-tokenizer result on all 30,482 records:
+
+| Mode | Word occurrences with `[UNK]` | Word OOV rate | Unique OOV words | Records with `[UNK]` |
+| --- | ---: | ---: | ---: | ---: |
+| Raw | 714,172 / 87,774,712 | 0.8136% | 169,807 / 925,430 | 19,859 / 30,482 |
+| Safe normalized | 40,082 / 87,559,909 | 0.0458% | 18,196 / 511,370 | 3,525 / 30,482 |
+
+Transcript-harm diagnostics for the safe normalization:
+
+| Check | Result |
+| --- | ---: |
+| Records changed by normalization | 27,248 / 30,482 |
+| Empty after normalization | 0 |
+| Records with any alphanumeric-content delta | 4 / 30,482 |
+| Records with >10% word-count drop | 17 / 30,482 |
+| Raw word count | 87,774,712 |
+| Normalized word count | 87,559,909 |
+
+The sampled alphanumeric-delta and large-word-drop records were dominated by
+punctuation, HTML/markup, bracketed stage directions, repeated dash separators,
+or Unicode symbol normalization. Manual spot-checks did not show obvious
+deletion of spoken transcript content, but the four alphanumeric-delta records
+should be reviewed once more before wiring this into the training dataloader.
+
+Remaining Spotify-tokenizer OOV after normalization is much smaller and mostly
+non-English script, markup fragments, or special symbols. Top examples include
+Arabic phrases such as `الله`, residual HTML fragments such as
+`color="#000000`, `BLANK_AUDIO`, `Māori`, masked profanity such as `sh*t`, and
+named entities with diacritics such as `Bartłomiej` / `Płotka`.
+
+Recommendation before launch: keep the Spotify tokenizer for checkpoint
+compatibility and use this conservative label normalization for Floras
+supervised finetuning, subject to a final review of the four alphanumeric-delta
+records. The normalized Spotify OOV rate is low enough that tokenizer mismatch
+no longer looks like a blocker for a CPU smoke or a small supervised finetune
+pilot. Do not switch to the Floras tokenizer without a deliberate
+checkpoint-compatibility change.
 
 ## Implementation Plan
 
