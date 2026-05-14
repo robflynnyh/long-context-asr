@@ -1,0 +1,341 @@
+global:
+  baseline_root_path: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D/n_seq_sched_
+  finetuned_root_path: /mnt/parscratch/users/acp21rjf/spotify/long_only/FT_3epoch_18L/
+  baseline_checkpoint: step_105360.pt
+  finetuned_checkpoint: step_23763.pt
+  overlap_ratio: 0.875
+  finetuned_seq_len: 360000
+  eval_group: rob69_18l_long_context_finetune
+
+models:
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 1
+    seq_len: 2048
+    matched_baseline_seq_len: 2048
+    window_size: 128
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 2
+    seq_len: 2048
+    matched_baseline_seq_len: 2048
+    window_size: 128
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 3
+    seq_len: 2048
+    matched_baseline_seq_len: 2048
+    window_size: 128
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 1
+    seq_len: 8192
+    matched_baseline_seq_len: 8192
+    window_size: 512
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 2
+    seq_len: 8192
+    matched_baseline_seq_len: 8192
+    window_size: 512
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 3
+    seq_len: 8192
+    matched_baseline_seq_len: 8192
+    window_size: 512
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 1
+    seq_len: 32768
+    matched_baseline_seq_len: 32768
+    window_size: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 2
+    seq_len: 32768
+    matched_baseline_seq_len: 32768
+    window_size: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 3
+    seq_len: 32768
+    matched_baseline_seq_len: 32768
+    window_size: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 1
+    seq_len: 131072
+    matched_baseline_seq_len: 131072
+    window_size: 8192
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 2
+    seq_len: 131072
+    matched_baseline_seq_len: 131072
+    window_size: 8192
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 3
+    seq_len: 131072
+    matched_baseline_seq_len: 131072
+    window_size: 8192
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 1
+    seq_len: 360000
+    matched_baseline_seq_len: 360000
+    window_size: 22500
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 2
+    seq_len: 360000
+    matched_baseline_seq_len: 360000
+    window_size: 22500
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+  - name: rb_18l_1024D_baseline
+    condition: baseline
+    repeat: 3
+    seq_len: 360000
+    matched_baseline_seq_len: 360000
+    window_size: 22500
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_seq_rotary_base_18l.yaml
+    path: ${global.baseline_root_path}${.seq_len}_rp_${.repeat}/${global.baseline_checkpoint}
+
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 1
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 2048
+    window_size: 128
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 2
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 2048
+    window_size: 128
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 3
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 2048
+    window_size: 128
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 1
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 8192
+    window_size: 512
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 2
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 8192
+    window_size: 512
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 3
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 8192
+    window_size: 512
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 1
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 32768
+    window_size: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 2
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 32768
+    window_size: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 3
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 32768
+    window_size: 2048
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 1
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 131072
+    window_size: 8192
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 2
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 131072
+    window_size: 8192
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 3
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 131072
+    window_size: 8192
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 1
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 360000
+    window_size: 22500
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 2
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 360000
+    window_size: 22500
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+  - name: rb_18l_long_only_ft_3epoch
+    condition: long_only_finetuned
+    repeat: 3
+    seq_len: ${global.finetuned_seq_len}
+    matched_baseline_seq_len: 360000
+    window_size: 22500
+    overlap_ratio: ${global.overlap_ratio}
+    eval_group: ${global.eval_group}
+    training_config: exp/configs/paper_templates/exp_set_spotify_L_FT.yaml
+    path: ${global.finetuned_root_path}spotify-L-FT-w${.window_size}-5e5-rp-${.repeat}/${global.finetuned_checkpoint}
+
+args:
+  verbose: true
+  model_class: SCConformerXL
+  evaluation_mode: windowed_attention
+  max_sequence_length: 3600000
+  save_dataframe_path: ./results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv
+
+datasets:
+  - name: tedlium
+    splits: [test]
+    args:
+      single_utterance: false
+      concat: false
+  - name: rev16
+    splits: [test]
+  - name: earnings22_full
+    splits: [test]
+  - name: this_american_life
+    splits: [test]
+  - name: earnings22
+    splits: [test]
