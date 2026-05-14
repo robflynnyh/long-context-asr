@@ -10,7 +10,7 @@ from lcasr.utils.dataloading import VariableBatchSimpleDataloader, chunk_spectog
 from lcasr.utils.hooks import add_debug_backwards_hooks
 from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager, RandomSequenceLengthManager
 from lcasr.utils.helpers import exists
-from lcasr.utils.general import load_model, save_model, load_checkpoint, load_optimizer, get_model_class, KeepCount
+from lcasr.utils.general import load_model, save_model, load_checkpoint, load_optimizer, get_model_class, KeepCount, find_latest_checkpoint
 from lcasr.utils.augmentation import SpecAugment
 import resource
 from lcasr.decoding.greedy import GreedyCTCDecoder
@@ -30,6 +30,41 @@ from collections import defaultdict
 import warnings
 import random
 random.seed(1234)
+
+
+def resolve_checkpoint_path(path: str) -> str:
+    if os.path.isdir(path):
+        latest = find_latest_checkpoint(path)
+        if latest is None:
+            raise FileNotFoundError(f"no .pt checkpoints found in {path}")
+        return os.path.join(path, latest)
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    return path
+
+
+def remap_legacy_state_dict_keys(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    remapped = {}
+    for key, value in state_dict.items():
+        new_key = key
+        if new_key.endswith(".norm.scale"):
+            new_key = new_key[: -len(".scale")] + ".weight"
+        elif new_key.endswith(".out_proj.0.scale"):
+            new_key = new_key[: -len(".scale")] + ".weight"
+        remapped[new_key] = value
+    return remapped
+
+
+def load_pretrained_model_state(model: torch.nn.Module, path: str, device: torch.device) -> None:
+    checkpoint_path = resolve_checkpoint_path(path)
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    state_dict = checkpoint["model"] if "model" in checkpoint else checkpoint
+    try:
+        model.load_state_dict(remap_legacy_state_dict_keys(state_dict))
+    except RuntimeError:
+        warnings.warn("loading pretrained model with strict=False")
+        model.load_state_dict(remap_legacy_state_dict_keys(state_dict), strict=False)
+    print(f"loaded pretrained model from {checkpoint_path}")
 
 
 def blank_p(logits, tokenizer):
@@ -287,7 +322,7 @@ def train(
             podcasts_since_last_save = 0
         last_podcast = cur_podcast
         ###############################
-        
+
         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
         txt_chunks = [chunk_text_json(text = el, chunk_size = chunk_size, chunk_overlap = chunk_overlap, spectogram_length = audio.shape[-1]) for el in txt] # becomes v slow for v large batch sizes !!
 
@@ -605,17 +640,28 @@ def main(args):
             raise ValueError(f'unknown sequence scheduler method: {method}')
         
 
-    seen_ids, step, epoch = load_checkpoint(
-        args = args, 
-        model = model, 
-        optimizer = optimizer, 
-        scheduler = scheduler, 
-        sequence_scheduler = sequence_scheduler,
-        path = args.config['checkpointing']['dir'],
-        device = device
+    pretrained_path = args.config["checkpointing"].get("pretrained", None)
+    output_checkpoint_dir = args.config["checkpointing"]["dir"]
+    should_initialize_from_pretrained = (
+        pretrained_path is not None
+        and (args.reset_step or find_latest_checkpoint(output_checkpoint_dir) is None)
     )
-    if args.reset_step:
-        seen_ids, step, epoch = [], 0, 0 
+
+    if should_initialize_from_pretrained:
+        load_pretrained_model_state(model=model, path=pretrained_path, device=device)
+        seen_ids, step, epoch = [], 0, 0
+    else:
+        seen_ids, step, epoch = load_checkpoint(
+            args = args,
+            model = model,
+            optimizer = optimizer,
+            scheduler = scheduler,
+            sequence_scheduler = sequence_scheduler,
+            path = output_checkpoint_dir,
+            device = device
+        )
+        if args.reset_step:
+            seen_ids, step, epoch = [], 0, 0
 
     print(f'Starting from podcast: {len(seen_ids)}')
     random_seed = args.config['training'].get('random_seed', 1234)
