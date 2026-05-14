@@ -19,7 +19,10 @@ Directly relevant constraints:
   words for the Spotify-trained encoder-decoder model before proceeding. A
   follow-up human comment on 2026-05-14 asked for an on-the-fly normalization
   re-audit and an explicit check that the normalization is not harming the
-  transcript.
+  transcript. The latest human comment on 2026-05-14 asked to proceed with
+  that normalization, drop samples that still have OOV words after
+  normalization, use 12 Floras epochs, and provide the exact Stanage scheduler
+  launch specification before queueing.
 - No `Branch/ref:` was supplied, so work should branch from `dev`.
 - Stanage is the default execution target for training. Do not run the finetune
   as Mimas/local GPU work unless a later human comment explicitly asks for it.
@@ -255,3 +258,114 @@ bash -n <rob81-callback-or-finalizer>
 
 Then run the Stanage CPU smoke job and inspect its stdout/stderr for tracebacks,
 missing paths, load failures, permission errors, or callback errors.
+
+## Proposed 12-Epoch Launch Specification
+
+This is the concrete launch shape to use for the latest Linear request. Do not
+queue it until the implementation patch, CPU smoke, and callback/finalizer dry
+run have passed.
+
+Training config:
+
+```text
+config: exp/configs/enc_dec/rob81_floras50_supervised_12ep_lr1e-4.yaml
+trainer: exp/train_files/train_enc_dec.py
+model_class: EncDecSconformerV2
+source checkpoint: /mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_no_anorm_V2_lr_2e3_ctcw_0_05/step_210720.pt
+tokenizer: lcasr/artifacts/tokenizer.model
+data source: /users/acp21rjf/align_floras50/tmp/mapping.json
+filtered manifest: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/manifests/floras50_safe_norm_drop_oov.json
+checkpoint dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep
+wandb dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/wandb
+wandb project: floras50_enc_dec_supervised
+wandb name: rob81-supervised-floras50-safe-norm-drop-oov-lr1e-4-12ep
+optimizer: madgrad
+lr: 1e-4
+warmup_steps: 100
+max_epochs: 12
+audio_chunking.size: 2048
+batch_size: 88
+dtype: bfloat16
+save_every_n_steps: 2000
+random_seed: 552268
+```
+
+Data handling:
+
+- Keep the Spotify tokenizer for checkpoint compatibility.
+- Apply the audited safe normalization to labels.
+- Drop any Floras record whose normalized label still emits tokenizer id `1`
+  (`[UNK]`) for any word under the Spotify tokenizer. The latest audit implies
+  this will drop `3,525 / 30,482` records and train on about `26,957` records.
+- Materialize the filtered manifest and any normalized transcript artifacts
+  under the ROB-81 artifact directory; do not mutate the original Floras data
+  or checkpoint directories.
+
+Required implementation before launch:
+
+- Extend `exp/train_files/train_enc_dec.py` to honor
+  `checkpointing.pretrained` as a model-weights source while keeping a fresh
+  finetune optimizer, scheduler, step count, and seen-id state.
+- Reuse the same safe normalization logic from
+  `symphony/rob81_floras_oov_audit.py` for training labels.
+- Add an issue-local manifest-prep/smoke path that verifies normalized-label
+  filtering, source checkpoint load, output permissions, and a tiny dataloader
+  or one-batch model path on Stanage CPU.
+- Add a finalizer or `EXIT`-trap callback that posts job status, log paths,
+  checkpoint path, and failure evidence to Linear, then moves ROB-81 back to
+  `Todo` for result inspection.
+
+CPU smoke submission:
+
+```bash
+ssh stanage 'cd /users/acp21rjf/long-context-asr && git fetch origin symphony/ROB-81-finetune-best-encdec-floras && git checkout symphony/ROB-81-finetune-best-encdec-floras && mkdir -p /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81 && sbatch symphony/rob81_floras50_finetune_cpu_smoke.sbatch'
+```
+
+GPU Slurm request:
+
+Use one job with a comma-separated partition list so Slurm can place it on any
+of the requested GPU pools without running duplicate training jobs:
+
+```bash
+ssh stanage 'cd /users/acp21rjf/long-context-asr && git fetch origin symphony/ROB-81-finetune-best-encdec-floras && git checkout symphony/ROB-81-finetune-best-encdec-floras && sbatch symphony/rob81_floras50_finetune_gpu.sbatch'
+```
+
+`symphony/rob81_floras50_finetune_gpu.sbatch` should use:
+
+```bash
+#SBATCH --job-name=rob81-ft-floras12
+#SBATCH --partition=gpu,gpu-h100,gpu-h100-nvl
+#SBATCH --gres=gpu:1
+#SBATCH --qos=gpu
+#SBATCH --time=80:00:00
+#SBATCH --mem=82GB
+#SBATCH --cpus-per-task=8
+#SBATCH --output=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-%j.out
+#SBATCH --error=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-%j.err
+```
+
+The GPU command inside the script should be:
+
+```bash
+python exp/train_files/train_enc_dec.py \
+  --config exp/configs/enc_dec/rob81_floras50_supervised_12ep_lr1e-4.yaml \
+  --reset_step \
+  --remove_scheduler \
+  --num_workers 4 \
+  --pin_memory \
+  --prefetch_factor 2
+```
+
+Completion check:
+
+```bash
+sacct -j <gpu_job_id> --format=JobID,JobName,State,ExitCode,Elapsed
+tail -n 80 /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-<gpu_job_id>.err
+tail -n 120 /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-<gpu_job_id>.out
+find /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep -maxdepth 1 -name "step_*.pt" | sort -V | tail
+```
+
+If `--partition=gpu,gpu-h100,gpu-h100-nvl` is rejected on Stanage, fall back to
+the same script on `gpu-h100-nvl` first, because that is the validated partition
+for recent ROB-26 encoder-decoder work, then record the rejection and the final
+chosen partition in Linear.
