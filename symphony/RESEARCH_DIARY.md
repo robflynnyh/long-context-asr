@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-15
+
+- ROB-89 on branch `symphony/ROB-89-ogg-torchaudio-audit`: audited Spotify source OGG loading for the planned repo-local `SpeechCodec-base` skeleton. Stanage CPU smoke job `10222708` completed in `00:00:53` and showed sampled OGGs load directly with `torchaudio`, map from existing `.spec.pt` manifest entries by replacing the suffix with `.ogg`, and produce exact 24 kHz mono codec input tensors for 5 s, 30 s, and 120 s crops. Report: `symphony/ROB-89-ogg-torchaudio-waveform-loading-audit.md`; durable JSON/logs: `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-89/`.
+
 ## 2026-05-13
 
 - ROB-85 on branch `symphony/ROB-85-update-rules`: updated Symphony execution rules and agent notes to ban `/tmp` on Mimas. Future Mimas-local scratch should use repo-local `.tmp/` or another issue-specific user-owned path under `/exp/exp4/acp21rjf/`; Stanage scratch remains `/mnt/parscratch/users/acp21rjf/symphony-tmp`.
