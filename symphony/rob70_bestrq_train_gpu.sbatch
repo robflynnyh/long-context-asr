@@ -13,9 +13,10 @@ set -uo pipefail
 
 REPO_DIR="${REPO_DIR:-/mnt/parscratch/users/acp21rjf/symphony-workspaces-long-context-asr/ROB-70}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70}"
-CHECKPOINT_DIR="/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch"
+CHECKPOINT_DIR="/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch_retry_20260515"
 TRAIN_LOG="${ARTIFACT_DIR}/train-${SLURM_JOB_ID:-manual}.log"
-COMMAND="python exp/train_bestRQ.py -config exp/configs/ssl/bestrq_6l_2048_spotify.yaml --remove_scheduler --reset_step --num_workers ${ROB70_NUM_WORKERS:-0} --prefetch_factor ${ROB70_PREFETCH_FACTOR:-1}"
+WANDB_NAME="rob70_bestrq_6l_2048_1epoch_retry_20260515"
+COMMAND="python exp/train_bestRQ.py -config exp/configs/ssl/bestrq_6l_2048_spotify.yaml --remove_scheduler --reset_step --no_resume --num_workers ${ROB70_NUM_WORKERS:-0} --prefetch_factor ${ROB70_PREFETCH_FACTOR:-1}"
 LINEAR_ENV_FILE="${LINEAR_ENV_FILE:-}"
 
 if [[ -z "$LINEAR_ENV_FILE" ]]; then
@@ -35,7 +36,7 @@ on_exit() {
       --slurm-job-id "${SLURM_JOB_ID:-manual}" \
       --train-log "$TRAIN_LOG" \
       --checkpoint-dir "$CHECKPOINT_DIR" \
-      --wandb-name "rob70_bestrq_6l_2048_1epoch" \
+      --wandb-name "$WANDB_NAME" \
       --command "$COMMAND" \
       --dry-run
   else
@@ -44,7 +45,7 @@ on_exit() {
       --slurm-job-id "${SLURM_JOB_ID:-manual}" \
       --train-log "$TRAIN_LOG" \
       --checkpoint-dir "$CHECKPOINT_DIR" \
-      --wandb-name "rob70_bestrq_6l_2048_1epoch" \
+      --wandb-name "$WANDB_NAME" \
       --command "$COMMAND"
   fi
   callback_status=$?

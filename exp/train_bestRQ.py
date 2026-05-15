@@ -179,6 +179,7 @@ def train(
 
         del audio
         backwards_every_loss, steps_since_backwards = 0.0, 0
+        has_pending_gradients = False
         chunks, culm_lengths_audio, nans_in_a_row = [], torch.zeros_like(audio_lengths), 0
 
         ################################
@@ -231,6 +232,45 @@ def train(
 
                     loss = out['loss']
 
+                is_last_chunk = (ix + 1) == len(chunks)
+                if loss is None:
+                    print(f"skipping chunk with no BEST-RQ loss; masked_frames={out.get('num_masked_frames', 0)}")
+                    if wandb_config['use']:
+                        wandb.log({'skipped_empty_bestrq_mask': True}, commit=False)
+                    if is_last_chunk and steps_since_backwards > 0:
+                        scaler.scale(backwards_every_loss / steps_since_backwards).backward()
+                        last_kv_set.detach_() if last_kv_set != None else None
+                        has_pending_gradients = True
+                        steps_since_backwards = 0
+                        backwards_every_loss = 0.0
+                    if is_last_chunk and has_pending_gradients and cur_loss_count > 0:
+                        loss_to_log = (cur_loss / cur_loss_count).item()
+                        print(f'loss: {loss_to_log}')
+
+                        backwards_pass(
+                            model = best_rq,
+                            clip_value = clip_value,
+                            optimizer = optimizer,
+                            scheduler = scheduler,
+                            scaler = scaler
+                        )
+                        has_pending_gradients = False
+                        learning_rate = scheduler.get_last_lr()[0]
+
+                        if wandb_config['use']:
+                            wandb.log({
+                                'loss': loss_to_log,
+                                'learning_rate': learning_rate,
+                                'sequence_length': chunk_size,
+                                'batch_size': batch_size,
+                                'epoch': epoch,
+                                'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
+                            })
+
+                        cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
+                        cur_loss_count = 0
+                    continue
+
                 # check for nan in loss
                 if not torch.isfinite(loss):
                     print('OH NO! NAN IN LOSS, SKIPPING')
@@ -250,15 +290,16 @@ def train(
                 backwards_every_loss += loss
                 steps_since_backwards += 1
 
-                if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
+                if steps_since_backwards >= backwards_every or is_last_chunk:
                     scaler.scale(backwards_every_loss / steps_since_backwards).backward()
                     last_kv_set.detach_() if last_kv_set != None else None
+                    has_pending_gradients = True
                     steps_since_backwards = 0
-                    backwards_every_loss = 0
+                    backwards_every_loss = 0.0
 
 
-                if (ix+1) % backprop_every == 0 or (ix+1) == len(chunks):
-                    if cur_loss_count == 0:
+                if cur_loss_count >= backprop_every or is_last_chunk:
+                    if cur_loss_count == 0 or not has_pending_gradients:
                         continue
                     loss_to_log = (cur_loss / cur_loss_count).item()
                     print(f'loss: {loss_to_log}')
@@ -270,6 +311,7 @@ def train(
                         scheduler = scheduler,
                         scaler = scaler
                     )
+                    has_pending_gradients = False
                     learning_rate = scheduler.get_last_lr()[0]
 
 
@@ -376,15 +418,19 @@ def main(args):
             **args.config['sequence_scheduler']
         )
 
-    seen_ids, step, epoch = load_checkpoint(
-        args = args,
-        model = best_rq,
-        optimizer = optimizer,
-        scheduler = scheduler,
-        sequence_scheduler = sequence_scheduler,
-        path = args.config['checkpointing']['dir'],
-        device = device
-    )
+    if args.no_resume:
+        seen_ids, step, epoch = [], 0, 0
+        print('Starting with --no_resume; existing checkpoints will not be loaded')
+    else:
+        seen_ids, step, epoch = load_checkpoint(
+            args = args,
+            model = best_rq,
+            optimizer = optimizer,
+            scheduler = scheduler,
+            sequence_scheduler = sequence_scheduler,
+            path = args.config['checkpointing']['dir'],
+            device = device
+        )
 
     if args.reset_step:
         seen_ids, step, epoch = [], 0, 0
@@ -450,6 +496,7 @@ if __name__ == '__main__':
     parser.add_argument('-num_workers', '--num_workers', type=int, default=0, help='number of workers for dataloader')
     parser.add_argument('-pin_memory', '--pin_memory', action='store_true', help='pin memory for dataloader')
     parser.add_argument('-prefetch', '--prefetch_factor', type=int, default=1, help='prefetch factor for dataloader')
+    parser.add_argument('--no_resume', action='store_true', help='start from fresh initialization without loading checkpointing.dir')
 
     parser.add_argument('-debug_hooks', '--debug_hooks', action='store_true', help='add hooks to log gradient/activation info')
 

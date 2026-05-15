@@ -140,12 +140,22 @@ class BestRQ(BaseModel):
         stacked_mask = self.select_mask(B, T // self.downsampling_factor).to(device)
         stacked_mask = stacked_mask & valid_stacked
 
+        if not valid_stacked.any():
+            logging.warning("no valid stacked BEST-RQ frames, skipping loss")
+            return {'loss': None, 'num_masked_frames': 0}
+
+        if not stacked_mask.any():
+            valid_indices = valid_stacked.nonzero(as_tuple=False)
+            selected_ix = torch.randint(valid_indices.shape[0], (1,), device=device)
+            selected_batch, selected_time = valid_indices[selected_ix].squeeze(0)
+            stacked_mask[selected_batch, selected_time] = True
+
         target_frames = stacked_signal[stacked_mask]  # (num_masked_frames, C * downsampling_factor)
         if target_frames.shape[0] == 0:
-            logging.warning("no masked frames selected, returning zero loss")
-            return {'loss': torch.tensor(0.0, device=device, requires_grad=True)}
+            logging.warning("no masked BEST-RQ frames selected, skipping loss")
+            return {'loss': None, 'num_masked_frames': 0}
 
-        targets = self.quantizer(target_frames[None]).squeeze(0).squeeze(-1) # (num_masked_frames,)
+        targets = self.quantizer(target_frames[None]).reshape(-1).long() # (num_masked_frames,)
 
         mask = repeat(stacked_mask, 'b t -> b (t f)', f=self.downsampling_factor)
         assert mask.shape == (B, T), f"Something went wrong, got mask shape {mask.shape}, expected {(B,T)}"
@@ -174,7 +184,7 @@ class BestRQ(BaseModel):
         loss = self.calc_loss(x_tgt, targets)
 
 
-        return {'loss': loss}
+        return {'loss': loss, 'num_masked_frames': int(targets.numel())}
 
 
 
@@ -192,4 +202,3 @@ if __name__ == '__main__':
     lengths = lengths.to(device)
     out = bestrq(audio, length=lengths)
     logger.info(out['loss'])
-

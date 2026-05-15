@@ -25,5 +25,5 @@ python exp/train_bestRQ.py \
   -config exp/configs/ssl/bestrq_6l_2048_smoke.yaml \
   --remove_scheduler \
   --reset_step \
+  --no_resume \
   --num_workers 0
-
