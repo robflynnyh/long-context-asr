@@ -196,6 +196,14 @@ def main(args):
     args.config = OmegaConf.load(args.config)
     if args.checkpoint_dir is not None:
         args.config["checkpointing"]["dir"] = args.checkpoint_dir
+    if args.batch_size is not None:
+        args.config["training"]["batch_size"] = args.batch_size
+    if args.max_records is not None:
+        args.config["data"]["max_records"] = args.max_records
+    if args.max_steps is not None:
+        args.config["training"]["max_steps"] = args.max_steps
+    if args.disable_wandb:
+        args.config["wandb"]["use"] = False
     os.makedirs(args.config["checkpointing"]["dir"], exist_ok=True)
 
     tokenizer_kwargs = {}
@@ -255,4 +263,8 @@ if __name__ == "__main__":
     parser.add_argument("-pin_memory", "--pin_memory", action="store_true")
     parser.add_argument("-prefetch", "--prefetch_factor", type=int, default=1)
     parser.add_argument("-checkpoint_dir", "--checkpoint_dir", type=str, default=None)
+    parser.add_argument("-batch_size", "--batch_size", type=int, default=None)
+    parser.add_argument("-max_records", "--max_records", type=int, default=None)
+    parser.add_argument("-max_steps", "--max_steps", type=int, default=None)
+    parser.add_argument("-disable_wandb", "--disable_wandb", action="store_true")
     main(parser.parse_args())

@@ -21,6 +21,9 @@ OUT_LOG="$ARTIFACT_DIR/rob76-stream-train-${JOB_ID}.out"
 ERR_LOG="$ARTIFACT_DIR/rob76-stream-train-${JOB_ID}.err"
 SUMMARY_FILE="$ARTIFACT_DIR/rob76-stream-train-${JOB_ID}.summary.txt"
 CALLBACK_PYTHON="${ROB76_CALLBACK_PYTHON:-python3}"
+NUM_WORKERS="${ROB76_NUM_WORKERS:-0}"
+PREFETCH="${ROB76_PREFETCH:-1}"
+PIN_MEMORY="${ROB76_PIN_MEMORY:-0}"
 
 on_exit() {
   local status=$?
@@ -33,27 +36,39 @@ on_exit() {
     echo "target_commit=${ROB76_TARGET_COMMIT:-unset}"
     echo "config=${CONFIG_PATH}"
     echo "checkpoint_dir=${CHECKPOINT_DIR}"
+    echo "num_workers=${NUM_WORKERS}"
+    echo "prefetch=${PREFETCH}"
+    echo "pin_memory=${PIN_MEMORY}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB76_ENABLE_CALLBACK:-1}" == "1" ]]; then
     if [[ -z "${LINEAR_API_KEY:-}" && -f "$LINEAR_KEY_FILE" ]]; then
       export LINEAR_API_KEY
       LINEAR_API_KEY="$(cat "$LINEAR_KEY_FILE")"
     fi
-    local dry_run_args=()
     if [[ "${ROB76_CALLBACK_DRY_RUN:-0}" == "1" ]]; then
-      dry_run_args+=(--dry-run)
+      "$CALLBACK_PYTHON" "$REPO_DIR/symphony/scripts/linear_job_callback.py" \
+        --issue-id ROB-76 \
+        --state-name Todo \
+        --job-id "$JOB_ID" \
+        --exit-code "$status" \
+        --log-out "$OUT_LOG" \
+        --log-err "$ERR_LOG" \
+        --output-path "$CHECKPOINT_DIR" \
+        --summary-file "$SUMMARY_FILE" \
+        --title "ROB-76 streaming decoder GPU training finished" \
+        --dry-run >> "$SUMMARY_FILE" 2>&1
+    else
+      "$CALLBACK_PYTHON" "$REPO_DIR/symphony/scripts/linear_job_callback.py" \
+        --issue-id ROB-76 \
+        --state-name Todo \
+        --job-id "$JOB_ID" \
+        --exit-code "$status" \
+        --log-out "$OUT_LOG" \
+        --log-err "$ERR_LOG" \
+        --output-path "$CHECKPOINT_DIR" \
+        --summary-file "$SUMMARY_FILE" \
+        --title "ROB-76 streaming decoder GPU training finished" >> "$SUMMARY_FILE" 2>&1
     fi
-    "$CALLBACK_PYTHON" "$REPO_DIR/symphony/scripts/linear_job_callback.py" \
-      --issue-id ROB-76 \
-      --state-name Todo \
-      --job-id "$JOB_ID" \
-      --exit-code "$status" \
-      --log-out "$OUT_LOG" \
-      --log-err "$ERR_LOG" \
-      --output-path "$CHECKPOINT_DIR" \
-      --summary-file "$SUMMARY_FILE" \
-      --title "ROB-76 streaming decoder GPU training finished" \
-      "${dry_run_args[@]}" >> "$SUMMARY_FILE" 2>&1
   fi
   return "$status"
 }
@@ -87,9 +102,21 @@ echo "branch=$(git rev-parse --abbrev-ref HEAD)"
 echo "commit=$(git rev-parse HEAD)"
 echo "config=${CONFIG_PATH}"
 echo "checkpoint_dir=${CHECKPOINT_DIR}"
-python exp/train_streaming_decoder_asr.py \
-  -config "$CONFIG_PATH" \
-  -num_workers 8 \
-  -pin_memory \
-  -prefetch 2 \
-  -checkpoint_dir "$CHECKPOINT_DIR"
+echo "num_workers=${NUM_WORKERS}"
+echo "prefetch=${PREFETCH}"
+echo "pin_memory=${PIN_MEMORY}"
+
+if [[ "$PIN_MEMORY" == "1" ]]; then
+  python exp/train_streaming_decoder_asr.py \
+    -config "$CONFIG_PATH" \
+    -num_workers "$NUM_WORKERS" \
+    -pin_memory \
+    -prefetch "$PREFETCH" \
+    -checkpoint_dir "$CHECKPOINT_DIR"
+else
+  python exp/train_streaming_decoder_asr.py \
+    -config "$CONFIG_PATH" \
+    -num_workers "$NUM_WORKERS" \
+    -prefetch "$PREFETCH" \
+    -checkpoint_dir "$CHECKPOINT_DIR"
+fi

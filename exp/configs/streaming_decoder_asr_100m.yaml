@@ -48,8 +48,8 @@ data:
 
 training:
   tokenizer_path: lcasr/artifacts/tokenizer.model
-  batch_size: 704
-  backprop_every: 1
+  batch_size: 88
+  backprop_every: 8
   max_epochs: 9
   clip_value: 0.8
   dtype: bfloat16
