@@ -25,8 +25,12 @@ Instructions that directly affect this issue:
   long sequences; the current audio source is OGG and should be loaded on the
   fly to waveform with `torchaudio`; the first long-context test should be an
   encoder-plus-decoder context model; and the architecture plan needs two
-  compression targets, one comparable to Mimi/EnCodec-style compression and one
-  heavier-compression variant for faster LLM generation. This plan therefore
+  compression targets, one comparable to Mimi/EnCodec-style compression and
+  one heavier-compression variant for faster LLM generation. The newest Linear
+  comment asks for a casual setup that uses state-space or linear-attention
+  sequence mixers and convolutional downsampling, with a small investigation of
+  the cost of adding the mixer at different layers and sequence lengths. This
+  plan therefore
   centers on a repo-local codec-training recipe under short-context and
   long-context conditions, with architecture controls that separate longer crops
   from real encoder/decoder context. Frozen-token prediction is only a
@@ -188,6 +192,84 @@ Architecture choices to specify before the first GPU run:
 - Compression reporting: always report latent frame rate, RVQ streams, bits per
   second, tokens per second for LLM consumption, and reconstruction quality.
 
+## Casual Conv-Plus-Mixer Setup
+
+The first architecture should stay casual and cheap enough to debug:
+
+- Use strided 1D convolutions to reduce waveform length before any global or
+  semi-global sequence mixer. Do not put state-space or linear attention over
+  raw waveform samples.
+- Put a small temporal mixer at the compressed latent rate, before RVQ on the
+  encoder side and after RVQ projection on the decoder side.
+- Treat repo-local Mamba/state-space code as a candidate if the Stanage env has
+  the required `mamba_ssm` and `causal_conv1d` kernels. If those kernels are
+  not available, use a simple linear-attention or gated-conv fallback for the
+  initial cost probe rather than blocking the plan on environment surgery.
+- Keep the first mixer shallow: one block at the bottleneck before trying
+  multiple insertion depths. The goal is to see whether a long-context path is
+  operationally plausible, not to design a final codec architecture.
+
+Concrete starting variant:
+
+1. Waveform to conv encoder with cumulative stride chosen from the compression
+   target, for example 160, 320, or 640 samples.
+2. Optional 1 to 2 mixer blocks on encoder latents before RVQ.
+3. RVQ bottleneck with the same codebook settings as the Local baseline.
+4. Optional 1 to 2 mixer blocks on decoder latents after code lookup/projection.
+5. Conv decoder back to waveform.
+
+For SpeechCodec-base, the first long-context test should use the bottleneck
+site only. For SpeechCodec-llm, also test one earlier encoder insertion if the
+heavier compression makes the bottleneck too sparse to carry useful timing or
+speaker context.
+
+## Sequence-Mixer Cost Investigation
+
+Before running a training sweep, benchmark the mixer cost independently from
+codec quality. Use synthetic tensors and one real OGG crop, then report wall
+time, peak GPU memory, activation memory under training, and output shapes.
+
+Use this sequence-length table as the first cost grid. Values assume a 24 kHz
+codec sample rate; if Stage 0 chooses 16 kHz, recompute the same table in the
+architecture spec.
+
+| Cumulative Stride | Latent Rate At 24 kHz | 5 s | 30 s | 120 s | Initial Interpretation |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 80 | 300 Hz | 1,500 | 9,000 | 36,000 | too early for global linear attention; possible only for shallow SSM or local windows |
+| 160 | 150 Hz | 750 | 4,500 | 18,000 | plausible for SSM; linear attention needs careful memory check |
+| 320 | 75 Hz | 375 | 2,250 | 9,000 | good first bottleneck cost point |
+| 640 | 37.5 Hz | 188 | 1,125 | 4,500 | cheap enough for long-crop sweeps, but may discard too much local detail |
+
+Benchmark variants:
+
+| Site | Example Tensor | Mixer Options | Why |
+| --- | --- | --- | --- |
+| Early encoder | stride 80 or 160 latents | SSM only, or linear attention with short feature dim | finds the cost of making codes depend on pre-bottleneck context |
+| Bottleneck encoder | stride 320 or 640 latents | SSM and linear attention | primary long-context encoder candidate before RVQ |
+| Bottleneck decoder | same latent length as RVQ output | SSM and linear attention | primary long-context decoder candidate after codes |
+| Two-sided | encoder plus decoder bottleneck mixers | selected cheapest working mixer | estimates the real Enc+Dec-long overhead |
+
+Cost reporting should include:
+
+- `d_model`, number of mixer blocks, state size or attention feature size, dtype,
+  batch size, crop seconds, cumulative stride, and latent length.
+- Forward-only milliseconds, forward/backward milliseconds, and peak GPU memory.
+- Parameter count and optimizer-state estimate for each mixer insertion.
+- Whether activation checkpointing is needed to train 30 s and 120 s crops.
+- Whether the mixer can run causally or with a cache, because noncausal full
+  recording context is an upper bound rather than a deployable streaming path.
+
+Decision rule:
+
+- Prefer a state-space mixer if it gives stable linear scaling across the
+  30 s and 120 s rows without large dependency friction on Stanage.
+- Prefer linear attention only if its implementation is already available or
+  easy to add locally, and its training memory is acceptable at the selected
+  bottleneck stride.
+- Do not add mixers at stride 80 unless the cost probe shows the benefit is
+  affordable. That insertion point has the strongest chance to help code
+  assignment, but it is also the easiest place to waste memory.
+
 ## Encoder And Decoder Context Requirement
 
 The PR clarification means the investigation should not stop at "train the same
@@ -272,6 +354,9 @@ Deliverables:
   sample rate, encoder stride, latent frame rate, RVQ stream count, codebook
   size, approximate bitrate, expected tokens per second, loss set, and decoder
   upsampling shape.
+- A mixer cost report for the candidate insertion sites above. The report
+  should be produced before any GPU training sweep and should make the
+  sequence-length cost of state-space versus linear-attention options explicit.
 - A documented Local baseline and Enc+Dec-long variant for the base target. The
   first long-context model should put the same class of context module on both
   encoder latents before RVQ and quantized decoder latents before upsampling.
@@ -284,9 +369,14 @@ Deliverables:
 Decision rule:
 
 - Do not launch a training sweep until the architecture table makes the two
-  compression targets explicit and the one-recording shape test passes.
+  compression targets explicit, the mixer cost report has a viable bottleneck
+  insertion site, and the one-recording shape test passes.
 - If the base target cannot reconstruct and quantize one OGG crop with stable
   tensor shapes, fix that before designing the heavier LLM-compression target.
+- If neither state-space nor linear attention is affordable at the bottleneck
+  latent rate for 30 s crops, keep the first training sweep Local-only and
+  record long-context architecture as blocked by cost rather than by codec
+  quality.
 
 ## Stage 2: Matched Crop-Length Codec Training
 
@@ -376,10 +466,13 @@ Goal: test an architecture that can use longer waveform context directly.
 
 Start with the smallest modification that can be ablated cleanly:
 
-- Add a bottleneck-level temporal module over encoder latents before RVQ, with
-  short and long attention/window settings.
+- Add a bottleneck-level state-space or linear-attention module over encoder
+  latents before RVQ, with short and long context settings.
 - Add the same class of temporal module over quantized decoder latents before
-  waveform upsampling, again with short and long settings.
+  waveform upsampling, again with short and long context settings.
+- Only test earlier encoder insertions after the cost probe says the sequence
+  length is affordable. Early insertion may improve code assignment, but it is
+  not the first training target.
 - Add a cached/streaming latent context path that conditions the current chunk
   on previous encoded chunks when the target evaluation is chunked long-form
   speech.
@@ -419,20 +512,23 @@ Run after Stage 2 or Stage 4 has a credible codec winner:
 ## Suggested Follow-Up Issues
 
 1. `ROB-87a`: architecture spec for two repo-local codec targets: base
-   Mimi/EnCodec-like compression and heavier LLM-generation compression.
+   Mimi/EnCodec-like compression and heavier LLM-generation compression,
+   including the conv downsampling schedule.
 2. `ROB-87b`: Stanage OGG/`torchaudio` decode and dependency audit for
    repo-local codec training.
-3. `ROB-87c`: minimal in-repo codec skeleton plus one-step training smoke with
+3. `ROB-87c`: state-space versus linear-attention mixer cost probe across
+   encoder/decoder insertion sites and 5 s, 30 s, and 120 s latent lengths.
+4. `ROB-87d`: minimal in-repo codec skeleton plus one-step training smoke with
    issue-local manifests and logs.
-4. `ROB-87d`: matched crop-length in-repo codec training sweep on a small
+5. `ROB-87e`: matched crop-length in-repo codec training sweep on a small
    speech subset.
-5. `ROB-87e`: metric and qualitative reconstruction summary across crop arms.
-6. `ROB-87f`: effective-context controls, receptive-field audit, and
+6. `ROB-87f`: metric and qualitative reconstruction summary across crop arms.
+7. `ROB-87g`: effective-context controls, receptive-field audit, and
    Local-versus-Enc+Dec-long comparison, followed by single-sided ablations if
    needed.
-7. `ROB-87g`: heavier-compression LLM-generation variant after the base target
+8. `ROB-87h`: heavier-compression LLM-generation variant after the base target
    has a credible training and evaluation path.
-8. `ROB-87h`: downstream ASR/token-stability probe for the best trained codec.
+9. `ROB-87i`: downstream ASR/token-stability probe for the best trained codec.
 
 ## Launch Discipline For Follow-Up Runs
 
@@ -456,10 +552,12 @@ plan is to train the codec itself under matched short-vs-long context
 conditions, using a small repo-local codec recipe informed by DAC, EnCodec, and
 Mimi rather than using an existing codec library. Start by specifying two
 architecture targets: a base target at Mimi/EnCodec-like compression and a
-heavier-compression target for faster LLM generation. Then validate the
-Stanage OGG-to-waveform path with `torchaudio`, add the smallest in-repo
-one-step training smoke, and run a matched crop-length sweep. Treat that sweep
-as a baseline, not the final answer. The first long-context architecture test
-should compare Local against Enc+Dec-long, with attention or an equivalent
-temporal module in both encoder and decoder paths; only then split into
-single-sided ablations if needed.
+heavier-compression target for faster LLM generation. Use convolutional
+downsampling first, then test state-space or linear-attention sequence mixers
+at the latent rates where the cost probe says 30 s and 120 s crops are
+practical. Then validate the Stanage OGG-to-waveform path with `torchaudio`,
+add the smallest in-repo one-step training smoke, and run a matched crop-length
+sweep. Treat that sweep as a baseline, not the final answer. The first
+long-context architecture test should compare Local against Enc+Dec-long, with
+the selected state-space or linear-attention mixer in both encoder and decoder
+paths; only then split into single-sided ablations if needed.
