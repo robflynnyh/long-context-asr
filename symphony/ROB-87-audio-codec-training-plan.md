@@ -16,174 +16,313 @@ Read the required instruction files before planning or editing, in order:
 
 Instructions that directly affect this issue:
 
-- Recent Linear comments had to be fetched before planning. ROB-87 had no recent comments, so no human follow-up changed or constrained the task.
+- Recent Linear comments had to be fetched before planning. The first human
+  correction changed the direction to "train the codecs not eval existing
+  ones". The latest PR comment further constrained the plan: do not use an
+  existing codec library as the implementation base, although other setups can
+  inform the recipe. This plan therefore centers on a repo-local codec-training
+  recipe under short-context and long-context conditions. Frozen-token
+  prediction is only a diagnostic, not the main recommendation.
 - No `Branch/ref` was supplied, so `dev` is the base branch.
-- Long-running GPU work should not be launched unless the issue asks for a run. This issue asks for a preliminary plan/investigation, so this handoff is docs-only.
-- Repository artifacts should stay small. Large codec tokens, decoded audio, checkpoints, W&B state, and Slurm logs should live under durable issue-specific parscratch paths, not Git.
+- Long-running GPU work should not be launched unless the issue asks for a run.
+  This issue asks for a preliminary plan/investigation, so this handoff is
+  docs-only.
+- Stanage is the default execution target for future compute. Any codec
+  dependency, data-path, or config work must pass a smallest-practical Stanage
+  CPU smoke before a GPU job is queued.
+- Repository artifacts should stay small. Codec checkpoints, reconstructed
+  audio, Slurm logs, W&B state, token dumps, and large metric tables should live
+  under durable issue-specific parscratch paths, not Git.
 - Documentation-only validation is `git diff --check` plus diff inspection.
 
-## Question
+## Corrected Question
 
-Test whether audio codes benefit from longer context.
+Test whether neural audio codec training benefits from longer context.
 
-This should be made precise before queueing experiments. There are two related but different hypotheses:
+The primary question is not "can a long-context ASR model predict codes from a
+frozen codec?" The primary question is:
 
-1. Codec-token prediction: given a frozen audio codec tokenizer, does a longer-context model predict held-out codec tokens better?
-2. Codec training/reconstruction: when training or fine-tuning the codec itself, do longer input contexts improve reconstruction, code stability, or downstream usefulness?
+> If the codec model itself is trained with access to longer waveform context,
+> does it learn a better codec than the same architecture trained on short
+> crops?
 
-The lower-risk first experiment is codec-token prediction. It isolates the long-context question from codec reconstruction training complexity and reuses this repo's existing long-context scheduling patterns. Codec training or fine-tuning can follow only if the token-prediction signal is positive.
+This needs a matched training comparison, because audio codec quality is often
+dominated by local waveform reconstruction, quantizer behavior, discriminator
+losses, and bitrate. Longer training crops only answer the question if the
+codec architecture or losses can actually use cross-window information.
+
+## Key Design Point
+
+Separate three notions of "long context":
+
+1. Longer training crop: the codec sees longer waveform segments in each
+   optimization step, but the architecture may still have a fixed convolutional
+   receptive field.
+2. Longer effective model context: the encoder, quantizer, decoder, or
+   discriminator has an explicit path to use information beyond the local
+   receptive field.
+3. Longer evaluation context: the trained codec is run on long recordings and
+   judged for reconstruction continuity, code stability, and downstream utility.
+
+The first pass should include all three as separate controls. A plain crop-size
+sweep is useful, but it is not enough by itself to prove long-context use.
 
 ## Existing Repo Fit
 
 Relevant local affordances:
 
-- `exp/train.py` already supports sequence scheduling over mel frames and can grow from short chunks up to long contexts through `sequence_scheduler`.
-- `lcasr/models/sconformer_xl.py` has `skip_vocab_projection=True`, returning hidden states after the long-context encoder. This is already used by `lcasr/models/BestRQ.py` to train a masked code-prediction head.
-- `lcasr/models/BestRQ.py` is the closest current prototype: it masks stacked mel frames, maps targets through `RandomProjectionQuantizer`, and predicts discrete classes from SCConformer hidden states.
-- `exp/configs/bin/exp_set_seq_rotary_base_multi_pred.yaml` and `exp/configs/paper_templates/exp_set_seq_window_sizes.yaml` show existing sequence-length and attention-window sweep patterns.
-- The current dependency list does not include external codec packages. Any DAC, EnCodec, Mimi, or AudioCraft path should be smoke-tested in an isolated Stanage environment before launch.
+- `exp/train.py` and the configs under `exp/configs/` already establish this
+  repo's long-context training discipline: sequence-length sweeps, Slurm
+  launchers, checkpoint directories, and small-to-large validation.
+- `symphony/training-notes.md` records the existing command shapes and expected
+  config fields for model training.
+- `job_scripts/preprocess/` is the only local preprocessing area, and currently
+  appears Spotify OGG-to-mel focused rather than codec-waveform focused.
+- `lcasr/models/BestRQ.py` is relevant only as a masked discrete-target
+  reference. It should not drive the main plan, because ROB-87 is about training
+  codecs rather than training predictors over frozen codec tokens.
 
-Main gap:
+Main repo gap:
 
-- The repo does not yet have a dataset path where long recordings are encoded into external audio codec token streams and aligned back to the spectrogram chunks consumed by the training loop.
+- There is no native waveform codec training harness in `lcasr`.
+- There is no checked-in codec dataset manifest or training config.
+- The expected Spotify manifest path
+  `/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json` was not visible
+  from this Mimas checkout during the investigation, so waveform availability
+  must be verified from Stanage before implementation.
 
-## Codec Choice
+## Recommended In-Repo Codec Recipe
 
-Recommended first frozen tokenizer: DAC 16 kHz.
+Do not base the implementation on an existing codec library. Build a minimal
+repo-local training recipe, while using established codec setups only as design
+references for architecture, losses, metrics, and sanity checks.
 
-Rationale:
+Proposed local components:
 
-- DAC provides pretrained 16 kHz, 24 kHz, and 44.1 kHz weights and simple encode/decode CLIs. Its README notes long files should use its `compress` and `decompress` helpers rather than one-shot encode if memory is a concern: https://github.com/descriptinc/descript-audio-codec
-- The DAC paper frames codec tokens as a low-dimensional discrete representation for natural audio modeling and reports a universal 44.1 kHz, 8 kbps codec: https://proceedings.neurips.cc/paper_files/paper/2023/file/58d0e78cf042af5876e12661087bea12-Paper-Conference.pdf
-- The repo's ASR data path is 16 kHz mel-spectrogram based, so DAC 16 kHz avoids introducing resampling differences into the first pass.
+- `lcasr` model module: a small waveform codec with convolutional encoder,
+  residual vector quantization, and convolutional decoder. Keep the first
+  version deliberately simple enough to train and ablate before adding
+  adversarial losses.
+- `exp/train_files/` entry point: a codec-specific training script that follows
+  the repo's config, checkpoint, WandB, dtype, and Slurm conventions where
+  practical, but does not depend on transcript labels.
+- `exp/configs/codec/` configs: short, medium, and long crop variants with
+  explicit sample rate, crop seconds, bitrate, codebook count, RVQ depth, batch
+  size, gradient accumulation, loss weights, and output paths.
+- Issue-local manifest builder: read existing long-form waveform files without
+  moving or rewriting data, and write only compact JSON manifests plus summary
+  statistics.
+- Metrics helper: compute reconstruction losses, SI-SNR or equivalent signal
+  metrics, multi-scale STFT loss, codebook usage, perplexity, dead-code rate,
+  token rate, and boundary-stability summaries.
 
-Alternates:
+Recipe references, not dependencies:
 
-- EnCodec is a mature baseline with training code in AudioCraft. It supports monophonic 24 kHz and stereo 48 kHz models, and AudioCraft exposes compression training/evaluation docs: https://audiocraft.metademolab.com/encodec.html and https://github.com/facebookresearch/audiocraft/blob/main/docs/ENCODEC.md
-- Mimi is attractive for speech/audio language modeling because it is a modern streaming codec designed for Moshi-style speech models, but it is a higher integration risk for this repo's first experiment: https://kyutai.org/codec-explainer and https://kyutai.org/
+- DAC is a useful reference for the overall neural-codec shape: convolutional
+  encoder/decoder, RVQ bottleneck, multi-scale reconstruction losses, optional
+  adversarial training, and practical sample-rate/bitrate choices. Do not clone
+  it as the implementation base for this plan.
+- EnCodec/AudioCraft is a useful reference for SEANet-style encoder-decoder
+  structure, residual vector quantization, discriminator/perceptual losses, and
+  compression metrics. Treat its configs as recipe guidance, not as the training
+  harness to run.
+- Mimi is a useful reference for streaming speech-codec behavior and
+  downstream token use, especially when designing later long-context or
+  chunk-cached variants. It is not the first implementation target.
+
+Initial scope:
+
+- First implement only the non-adversarial autoencoding path if that makes the
+  smoke test and crop-length sweep tractable. Add discriminator and
+  feature-matching losses only after one-step training and reconstruction
+  metrics are stable.
+- Keep the first codec small. The goal is to expose whether longer context is
+  helpful under controlled conditions, not to immediately match production
+  codec quality.
 
 ## Stage 0: Feasibility Audit
 
-Goal: prove that codec token extraction and alignment are practical on a tiny subset before model changes.
+Goal: prove that codec training inputs, dependencies, and a tiny training step
+are practical before designing a full sweep.
 
 Tasks:
 
-- Identify 10 to 50 Spotify recordings spanning short, medium, and long durations from `/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json`.
-- Resolve original waveform paths if available. If only `.spec.pt` files are available, decide whether to regenerate waveform paths from the Spotify layout or use an experiment that predicts BEST-RQ/random-projection codes from mel frames first.
-- On Stanage CPU or a tiny GPU smoke, install/probe the chosen codec dependency in a disposable env or existing conda env without modifying shared data.
-- Encode a few short recordings and one long recording to codec tokens.
-- Record token shape, codebook count, frame/token rate, sample-rate assumptions, encode time, and disk size.
-- Verify alignment between mel frames and codec frames. Store only a small JSON/CSV summary in Git if needed; keep token files under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-87/`.
+- On Stanage, locate the waveform source for Spotify or another long-recording
+  speech dataset. Record whether the training source is OGG, WAV, FLAC, or only
+  precomputed mel `.spec.pt` files.
+- Build an issue-local manifest sample with 20 to 100 recordings spanning
+  short, medium, and long durations. Do not move or rewrite existing data.
+- Implement the smallest repo-local codec skeleton needed for a smoke test:
+  dataset, model initialization, forward reconstruction, RVQ/codebook stats,
+  loss computation, checkpoint path creation, and config parsing.
+- Run the smallest CPU smoke that imports the local codec modules, reads one
+  short waveform, builds the dataset, and initializes the model/config without
+  starting meaningful training.
+- Run a tiny GPU smoke only after the CPU smoke passes. The smoke should execute
+  one or two optimizer steps and write logs/checkpoints under
+  `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-87/`.
+- Record sample rate, crop length, batch size, bitrate, codebook count,
+  discriminator setting, command, commit, env, log path, and output path.
 
 Stop criteria:
 
-- Stop and report blocker if original waveforms cannot be resolved reliably.
-- Stop and report blocker if codec installation is incompatible with the Stanage env or requires invasive changes.
+- Stop and report blocker if only mel spectrograms are available and original
+  waveforms cannot be resolved.
+- Stop and report blocker if the local codec dependencies cannot be satisfied
+  on Stanage without invasive shared-environment changes.
+- Stop and report blocker if a one-step training smoke fails before the model
+  reaches forward/backward.
 
-## Stage 1: Frozen-Codec Token Prediction
+## Stage 1: Matched Crop-Length Codec Training
 
-Goal: test whether longer acoustic context improves prediction of frozen codec tokens.
+Goal: test whether longer training crops improve codec reconstruction when all
+other major variables are fixed.
 
-Minimal implementation:
+Train the same codec architecture at the same bitrate under matched budgets:
 
-- Add a codec-token manifest builder that maps each recording id to:
-  - spectrogram path
-  - transcript path, retained only for future downstream checks
-  - codec token path
-  - codec metadata: sample rate, token rate, codebook count, model name, model checkpoint/hash if available
-- Add a dataloader or dataset wrapper that returns aligned mel chunks and codec-token chunks.
-- Add a `CodecTokenPredictor` model wrapper patterned after `BestRQ`, but with targets loaded from frozen codec tokens rather than generated by `RandomProjectionQuantizer`.
-- Support independent loss per RVQ stream. Start with either:
-  - first-codebook-only CE loss for the semantic/coarse stream, or
-  - sum/mean CE over the first `N` streams, with `N` fixed in config.
-- Log loss, per-stream accuracy, top-k accuracy, perplexity, and token entropy.
+| Arm | Crop Length | Purpose |
+| --- | ---: | --- |
+| A | 1 to 2 s | very local baseline, cheap smoke and sanity check |
+| B | 5 s | standard short speech-codec crop |
+| C | 30 s | medium-context crop with realistic utterance continuity |
+| D | 120 s | long-context crop for podcasts or long-form speech |
 
-Initial sweep:
+Budget matching:
 
-| Arm | Max context | Attention | Notes |
-| --- | ---: | --- | --- |
-| A | 512 mel frames | full within chunk | short baseline, about 5 s |
-| B | 4096 mel frames | full within chunk | medium baseline, about 41 s |
-| C | 16384 mel frames | full within chunk | long baseline, about 164 s |
-| D | 65536 mel frames | windowed or scheduled | stress long context, about 11 min |
+- Match total audio hours seen, optimizer steps, effective batch size, learning
+  rate schedule, codec bitrate, codebook count, sample rate, and train/valid
+  split.
+- If memory forces smaller batches for longer crops, keep the effective number
+  of waveform samples or audio seconds per optimizer update explicit in the
+  result table.
+- Start with one seed and a small data subset. Only run repeats if the first
+  sweep shows a plausible context effect.
 
-Use one seed first. Add repeats only after the smoke and first full run establish stable loss curves.
+Primary metrics:
 
-Primary metric:
+- Validation reconstruction losses reported by the codec codebase.
+- SI-SNR or equivalent signal metric.
+- Multi-scale STFT reconstruction loss.
+- Codebook usage, perplexity, dead-code rate, and commitment/codebook losses.
+- Real-time factor and GPU memory, because a context benefit that is not
+  operationally affordable may not be useful.
 
-- Held-out codec-token negative log likelihood by codebook and context length.
+Qualitative outputs:
 
-Secondary metrics:
-
-- Top-1/top-5 token accuracy by codebook.
-- Perplexity normalized by codebook entropy.
-- Loss as a function of within-recording position, to check whether long context helps later chunks more than first chunks.
-- Optional frozen-codec reconstruction of predicted tokens on a small qualitative subset. This should not be the first gating metric because token sampling/argmax can confound the context question.
+- Decode the same held-out long recordings for every arm.
+- Keep only a small index in Git; store audio outputs under the ROB-87
+  parscratch artifact directory.
+- Inspect boundary continuity, speaker consistency, loudness drift, background
+  stability, and long-range artifacts. Do not rely on qualitative audio alone
+  for the decision.
 
 Decision rule:
 
-- Treat longer context as useful if the 16k or 65k arm improves validation NLL over 512 and 4096 by a meaningful margin, especially on later chunks and coarse codebooks, without unstable training or large overfit.
-- Treat the result as weak or negative if improvement appears only on fine codebooks, only on train loss, or disappears under matched token budgets.
+- Treat longer context as useful only if medium/long crop training improves
+  held-out reconstruction or codebook stability at matched bitrate and budget,
+  and the improvement is visible on long recordings rather than only on train
+  loss.
+- Treat it as weak if the gain disappears after matching audio hours, or if
+  improvements are explained by larger effective batch/audio seconds rather
+  than accessible context.
 
-## Stage 2: Context Controls
+## Stage 2: Effective-Context Controls
 
-Goal: separate genuine long-context use from easier optimization or more compute.
+Goal: distinguish "trained on longer crops" from "uses longer context".
 
 Controls:
 
-- Same token budget: compare runs at equal optimizer steps and equal seen audio hours.
-- Shuffled history: preserve local chunk content but replace previous context with a different recording. If long context helps, this should degrade.
-- Local attention cap: train with long chunks but restrict attention window. This distinguishes long batch shape from accessible context.
-- Position-only control: keep long sequences but remove or perturb usable prior audio. This checks whether gains are from sequence length artifacts.
-- Codebook depth: compare first 1, first 4, and all codebooks. Coarse streams should be more context-sensitive than fine acoustic detail if the effect is semantic.
+- Receptive-field audit: calculate or empirically probe the codec encoder and
+  decoder receptive field. If the model has no path beyond a few seconds,
+  expect crop-length effects to be limited.
+- Chunk-shuffled long crop: train on long crops whose subwindows are shuffled or
+  replaced across recordings. A true long-context benefit should degrade.
+- Long crop with local discriminator: keep long waveform input but restrict the
+  discriminator/loss to local windows. This tests whether the discriminator is
+  the part using long context.
+- Local crop with long-eval decode: train short, decode long recordings
+  end-to-end. This separates training context from inference continuity.
+- Matched memory pressure: ensure the long-crop arm is not simply worse because
+  it was forced into a much smaller effective batch or unstable discriminator
+  update ratio.
 
-## Stage 3: Downstream ASR Probe
+If Stage 1 shows no gain and the receptive-field audit says the architecture is
+local, the right next experiment is an explicitly long-context codec variant,
+not more crop-size repeats.
 
-Goal: check whether better codec-token modeling transfers to ASR-relevant representations.
+## Stage 3: Long-Context Codec Variant
 
-Options:
+Goal: test an architecture that can use longer waveform context directly.
 
-- Initialize or auxiliary-train SCConformer from the best codec-token predictor, then evaluate TEDLIUM/Earnings-style WER using the existing eval harness.
-- Freeze the encoder and train a small CTC/readout head on a limited labeled subset.
-- Compare against the existing BEST-RQ/random-projection pretraining baseline and supervised ASR checkpoints where available.
+Start with the smallest modification that can be ablated cleanly:
 
-This stage should not run until Stage 1 shows a clear token-prediction signal.
+- Add a bottleneck-level temporal module over encoder latents before RVQ, with
+  short and long attention/window settings.
+- Or add a cached/streaming latent context path that conditions the current
+  chunk on previous encoded chunks.
+- Or add a long-context discriminator/feature-matching branch while keeping the
+  generator local, if the generator-side change is too risky.
 
-## Stage 4: Codec Fine-Tuning Or Training
+Keep the comparison controlled:
 
-Goal: test the harder hypothesis: whether codec reconstruction training itself benefits from longer context.
+- Same base codec, bitrate, data, optimizer, crop sampler, and train/valid
+  split.
+- Compare local-context and long-context variants at the same parameter scale
+  where possible.
+- Report both reconstruction quality and codebook behavior. A model that
+  improves waveform metrics by collapsing or underusing RVQ streams is not a
+  better codec for downstream token modeling.
 
-Recommended only after frozen-token experiments:
+## Stage 4: Downstream ASR-Relevant Evaluation
 
-- Start from DAC or EnCodec training code rather than reimplementing a waveform codec inside `lcasr`.
-- Train or fine-tune on a small speech-only subset first.
-- Compare short-window and long-window training under matched data, steps, and bitrate.
-- Evaluate reconstruction with SI-SNR and, if available, ViSQOL or another perceptual metric; add codebook usage/collapse statistics.
+Goal: decide whether the trained codec is useful for the long-context ASR
+program, not only whether it reconstructs audio.
 
-Risks:
+Run after Stage 1 or Stage 3 has a credible codec winner:
 
-- Codec reconstruction quality may be dominated by local waveform modeling and adversarial loss details, not long context.
-- Training full neural codecs is substantially more expensive and operationally different from this repo's current mel/CTC training loop.
-- Cross-repo codec training may make PR review harder. Keep this stage as a separate follow-up issue if Stage 1 justifies it.
+- Encode held-out speech with each trained codec and measure token rate,
+  codebook entropy, code stability over overlapping windows, and bitrate.
+- Train a small, matched codec-token predictor only as a diagnostic of token
+  learnability. This is not the primary ROB-87 question.
+- Optionally train or probe an ASR head from codec latents/tokens on a bounded
+  labeled subset and compare WER against existing mel/BEST-RQ baselines.
+- Check whether long-context-trained codec tokens are more stable across
+  chunk boundaries and long recordings.
 
-## Suggested Implementation Tasks
+## Suggested Follow-Up Issues
 
-1. `ROB-87a`: codec dependency and waveform/token feasibility smoke.
-2. `ROB-87b`: manifest builder for frozen codec tokens.
-3. `ROB-87c`: codec-token dataloader and tiny CPU/GPU smoke config.
-4. `ROB-87d`: `CodecTokenPredictor` wrapper plus config template.
-5. `ROB-87e`: one-seed context sweep with callback-backed Stanage jobs.
-6. `ROB-87f`: summarize token NLL/perplexity/accuracy by context and decide whether to run repeats or downstream ASR transfer.
+1. `ROB-87a`: Stanage waveform/dependency audit for repo-local codec training.
+2. `ROB-87b`: minimal in-repo codec skeleton plus one-step training smoke with
+   issue-local manifests and logs.
+3. `ROB-87c`: matched crop-length in-repo codec training sweep on a small
+   speech subset.
+4. `ROB-87d`: metric and qualitative reconstruction summary across crop arms.
+5. `ROB-87e`: effective-context controls and receptive-field audit.
+6. `ROB-87f`: long-context codec variant if crop length alone does not help.
+7. `ROB-87g`: downstream ASR/token-stability probe for the best trained codec.
 
 ## Launch Discipline For Follow-Up Runs
 
 Any future training issue should:
 
-- Run a Stanage CPU smoke against the same code path, manifest, codec dependency, and output paths before submitting GPU jobs.
-- Use issue-specific parscratch output paths, for example `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-87/`.
-- Include an `EXIT` callback or finalizer before queueing long jobs.
-- Record job id, branch, commit, script path, log paths, expected outputs, and completion-check command in Linear.
+- Run a Stanage CPU smoke against the same code path, manifest, codec
+  dependency, and output paths before submitting GPU jobs.
+- Use issue-specific parscratch output paths, for example
+  `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-87/`.
+- Include an `EXIT` callback or dependent finalizer before queueing long jobs.
+- Record job id, branch, commit, script path, log paths, expected outputs, and
+  completion-check command in Linear.
+- Keep checkpoints, decoded audio, and metric dumps out of Git. Commit only the
+  local training code, small configs, compact manifests/summaries, and any
+  small follow-up documentation.
 
 ## Preliminary Recommendation
 
-Do not start by training a codec from scratch. Start by freezing DAC 16 kHz as the tokenizer and training a long-context codec-token predictor inside this repo. That gives a direct, controlled answer to whether codec codes benefit from longer context while keeping the first implementation close to existing SCConformer, BEST-RQ, sequence-scheduler, and Stanage launch patterns.
+Do not make frozen-codec token prediction the first experiment. The corrected
+plan is to train the codec itself under matched short-vs-long context
+conditions, using a small repo-local codec recipe informed by DAC, EnCodec, and
+Mimi rather than using an existing codec library. Start with a Stanage waveform
+and dependency audit, add the smallest in-repo one-step training smoke, then run
+a matched crop-length sweep. If longer crops do not help and the codec
+architecture is mostly local, move to an explicit long-context codec variant
+rather than concluding that audio codes cannot benefit from longer context.

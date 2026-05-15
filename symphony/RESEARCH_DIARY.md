@@ -11,7 +11,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 ## 2026-05-15
 
-- ROB-87 on branch `symphony/rob-87-audio-codec-training-plan`: added a preliminary audio-codec investigation plan. Recommendation is to start with frozen DAC 16 kHz codec-token prediction using the repo's existing long-context SCConformer/BEST-RQ patterns, then only consider codec fine-tuning or training if context-length sweeps show a clear token-prediction gain. No Slurm jobs launched.
+- ROB-87 on branch `symphony/rob-87-audio-codec-training-plan`: revised the preliminary audio-codec investigation plan after Linear/PR clarifications that the target is training codecs, not evaluating frozen ones, and that the implementation should not use an existing codec library as the base. Recommendation is now a small repo-local waveform-codec recipe informed by DAC/EnCodec/Mimi setups: Stanage waveform/dependency audit, minimal one-step training smoke, matched short-vs-long crop training sweep, effective-context controls, and only then downstream ASR/token-stability probes. No Slurm jobs launched.
 
 ## 2026-05-13
 
