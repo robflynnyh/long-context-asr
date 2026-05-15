@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-15
+
+- ROB-88 on branch `symphony/ROB-88-codec-architecture-probe`: specified the first repo-local waveform codec target in `symphony/ROB-88-codec-architecture-and-mixer-probe.md` and added `symphony/codec_mixer_cost_probe.py` for bounded synthetic mixer-cost estimates. The selected first configs are `SpeechCodec-base-local` and `SpeechCodec-base-encdec-ssm`; the next issue should audit OGG/`torchaudio` waveform loading on Stanage before adding the codec skeleton.
+
 ## 2026-05-13
 
 - ROB-85 on branch `symphony/ROB-85-update-rules`: updated Symphony execution rules and agent notes to ban `/tmp` on Mimas. Future Mimas-local scratch should use repo-local `.tmp/` or another issue-specific user-owned path under `/exp/exp4/acp21rjf/`; Stanage scratch remains `/mnt/parscratch/users/acp21rjf/symphony-tmp`.
