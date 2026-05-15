@@ -184,10 +184,20 @@ Only after that audit should the repo-local codec skeleton be added. The skeleto
 
 ## Validation
 
+Smoke-test status: this ROB-88 work was not extensively smoke tested as a
+runnable codec setup. It is an architecture specification plus a synthetic
+cost-probe sanity check. The validation below exercises the probe's analytic
+output path, a bounded CPU shape/import benchmark, script compilation, and diff
+hygiene. It does not exercise real OGG/`torchaudio` loading on Stanage, a full
+encoder/RVQ/decoder forward-backward pass, GPU memory/timing, or a training
+config launch. Those checks belong in the OGG/`torchaudio` audit and minimal
+codec skeleton issues.
+
 Planned validation for this ROB-88 change:
 
 ```bash
 python symphony/codec_mixer_cost_probe.py --estimate-only --format markdown
 python symphony/codec_mixer_cost_probe.py --cpu-benchmark-tokens 128 --cpu-benchmark-d-model 64
+python -m py_compile symphony/codec_mixer_cost_probe.py
 git diff --check
 ```
