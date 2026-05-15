@@ -20,12 +20,17 @@ Instructions that directly affect this issue:
   correction changed the direction to "train the codecs not eval existing
   ones". Later PR comments further constrained the plan: do not use an existing
   codec library as the implementation base, although other setups can inform
-  the recipe; and the codec will likely need explicit attention or equivalent
+  the recipe; the codec will likely need explicit attention or equivalent
   long-sequence machinery in both encoder and decoder paths to benefit from
-  long sequences. This plan therefore centers on a repo-local codec-training
-  recipe under short-context and long-context conditions, with architecture
-  controls that separate longer crops from real encoder/decoder context.
-  Frozen-token prediction is only a diagnostic, not the main recommendation.
+  long sequences; the current audio source is OGG and should be loaded on the
+  fly to waveform with `torchaudio`; the first long-context test should be an
+  encoder-plus-decoder context model; and the architecture plan needs two
+  compression targets, one comparable to Mimi/EnCodec-style compression and one
+  heavier-compression variant for faster LLM generation. This plan therefore
+  centers on a repo-local codec-training recipe under short-context and
+  long-context conditions, with architecture controls that separate longer crops
+  from real encoder/decoder context. Frozen-token prediction is only a
+  diagnostic, not the main recommendation.
 - No `Branch/ref` was supplied, so `dev` is the base branch.
 - Long-running GPU work should not be launched unless the issue asks for a run.
   This issue asks for a preliminary plan/investigation, so this handoff is
@@ -95,10 +100,12 @@ Main repo gap:
 
 - There is no native waveform codec training harness in `lcasr`.
 - There is no checked-in codec dataset manifest or training config.
-- The expected Spotify manifest path
-  `/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json` was not visible
-  from this Mimas checkout during the investigation, so waveform availability
-  must be verified from Stanage before implementation.
+- The expected source audio is currently OGG. This is usable for codec training
+  if the follow-up smoke confirms `torchaudio` can load it on the fly to
+  waveform from the Stanage training environment. The first data-path audit
+  should therefore test OGG decode, sample-rate normalization, duration
+  extraction, and crop sampling rather than treating non-WAV storage as a
+  blocker.
 
 ## Recommended In-Repo Codec Recipe
 
@@ -149,6 +156,38 @@ Initial scope:
   helpful under controlled conditions, not to immediately match production
   codec quality.
 
+## Architecture Targets
+
+Before writing the training harness, define two related codec targets. Both
+should share as much implementation as possible so that changes in compression
+level are explicit config choices rather than separate code paths.
+
+| Target | Compression Goal | Intended Use | First Knobs |
+| --- | --- | --- | --- |
+| SpeechCodec-base | comparable to Mimi/EnCodec-style speech compression | quality-controlled baseline for ASR-relevant speech reconstruction and token stability | sample rate, encoder stride, latent frame rate, RVQ depth, codebook size, bitrate |
+| SpeechCodec-llm | heavier compression than the base target | faster audio generation or prediction with an LLM over fewer tokens | lower latent frame rate, fewer RVQ streams, smaller codebooks, stronger intelligibility-weighted losses |
+
+The base target should come first, because it is the sanity check that the
+repo-local recipe can train a credible codec at a known compression regime. The
+heavier target should reuse the same code after the base smoke is stable, then
+trade reconstruction quality against token rate, code stability, intelligibility,
+and downstream modeling cost.
+
+Architecture choices to specify before the first GPU run:
+
+- Input path: OGG loaded on the fly with `torchaudio`, resampled to a fixed
+  codec sample rate, then cropped without materializing rewritten waveform
+  copies.
+- Encoder/decoder: causal or noncausal convolutional stack with a documented
+  receptive field, plus optional bottleneck-level context modules.
+- Quantizer: RVQ with explicit codebook count, codebook size, commitment weight,
+  replacement policy for dead codes, and per-stream usage metrics.
+- Losses: start with waveform L1/L2 plus multi-scale STFT. Add adversarial,
+  feature-matching, or perceptual losses only after the non-adversarial smoke
+  can train and decode reliably.
+- Compression reporting: always report latent frame rate, RVQ streams, bits per
+  second, tokens per second for LLM consumption, and reconstruction quality.
+
 ## Encoder And Decoder Context Requirement
 
 The PR clarification means the investigation should not stop at "train the same
@@ -177,15 +216,15 @@ Recommended architecture ladder:
 | Variant | Encoder Context | Decoder Context | Purpose |
 | --- | --- | --- | --- |
 | Local | convolutional receptive field only | convolutional receptive field only | baseline and crop-length control |
+| Enc+Dec-long | long-context encoder | long-context decoder | first long-context test, because both sides may need sequence access before a benefit appears |
 | Enc-long | attention/state/cached context before RVQ | local | tests whether better codes need long context |
 | Dec-long | local | attention/state/cached context after RVQ | tests whether reconstruction continuity needs long code history |
-| Enc+Dec-long | long-context encoder | long-context decoder | final long-context candidate if single-sided gains are plausible |
 
-This ladder should be preferred over immediately adding every long-context
-mechanism at once. It gives interpretable failure modes: if only decoder context
-helps, the codes may be adequate but local reconstruction is limiting; if only
-encoder context helps, the bottleneck is code assignment; if neither helps, the
-dataset/bitrate/loss may not reward long-range information.
+The first architecture comparison should be Local versus Enc+Dec-long. If that
+shows a plausible gain or an unclear failure, split the long-context model into
+Enc-long and Dec-long ablations to identify whether code assignment, waveform
+reconstruction, or both are responsible. This ordering avoids prematurely
+discarding long context just because only one side of the codec was modified.
 
 ## Stage 0: Feasibility Audit
 
@@ -194,9 +233,10 @@ are practical before designing a full sweep.
 
 Tasks:
 
-- On Stanage, locate the waveform source for Spotify or another long-recording
-  speech dataset. Record whether the training source is OGG, WAV, FLAC, or only
-  precomputed mel `.spec.pt` files.
+- On Stanage, verify the current OGG source path for Spotify or another
+  long-recording speech dataset and confirm `torchaudio` can load it on the fly
+  to waveform in the intended environment. Record codec/container, sample rate,
+  duration extraction behavior, decode speed, and any resampling assumptions.
 - Build an issue-local manifest sample with 20 to 100 recordings spanning
   short, medium, and long durations. Do not move or rewrite existing data.
 - Implement the smallest repo-local codec skeleton needed for a smoke test:
@@ -213,14 +253,42 @@ Tasks:
 
 Stop criteria:
 
-- Stop and report blocker if only mel spectrograms are available and original
-  waveforms cannot be resolved.
+- Stop and report blocker if the OGG files cannot be decoded through
+  `torchaudio` on Stanage or if only mel spectrograms are reachable from the
+  intended training environment.
 - Stop and report blocker if the local codec dependencies cannot be satisfied
   on Stanage without invasive shared-environment changes.
 - Stop and report blocker if a one-step training smoke fails before the model
   reaches forward/backward.
 
-## Stage 1: Matched Crop-Length Codec Training
+## Stage 1: Base Architecture And Compression Targets
+
+Goal: turn the architecture targets above into a concrete config matrix before
+spending GPU time on crop-length or long-context sweeps.
+
+Deliverables:
+
+- A compact architecture spec for `SpeechCodec-base` and `SpeechCodec-llm`:
+  sample rate, encoder stride, latent frame rate, RVQ stream count, codebook
+  size, approximate bitrate, expected tokens per second, loss set, and decoder
+  upsampling shape.
+- A documented Local baseline and Enc+Dec-long variant for the base target. The
+  first long-context model should put the same class of context module on both
+  encoder latents before RVQ and quantized decoder latents before upsampling.
+- A note identifying which values are chosen to resemble Mimi/EnCodec-style
+  compression and which values intentionally push heavier compression for faster
+  LLM generation.
+- A one-recording shape test that checks OGG decode, crop sampling, forward
+  reconstruction length, RVQ tensor shapes, token rate, and loss computation.
+
+Decision rule:
+
+- Do not launch a training sweep until the architecture table makes the two
+  compression targets explicit and the one-recording shape test passes.
+- If the base target cannot reconstruct and quantize one OGG crop with stable
+  tensor shapes, fix that before designing the heavier LLM-compression target.
+
+## Stage 2: Matched Crop-Length Codec Training
 
 Goal: test whether longer training crops improve codec reconstruction when all
 other major variables are fixed.
@@ -273,7 +341,7 @@ Decision rule:
   improvements are explained by larger effective batch/audio seconds rather
   than accessible context.
 
-## Stage 2: Effective-Context Controls
+## Stage 3: Effective-Context Controls
 
 Goal: distinguish "trained on longer crops" from "uses longer context".
 
@@ -282,10 +350,11 @@ Controls:
 - Receptive-field audit: calculate or empirically probe the codec encoder and
   decoder receptive field. If the model has no path beyond a few seconds,
   expect crop-length effects to be limited.
-- Encoder/decoder context ablation: compare Local, Enc-long, Dec-long, and
-  Enc+Dec-long variants at matched bitrate and parameter scale. Do not conclude
-  that audio codes lack long-context benefit until at least one variant gives
-  both encoder and decoder paths access to longer sequences.
+- Encoder/decoder context ablation: first compare Local against Enc+Dec-long at
+  matched bitrate and parameter scale. If that result is promising or ambiguous,
+  run Enc-long and Dec-long ablations to identify which side matters. Do not
+  conclude that audio codes lack long-context benefit until at least one variant
+  gives both encoder and decoder paths access to longer sequences.
 - Chunk-shuffled long crop: train on long crops whose subwindows are shuffled or
   replaced across recordings. A true long-context benefit should degrade.
 - Long crop with local discriminator: keep long waveform input but restrict the
@@ -297,11 +366,11 @@ Controls:
   it was forced into a much smaller effective batch or unstable discriminator
   update ratio.
 
-If Stage 1 shows no gain and the receptive-field audit says the architecture is
+If Stage 2 shows no gain and the receptive-field audit says the architecture is
 local, the right next experiment is an explicitly long-context codec variant,
 not more crop-size repeats.
 
-## Stage 3: Long-Context Codec Variant
+## Stage 4: Long-Context Codec Variant
 
 Goal: test an architecture that can use longer waveform context directly.
 
@@ -324,19 +393,19 @@ Keep the comparison controlled:
   split.
 - Compare local-context and long-context variants at the same parameter scale
   where possible.
-- Report separate Local, Enc-long, Dec-long, and Enc+Dec-long rows if compute
+- Report separate Local, Enc+Dec-long, Enc-long, and Dec-long rows if compute
   allows. If compute does not allow the full ladder, prioritize Local versus
-  Enc+Dec-long and record the missing ablations as residual risk.
+  Enc+Dec-long and record the missing single-sided ablations as residual risk.
 - Report both reconstruction quality and codebook behavior. A model that
   improves waveform metrics by collapsing or underusing RVQ streams is not a
   better codec for downstream token modeling.
 
-## Stage 4: Downstream ASR-Relevant Evaluation
+## Stage 5: Downstream ASR-Relevant Evaluation
 
 Goal: decide whether the trained codec is useful for the long-context ASR
 program, not only whether it reconstructs audio.
 
-Run after Stage 1 or Stage 3 has a credible codec winner:
+Run after Stage 2 or Stage 4 has a credible codec winner:
 
 - Encode held-out speech with each trained codec and measure token rate,
   codebook entropy, code stability over overlapping windows, and bitrate.
@@ -349,17 +418,21 @@ Run after Stage 1 or Stage 3 has a credible codec winner:
 
 ## Suggested Follow-Up Issues
 
-1. `ROB-87a`: Stanage waveform/dependency audit for repo-local codec training.
-2. `ROB-87b`: minimal in-repo codec skeleton plus one-step training smoke with
+1. `ROB-87a`: architecture spec for two repo-local codec targets: base
+   Mimi/EnCodec-like compression and heavier LLM-generation compression.
+2. `ROB-87b`: Stanage OGG/`torchaudio` decode and dependency audit for
+   repo-local codec training.
+3. `ROB-87c`: minimal in-repo codec skeleton plus one-step training smoke with
    issue-local manifests and logs.
-3. `ROB-87c`: matched crop-length in-repo codec training sweep on a small
+4. `ROB-87d`: matched crop-length in-repo codec training sweep on a small
    speech subset.
-4. `ROB-87d`: metric and qualitative reconstruction summary across crop arms.
-5. `ROB-87e`: effective-context controls, receptive-field audit, and
-   encoder/decoder context ablations.
-6. `ROB-87f`: long-context codec variant with explicit encoder and decoder
-   sequence modules if crop length alone does not help.
-7. `ROB-87g`: downstream ASR/token-stability probe for the best trained codec.
+5. `ROB-87e`: metric and qualitative reconstruction summary across crop arms.
+6. `ROB-87f`: effective-context controls, receptive-field audit, and
+   Local-versus-Enc+Dec-long comparison, followed by single-sided ablations if
+   needed.
+7. `ROB-87g`: heavier-compression LLM-generation variant after the base target
+   has a credible training and evaluation path.
+8. `ROB-87h`: downstream ASR/token-stability probe for the best trained codec.
 
 ## Launch Discipline For Follow-Up Runs
 
@@ -381,10 +454,12 @@ Any future training issue should:
 Do not make frozen-codec token prediction the first experiment. The corrected
 plan is to train the codec itself under matched short-vs-long context
 conditions, using a small repo-local codec recipe informed by DAC, EnCodec, and
-Mimi rather than using an existing codec library. Start with a Stanage waveform
-and dependency audit, add the smallest in-repo one-step training smoke, then run
-a matched crop-length sweep. Treat that sweep as a baseline, not the final
-answer. If the local codec does not improve from longer crops, or if any gain is
-ambiguous, move to an explicit long-context codec variant with attention or an
-equivalent temporal module in both encoder and decoder paths before concluding
-that audio codes cannot benefit from longer context.
+Mimi rather than using an existing codec library. Start by specifying two
+architecture targets: a base target at Mimi/EnCodec-like compression and a
+heavier-compression target for faster LLM generation. Then validate the
+Stanage OGG-to-waveform path with `torchaudio`, add the smallest in-repo
+one-step training smoke, and run a matched crop-length sweep. Treat that sweep
+as a baseline, not the final answer. The first long-context architecture test
+should compare Local against Enc+Dec-long, with attention or an equivalent
+temporal module in both encoder and decoder paths; only then split into
+single-sided ablations if needed.

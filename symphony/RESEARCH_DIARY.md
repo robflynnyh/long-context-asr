@@ -11,7 +11,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 ## 2026-05-15
 
-- ROB-87 on branch `symphony/rob-87-audio-codec-training-plan`: revised the preliminary audio-codec investigation plan after Linear/PR clarifications that the target is training codecs, not evaluating frozen ones, that the implementation should not use an existing codec library as the base, and that long-sequence benefit likely requires explicit encoder and decoder context mechanisms. Recommendation is now a small repo-local waveform-codec recipe informed by DAC/EnCodec/Mimi setups: Stanage waveform/dependency audit, minimal one-step training smoke, matched short-vs-long crop training sweep, effective-context controls including Local/Enc-long/Dec-long/Enc+Dec-long ablations, and only then downstream ASR/token-stability probes. No Slurm jobs launched.
+- ROB-87 on branch `symphony/rob-87-audio-codec-training-plan`: revised the preliminary audio-codec investigation plan after Linear/PR clarifications that the target is training codecs, not evaluating frozen ones, that the implementation should not use an existing codec library as the base, and that long-sequence benefit likely requires explicit encoder and decoder context mechanisms. Later PR review added three constraints now reflected in the plan: current OGG audio should be loaded on the fly with `torchaudio`; the first long-context comparison should test Local versus Enc+Dec-long before single-sided ablations; and the architecture plan should define two repo-local targets, one at Mimi/EnCodec-like compression and one heavier-compression variant for faster LLM generation. No Slurm jobs launched.
 
 ## 2026-05-13
 
