@@ -18,11 +18,14 @@ Instructions that directly affect this issue:
 
 - Recent Linear comments had to be fetched before planning. The first human
   correction changed the direction to "train the codecs not eval existing
-  ones". The latest PR comment further constrained the plan: do not use an
-  existing codec library as the implementation base, although other setups can
-  inform the recipe. This plan therefore centers on a repo-local codec-training
-  recipe under short-context and long-context conditions. Frozen-token
-  prediction is only a diagnostic, not the main recommendation.
+  ones". Later PR comments further constrained the plan: do not use an existing
+  codec library as the implementation base, although other setups can inform
+  the recipe; and the codec will likely need explicit attention or equivalent
+  long-sequence machinery in both encoder and decoder paths to benefit from
+  long sequences. This plan therefore centers on a repo-local codec-training
+  recipe under short-context and long-context conditions, with architecture
+  controls that separate longer crops from real encoder/decoder context.
+  Frozen-token prediction is only a diagnostic, not the main recommendation.
 - No `Branch/ref` was supplied, so `dev` is the base branch.
 - Long-running GPU work should not be launched unless the issue asks for a run.
   This issue asks for a preliminary plan/investigation, so this handoff is
@@ -66,6 +69,12 @@ Separate three notions of "long context":
 
 The first pass should include all three as separate controls. A plain crop-size
 sweep is useful, but it is not enough by itself to prove long-context use.
+
+For ROB-87, "long context" should ultimately mean more than longer waveform
+crops. The codec needs an explicit way to use long-range information in the
+encoder before quantization and in the decoder after quantization. Otherwise a
+long crop can still reduce to independent local encoding and local waveform
+reconstruction.
 
 ## Existing Repo Fit
 
@@ -139,6 +148,44 @@ Initial scope:
 - Keep the first codec small. The goal is to expose whether longer context is
   helpful under controlled conditions, not to immediately match production
   codec quality.
+
+## Encoder And Decoder Context Requirement
+
+The PR clarification means the investigation should not stop at "train the same
+local codec on longer segments". Longer segments are a useful baseline, but a
+credible long-context codec variant should add context where the codec can use
+it:
+
+- Encoder side: add a temporal attention, state-space, or cached-context module
+  over encoder latents before RVQ. This lets the discrete codes depend on
+  neighboring and earlier speech beyond the convolutional receptive field.
+- Quantizer side: keep the first RVQ implementation local unless there is a
+  strong reason to complicate it. Measure codebook usage carefully, because a
+  long-context encoder that improves reconstruction by reducing code diversity
+  may be bad for downstream token modeling.
+- Decoder side: add a temporal attention, state-space, or cached-context module
+  after RVQ and before waveform upsampling. This tests whether reconstruction
+  continuity improves when the decoder sees longer code histories, not only the
+  current local code window.
+- Streaming constraint: include a causal/cached variant if the target use case
+  is streaming or chunked long recordings. A noncausal full-sequence attention
+  variant can be useful as an upper bound, but should not be confused with a
+  deployable long-context codec.
+
+Recommended architecture ladder:
+
+| Variant | Encoder Context | Decoder Context | Purpose |
+| --- | --- | --- | --- |
+| Local | convolutional receptive field only | convolutional receptive field only | baseline and crop-length control |
+| Enc-long | attention/state/cached context before RVQ | local | tests whether better codes need long context |
+| Dec-long | local | attention/state/cached context after RVQ | tests whether reconstruction continuity needs long code history |
+| Enc+Dec-long | long-context encoder | long-context decoder | final long-context candidate if single-sided gains are plausible |
+
+This ladder should be preferred over immediately adding every long-context
+mechanism at once. It gives interpretable failure modes: if only decoder context
+helps, the codes may be adequate but local reconstruction is limiting; if only
+encoder context helps, the bottleneck is code assignment; if neither helps, the
+dataset/bitrate/loss may not reward long-range information.
 
 ## Stage 0: Feasibility Audit
 
@@ -235,6 +282,10 @@ Controls:
 - Receptive-field audit: calculate or empirically probe the codec encoder and
   decoder receptive field. If the model has no path beyond a few seconds,
   expect crop-length effects to be limited.
+- Encoder/decoder context ablation: compare Local, Enc-long, Dec-long, and
+  Enc+Dec-long variants at matched bitrate and parameter scale. Do not conclude
+  that audio codes lack long-context benefit until at least one variant gives
+  both encoder and decoder paths access to longer sequences.
 - Chunk-shuffled long crop: train on long crops whose subwindows are shuffled or
   replaced across recordings. A true long-context benefit should degrade.
 - Long crop with local discriminator: keep long waveform input but restrict the
@@ -258,10 +309,14 @@ Start with the smallest modification that can be ablated cleanly:
 
 - Add a bottleneck-level temporal module over encoder latents before RVQ, with
   short and long attention/window settings.
-- Or add a cached/streaming latent context path that conditions the current
-  chunk on previous encoded chunks.
-- Or add a long-context discriminator/feature-matching branch while keeping the
-  generator local, if the generator-side change is too risky.
+- Add the same class of temporal module over quantized decoder latents before
+  waveform upsampling, again with short and long settings.
+- Add a cached/streaming latent context path that conditions the current chunk
+  on previous encoded chunks when the target evaluation is chunked long-form
+  speech.
+- Only treat a long-context discriminator/feature-matching branch as a later
+  auxiliary variant. A discriminator-only long-context win would not prove that
+  the codec encoder or decoder itself benefits from long sequences.
 
 Keep the comparison controlled:
 
@@ -269,6 +324,9 @@ Keep the comparison controlled:
   split.
 - Compare local-context and long-context variants at the same parameter scale
   where possible.
+- Report separate Local, Enc-long, Dec-long, and Enc+Dec-long rows if compute
+  allows. If compute does not allow the full ladder, prioritize Local versus
+  Enc+Dec-long and record the missing ablations as residual risk.
 - Report both reconstruction quality and codebook behavior. A model that
   improves waveform metrics by collapsing or underusing RVQ streams is not a
   better codec for downstream token modeling.
@@ -297,8 +355,10 @@ Run after Stage 1 or Stage 3 has a credible codec winner:
 3. `ROB-87c`: matched crop-length in-repo codec training sweep on a small
    speech subset.
 4. `ROB-87d`: metric and qualitative reconstruction summary across crop arms.
-5. `ROB-87e`: effective-context controls and receptive-field audit.
-6. `ROB-87f`: long-context codec variant if crop length alone does not help.
+5. `ROB-87e`: effective-context controls, receptive-field audit, and
+   encoder/decoder context ablations.
+6. `ROB-87f`: long-context codec variant with explicit encoder and decoder
+   sequence modules if crop length alone does not help.
 7. `ROB-87g`: downstream ASR/token-stability probe for the best trained codec.
 
 ## Launch Discipline For Follow-Up Runs
@@ -323,6 +383,8 @@ plan is to train the codec itself under matched short-vs-long context
 conditions, using a small repo-local codec recipe informed by DAC, EnCodec, and
 Mimi rather than using an existing codec library. Start with a Stanage waveform
 and dependency audit, add the smallest in-repo one-step training smoke, then run
-a matched crop-length sweep. If longer crops do not help and the codec
-architecture is mostly local, move to an explicit long-context codec variant
-rather than concluding that audio codes cannot benefit from longer context.
+a matched crop-length sweep. Treat that sweep as a baseline, not the final
+answer. If the local codec does not improve from longer crops, or if any gain is
+ambiguous, move to an explicit long-context codec variant with attention or an
+equivalent temporal module in both encoder and decoder paths before concluding
+that audio codes cannot benefit from longer context.
