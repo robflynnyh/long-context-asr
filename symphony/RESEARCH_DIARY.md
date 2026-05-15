@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-15
+
+- ROB-87 on branch `symphony/rob-87-audio-codec-training-plan`: added a preliminary audio-codec investigation plan. Recommendation is to start with frozen DAC 16 kHz codec-token prediction using the repo's existing long-context SCConformer/BEST-RQ patterns, then only consider codec fine-tuning or training if context-length sweeps show a clear token-prediction gain. No Slurm jobs launched.
+
 ## 2026-05-13
 
 - ROB-85 on branch `symphony/ROB-85-update-rules`: updated Symphony execution rules and agent notes to ban `/tmp` on Mimas. Future Mimas-local scratch should use repo-local `.tmp/` or another issue-specific user-owned path under `/exp/exp4/acp21rjf/`; Stanage scratch remains `/mnt/parscratch/users/acp21rjf/symphony-tmp`.
