@@ -25,7 +25,7 @@ scheduler:
   warmup_steps: 4000
 
 audio_chunking:
-  size: 512
+  size: 2048
   overlap: 0
 
 streaming:
@@ -48,9 +48,9 @@ data:
 
 training:
   tokenizer_path: lcasr/artifacts/tokenizer.model
-  batch_size: 352
+  batch_size: 176
   backprop_every: 1
-  max_epochs: 9
+  max_epochs: 3
   clip_value: 0.8
   dtype: bfloat16
   random_seed: 6433
