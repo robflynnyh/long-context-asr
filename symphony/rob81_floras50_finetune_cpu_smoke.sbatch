@@ -12,13 +12,12 @@ set -euo pipefail
 REPO_DIR="${REPO_DIR:-/users/acp21rjf/long-context-asr}"
 ARTIFACT_DIR=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81
 MANIFEST_DIR="${ARTIFACT_DIR}/manifests"
-NORMALIZED_TXT_DIR="${MANIFEST_DIR}/normalized_txt"
+NORMALIZED_TXT_DIR="${MANIFEST_DIR}/normalized_txt_b22"
 FILTERED_MANIFEST="${MANIFEST_DIR}/floras50_safe_norm_drop_oov.json"
 SUMMARY_JSON="${MANIFEST_DIR}/floras50_safe_norm_drop_oov_summary.json"
 
 cd "${REPO_DIR}"
 mkdir -p "${ARTIFACT_DIR}" "${MANIFEST_DIR}" "${NORMALIZED_TXT_DIR}"
-find "${NORMALIZED_TXT_DIR}" -maxdepth 1 -type f -name '*.json' -delete
 
 module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main
