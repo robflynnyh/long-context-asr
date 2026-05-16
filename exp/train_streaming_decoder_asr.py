@@ -198,6 +198,8 @@ def main(args):
         args.config["checkpointing"]["dir"] = args.checkpoint_dir
     if args.batch_size is not None:
         args.config["training"]["batch_size"] = args.batch_size
+    if args.data_path is not None:
+        args.config["data"]["path"] = args.data_path
     if args.max_records is not None:
         args.config["data"]["max_records"] = args.max_records
     if args.max_steps is not None:
@@ -264,6 +266,7 @@ if __name__ == "__main__":
     parser.add_argument("-prefetch", "--prefetch_factor", type=int, default=1)
     parser.add_argument("-checkpoint_dir", "--checkpoint_dir", type=str, default=None)
     parser.add_argument("-batch_size", "--batch_size", type=int, default=None)
+    parser.add_argument("-data_path", "--data_path", type=str, default=None)
     parser.add_argument("-max_records", "--max_records", type=int, default=None)
     parser.add_argument("-max_steps", "--max_steps", type=int, default=None)
     parser.add_argument("-disable_wandb", "--disable_wandb", action="store_true")

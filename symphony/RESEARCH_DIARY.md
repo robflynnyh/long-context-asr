@@ -37,6 +37,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-76 queue follow-up: after Linear requested longer chunks, lower batch, and a shorter run, canceled superseded pending GPU job `10221234` and updated `exp/configs/streaming_decoder_asr_100m.yaml` to `audio_chunking.size: 2048`, `training.batch_size: 176`, `training.backprop_every: 1`, and `training.max_epochs: 3`. Local compile, wrapper syntax, whitespace, and config assertions passed. Stanage real-data CPU smoke job `10221260` completed successfully on `interactive` from commit `2d606825d29a4518249c7e25d73dd2b662aafec1` with one Spotify record/one step; logs are under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-76/rob76-stream-cpu-smoke-10221260.{out,err}`. The actual GPU wrapper callback path passed in dry-run mode, and replacement GPU job `10221264` was queued on `gpu-h100-nvl` with the same target commit and logs under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-76/rob76-stream-train-10221264.{out,err}`.
 
+## 2026-05-16
+
+- ROB-76 Mimas follow-up: while Stanage GPU job `10221264` remained pending, added a trainer `--data_path` override so the 100M streaming decoder config can be smoke-tested against a Mimas-local manifest without changing the committed full-run data path. A one-record Spotify manifest was generated from `/store/store5/data/spotify/renamed_audio_text_pairs_10_percent.json`, and a one-step Mimas GPU smoke passed through `/store/store5/software/simple-gpu-schedule/with-gpu` on GPU 0 with W&B disabled, batch size 1, and checkpoint dir `/tmp/rob76-mimas-smoke-checkpoints`; the run instantiated 107.73M parameters, reached step 1 with loss 7.7484, and wrote `/tmp/rob76-mimas-smoke-checkpoints/step_1.pt`.
+
 ## 2026-05-02
 
 - ROB-26 3K GPU training job `10094511` completed successfully (`COMPLETED 0:0`). Final checkpoint exists at `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-26/checkpoints/rl_floras50_3k_enc_dec_3l_no_anorm_v2/step_3000.pt`. The dependent Tedlium eval job `10097287` was canceled before running.
