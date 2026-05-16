@@ -402,3 +402,45 @@ GPU log stdout: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/flo
 GPU log stderr: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-10215377.err
 Completion check: squeue -j 10215377,10215378 -o '%i|%j|%T|%R|%S|%M|%l|%P'
 ```
+
+## OOM Retry Plan
+
+The first GPU run failed before saving a checkpoint:
+
+```text
+GPU job: 10215377
+State: OUT_OF_MEMORY
+Exit code: 0:125
+Elapsed: 00:08:50
+Requested memory: 82G
+MaxRSS: 85987008K
+Stdout: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-10215377.out
+Stderr: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-10215377.err
+```
+
+The logs show normal checkpoint load and several training batches before a
+DataLoader worker was killed by Slurm OOM enforcement. This points to host RAM
+pressure from loading/prefetching large Floras recording batches, not an LR,
+checkpoint, or tokenizer failure.
+
+Retry with the same model, data policy, LR, epoch count, and 2048-frame chunks,
+but reduce host-memory pressure:
+
+```text
+config: exp/configs/enc_dec/rob81_floras50_supervised_12ep_lr1e-4_b22.yaml
+lr: 1e-4
+max_epochs: 12
+audio_chunking.size: 2048
+batch_size: 22
+num_workers: 0
+pin_memory: false
+prefetch_factor: 1
+checkpoint dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_b22
+stdout/stderr prefix: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-b22-<job_id>
+```
+
+Before queueing this retry, rerun the Stanage CPU smoke using the retry config
+and `--max-records 22` so it loads a full retry-sized batch through the same
+manifest/checkpoint/config path. If that smoke passes, queue the same GPU
+wrapper and finalizer; the finalizer now points at the `_b22` checkpoint
+directory and `floras12-b22-*` logs.

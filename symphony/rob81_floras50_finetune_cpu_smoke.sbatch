@@ -38,8 +38,8 @@ python symphony/rob81_prepare_floras_manifest.py \
   --summary-json "${SUMMARY_JSON}"
 
 python symphony/rob81_finetune_smoke.py \
-  --config exp/configs/enc_dec/rob81_floras50_supervised_12ep_lr1e-4.yaml \
-  --max-records 4
+  --config exp/configs/enc_dec/rob81_floras50_supervised_12ep_lr1e-4_b22.yaml \
+  --max-records 22
 
 python symphony/rob81_linear_callback.py \
   --dry-run \
@@ -47,4 +47,4 @@ python symphony/rob81_linear_callback.py \
   --status success \
   --out-log "${ARTIFACT_DIR}/finetune-smoke-${SLURM_JOB_ID}.out" \
   --err-log "${ARTIFACT_DIR}/finetune-smoke-${SLURM_JOB_ID}.err" \
-  --checkpoint-dir /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep
+  --checkpoint-dir /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_b22
