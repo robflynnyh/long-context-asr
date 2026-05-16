@@ -59,10 +59,13 @@ def find_latest_checkpoint(checkpoint_dir: str) -> str:
 
 
 def sacct_summary(job_id: str) -> str:
+    if job_id == "smoke":
+        return "dry-run smoke job"
     try:
         return subprocess.check_output(
             ["sacct", "-j", job_id, "--format=JobID,JobName,State,ExitCode,Elapsed", "-n", "-P"],
             text=True,
+            stderr=subprocess.STDOUT,
             timeout=20,
         ).strip()
     except Exception as exc:
