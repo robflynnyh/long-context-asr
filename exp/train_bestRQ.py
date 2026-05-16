@@ -263,6 +263,7 @@ def train(
                                 'learning_rate': learning_rate,
                                 'sequence_length': chunk_size,
                                 'batch_size': batch_size,
+                                'num_masked_frames': out.get('num_masked_frames', 0),
                                 'epoch': epoch,
                                 'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
                             })
@@ -321,6 +322,7 @@ def train(
                             'learning_rate': learning_rate,
                             'sequence_length': chunk_size,
                             'batch_size': batch_size,
+                            'num_masked_frames': out.get('num_masked_frames', 0),
                             'epoch': epoch,
                             'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
                         })

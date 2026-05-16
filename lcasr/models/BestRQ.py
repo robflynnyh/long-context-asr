@@ -145,10 +145,8 @@ class BestRQ(BaseModel):
             return {'loss': None, 'num_masked_frames': 0}
 
         if not stacked_mask.any():
-            valid_indices = valid_stacked.nonzero(as_tuple=False)
-            selected_ix = torch.randint(valid_indices.shape[0], (1,), device=device)
-            selected_batch, selected_time = valid_indices[selected_ix].squeeze(0)
-            stacked_mask[selected_batch, selected_time] = True
+            logging.warning("no masked BEST-RQ frames selected, skipping loss")
+            return {'loss': None, 'num_masked_frames': 0}
 
         target_frames = stacked_signal[stacked_mask]  # (num_masked_frames, C * downsampling_factor)
         if target_frames.shape[0] == 0:

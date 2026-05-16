@@ -40,7 +40,7 @@ best_rq:
 optimizer:
   name: 'madgrad'
   args:
-    lr: 3e-3
+    lr: 3e-4
 
 scheduler:
   warmup_steps: 5000
@@ -52,13 +52,13 @@ audio_chunking:
 wandb:
   use: true
   project_name: "spotify_long_context_ssl"
-  name: "rob70_bestrq_6l_2048_1epoch_retry_20260515"
+  name: "rob70_bestrq_6l_2048_1epoch_lr3e4_20260516"
   id: ""
   dir: '/mnt/parscratch/users/acp21rjf/wandb_log/'
   watch_model: false
 
 checkpointing:
-  dir: '/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch_retry_20260515'
+  dir: '/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch_lr3e4_20260516'
   save_every_n_steps: 2000
 
 data:
