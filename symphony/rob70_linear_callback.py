@@ -9,6 +9,7 @@ inspect the run and decide whether to finalize or debug.
 import argparse
 import json
 import os
+import subprocess
 import sys
 import urllib.request
 
@@ -44,6 +45,36 @@ def tail_text(path, max_chars=6000):
         return handle.read().decode("utf-8", errors="replace")
 
 
+def slurm_state(job_id):
+    if not job_id or not job_id.isdigit():
+        return None
+    try:
+        result = subprocess.run(
+            [
+                "sacct",
+                "-j",
+                job_id,
+                "--format=JobID,State,ExitCode",
+                "-P",
+                "-n",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception as exc:
+        return f"unavailable ({exc})"
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        return f"unavailable ({stderr or 'sacct failed'})"
+    for line in result.stdout.splitlines():
+        parts = line.split("|")
+        if len(parts) >= 3 and parts[0] == job_id:
+            return f"{parts[1]} {parts[2]}"
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--issue-id", default="ROB-70")
@@ -56,12 +87,29 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    status = "succeeded" if args.exit_code == 0 else "failed"
+    observed_slurm_state = slurm_state(args.slurm_job_id)
+    failed_slurm_prefixes = (
+        "BOOT_FAIL",
+        "CANCELLED",
+        "DEADLINE",
+        "FAILED",
+        "NODE_FAIL",
+        "OUT_OF_MEMORY",
+        "PREEMPTED",
+        "REVOKED",
+        "TIMEOUT",
+    )
+    slurm_failed = bool(
+        observed_slurm_state
+        and observed_slurm_state.startswith(failed_slurm_prefixes)
+    )
+    status = "succeeded" if args.exit_code == 0 and not slurm_failed else "failed"
     log_tail = tail_text(args.train_log)
     body = (
         f"ROB-70 BEST-RQ training callback: `{status}`\n\n"
         f"- Slurm job: `{args.slurm_job_id}`\n"
         f"- Exit code: `{args.exit_code}`\n"
+        f"- Slurm state: `{observed_slurm_state or 'unknown'}`\n"
         f"- Train log: `{args.train_log}`\n"
         f"- Checkpoint dir: `{args.checkpoint_dir}`\n"
         f"- W&B run name: `{args.wandb_name}`\n"
@@ -129,4 +177,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
