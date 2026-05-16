@@ -444,3 +444,21 @@ and `--max-records 22` so it loads a full retry-sized batch through the same
 manifest/checkpoint/config path. If that smoke passes, queue the same GPU
 wrapper and finalizer; the finalizer now points at the `_b22` checkpoint
 directory and `floras12-b22-*` logs.
+
+Retry validation and queue:
+
+```text
+CPU smoke job: 10225639
+CPU smoke state: COMPLETED 0:0
+CPU smoke elapsed: 00:25:00
+CPU smoke MaxRSS: 16217776K
+CPU smoke stdout: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/finetune-smoke-10225639.out
+CPU smoke stderr: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/finetune-smoke-10225639.err
+CPU smoke result: records=26957, batch=22, audio_shape=(22, 80, 370737), encoded_chunks=1350
+GPU retry job: 10225665
+Finalizer job: 10225666
+GPU retry state at queue handoff: PENDING (Priority)
+Finalizer state at queue handoff: PENDING (Dependency)
+Queued code commit: c0fe2f9
+Status command: squeue -j 10225665,10225666 -o '%i|%j|%T|%R|%S|%M|%l|%P'
+```
