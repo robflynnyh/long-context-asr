@@ -14,11 +14,7 @@ ARTIFACT_DIR=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81
 GPU_JOB_ID="${ROB81_GPU_JOB_ID:?ROB81_GPU_JOB_ID must be exported}"
 OUT_LOG="${ARTIFACT_DIR}/floras12-${GPU_JOB_ID}.out"
 ERR_LOG="${ARTIFACT_DIR}/floras12-${GPU_JOB_ID}.err"
-if [[ -f "${ARTIFACT_DIR}/floras12-b22-${GPU_JOB_ID}.out" ]]; then
-  OUT_LOG="${ARTIFACT_DIR}/floras12-b22-${GPU_JOB_ID}.out"
-  ERR_LOG="${ARTIFACT_DIR}/floras12-b22-${GPU_JOB_ID}.err"
-fi
-CHECKPOINT_DIR="${ARTIFACT_DIR}/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_b22"
+CHECKPOINT_DIR="${ARTIFACT_DIR}/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep"
 
 cd "${REPO_DIR}"
 

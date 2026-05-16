@@ -338,7 +338,7 @@ ssh acp21rjf@stanage.shef.ac.uk 'cd /users/acp21rjf/long-context-asr && git fetc
 #SBATCH --gres=gpu:1
 #SBATCH --qos=gpu
 #SBATCH --time=80:00:00
-#SBATCH --mem=82GB
+#SBATCH --mem=130GB
 #SBATCH --cpus-per-task=8
 #SBATCH --output=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-%j.out
 #SBATCH --error=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-%j.err
@@ -423,29 +423,35 @@ DataLoader worker was killed by Slurm OOM enforcement. This points to host RAM
 pressure from loading/prefetching large Floras recording batches, not an LR,
 checkpoint, or tokenizer failure.
 
-Retry with the same model, data policy, LR, epoch count, and 2048-frame chunks,
-but reduce host-memory pressure:
+The first proposed retry reduced `batch_size` to `22`, used `_b22` log and
+checkpoint paths, and passed CPU smoke job `10225639`. A later human Linear
+comment rejected that smaller batch and asked to keep the same batch while
+requesting `130G`. The pending b22 GPU job `10225665` and finalizer `10225666`
+were canceled before start.
+
+Current retry keeps the same model, data policy, LR, epoch count, 2048-frame
+chunks, and original batch size, but raises the Slurm memory request:
 
 ```text
-config: exp/configs/enc_dec/rob81_floras50_supervised_12ep_lr1e-4_b22.yaml
+config: exp/configs/enc_dec/rob81_floras50_supervised_12ep_lr1e-4.yaml
 lr: 1e-4
 max_epochs: 12
 audio_chunking.size: 2048
-batch_size: 22
-num_workers: 0
-pin_memory: false
-prefetch_factor: 1
-checkpoint dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_b22
-stdout/stderr prefix: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-b22-<job_id>
+batch_size: 88
+num_workers: 4
+pin_memory: true
+prefetch_factor: 2
+Slurm memory: 130GB
+checkpoint dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep
+stdout/stderr prefix: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-<job_id>
 ```
 
-Before queueing this retry, rerun the Stanage CPU smoke using the retry config
-and `--max-records 22` so it loads a full retry-sized batch through the same
-manifest/checkpoint/config path. If that smoke passes, queue the same GPU
-wrapper and finalizer; the finalizer now points at the `_b22` checkpoint
-directory and `floras12-b22-*` logs.
+Before queueing this retry, rerun the Stanage CPU smoke using the active config
+and finalizer path. If that smoke passes, queue the same GPU wrapper and
+finalizer; the finalizer points at the original checkpoint directory and
+`floras12-*` logs.
 
-Retry validation and queue:
+Superseded low-memory retry:
 
 ```text
 CPU smoke job: 10225639
@@ -461,4 +467,5 @@ GPU retry state at queue handoff: PENDING (Priority)
 Finalizer state at queue handoff: PENDING (Dependency)
 Queued code commit: c0fe2f9
 Status command: squeue -j 10225665,10225666 -o '%i|%j|%T|%R|%S|%M|%l|%P'
+Superseded by later 130GB same-batch request; jobs 10225665 and 10225666 were canceled before start.
 ```
