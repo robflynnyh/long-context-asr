@@ -51,6 +51,7 @@ def main():
     parser.add_argument("--output-path", required=True)
     parser.add_argument("--summary-file", default="")
     parser.add_argument("--title", default="Experiment job finished")
+    parser.add_argument("--job-label", default="Slurm job")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--max-log-chars", type=int, default=3500)
     args = parser.parse_args()
@@ -63,7 +64,7 @@ def main():
     body_parts = [
         f"{args.title}: {status}",
         "",
-        f"- Slurm job: `{args.job_id}`",
+        f"- {args.job_label}: `{args.job_id}`",
         f"- Exit code: `{args.exit_code}`",
         f"- Stdout: `{args.log_out}`",
         f"- Stderr: `{args.log_err}`",
