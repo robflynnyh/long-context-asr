@@ -165,7 +165,8 @@ def maybe_log_debug_generation(
     if not args.config["wandb"].get("use", False):
         return
 
-    max_frames = int(debug_config.get("max_frames", 96))
+    max_frames = int(debug_config.get("max_frames", 0) or 0)
+    max_frames = None if max_frames <= 0 else max_frames
     max_tokens = int(debug_config.get("max_tokens", 256))
     sample_idx = 0
     generated = model.greedy_decode(

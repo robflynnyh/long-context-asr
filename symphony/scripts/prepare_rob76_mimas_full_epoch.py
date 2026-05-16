@@ -66,7 +66,7 @@ def main():
     parser.add_argument("--max-epochs", type=int, default=1)
     parser.add_argument("--learning-rate", type=float, default=None)
     parser.add_argument("--debug-generate-every-records", type=int, default=0)
-    parser.add_argument("--debug-generate-max-frames", type=int, default=96)
+    parser.add_argument("--debug-generate-max-frames", type=int, default=0)
     parser.add_argument("--no-validate-paths", action="store_true")
     args = parser.parse_args()
 
