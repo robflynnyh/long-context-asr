@@ -212,7 +212,13 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     debug_config = args.config["training"].get("debug_generation", {})
     debug_every_records = int(debug_config.get("every_records", 0)) if debug_config.get("enabled", False) else 0
     next_debug_record = debug_every_records
+    checkpoint_every = int(args.config["checkpointing"].get("save_every_n_steps", 0) or 0)
+    last_saved_step = None
     print(f"Scheduler total optimizer steps: {scheduler_total_steps}")
+    if checkpoint_every > 0:
+        print(f"Checkpoint save interval: {checkpoint_every} steps")
+    else:
+        print("Checkpoint save interval: disabled")
 
     for cur_epoch in range(epoch, max_epochs):
         pbar = tqdm(dataloader, desc=f"Streaming decoder training - Epoch {cur_epoch}")
@@ -298,12 +304,17 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                         }
                     )
                 pbar.set_postfix({"loss": f"{out['display_losses']['loss']:.4f}", "step": global_step})
-                if global_step >= max_steps:
+                if checkpoint_every > 0 and global_step % checkpoint_every == 0:
                     save_model(model, optimizer, scheduler, global_step, args.config, seen_ids=seen_ids, epoch=cur_epoch)
+                    last_saved_step = global_step
+                if global_step >= max_steps:
+                    if last_saved_step != global_step:
+                        save_model(model, optimizer, scheduler, global_step, args.config, seen_ids=seen_ids, epoch=cur_epoch)
                     return model, global_step, cur_epoch
         seen_ids = reset_seen_ids(seen_ids, epoch=cur_epoch)
 
-    save_model(model, optimizer, scheduler, global_step, args.config, seen_ids=seen_ids, epoch=max_epochs)
+    if last_saved_step != global_step:
+        save_model(model, optimizer, scheduler, global_step, args.config, seen_ids=seen_ids, epoch=max_epochs)
     return model, global_step, max_epochs
 
 
