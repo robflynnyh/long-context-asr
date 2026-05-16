@@ -469,3 +469,21 @@ Queued code commit: c0fe2f9
 Status command: squeue -j 10225665,10225666 -o '%i|%j|%T|%R|%S|%M|%l|%P'
 Superseded by later 130GB same-batch request; jobs 10225665 and 10225666 were canceled before start.
 ```
+
+130GB same-batch retry validation and queue:
+
+```text
+CPU smoke job: 10225685
+CPU smoke state: COMPLETED 0:0
+CPU smoke elapsed: 00:31:51
+CPU smoke MaxRSS: 17733528K
+CPU smoke stdout: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/finetune-smoke-10225685.out
+CPU smoke stderr: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/finetune-smoke-10225685.err
+CPU smoke result: records=26957, batch=4, audio_shape=(4, 80, 206197), encoded_chunks=149
+GPU retry job: 10225753
+Finalizer job: 10225754
+GPU retry state at queue handoff: PENDING (Priority)
+Finalizer state at queue handoff: PENDING (Dependency)
+Queued code commit: 960f54a
+Status command: squeue -j 10225753,10225754 -o '%i|%j|%T|%R|%S|%M|%l|%P'
+```
