@@ -19,6 +19,8 @@ WANDB_NAME="${ROB76_WANDB_NAME:-streaming_decoder_asr_100m_mimas_full_epoch}"
 BATCH_SIZE="${ROB76_BATCH_SIZE:-4}"
 MAX_EPOCHS="${ROB76_MAX_EPOCHS:-1}"
 LEARNING_RATE="${ROB76_LEARNING_RATE:-5e-5}"
+DEBUG_GENERATE_EVERY_RECORDS="${ROB76_DEBUG_GENERATE_EVERY_RECORDS:-500}"
+DEBUG_GENERATE_MAX_FRAMES="${ROB76_DEBUG_GENERATE_MAX_FRAMES:-96}"
 NUM_WORKERS="${ROB76_NUM_WORKERS:-0}"
 PREFETCH="${ROB76_PREFETCH:-1}"
 PIN_MEMORY="${ROB76_PIN_MEMORY:-0}"
@@ -47,6 +49,8 @@ on_exit() {
     echo "batch_size=${BATCH_SIZE}"
     echo "max_epochs=${MAX_EPOCHS}"
     echo "learning_rate=${LEARNING_RATE}"
+    echo "debug_generate_every_records=${DEBUG_GENERATE_EVERY_RECORDS}"
+    echo "debug_generate_max_frames=${DEBUG_GENERATE_MAX_FRAMES}"
     echo "max_records=${ROB76_MAX_RECORDS:-unset}"
     echo "max_steps=${ROB76_MAX_STEPS:-unset}"
   } >> "$SUMMARY_FILE"
@@ -115,7 +119,9 @@ python symphony/scripts/prepare_rob76_mimas_full_epoch.py \
   --wandb-name "$WANDB_NAME" \
   --batch-size "$BATCH_SIZE" \
   --max-epochs "$MAX_EPOCHS" \
-  --learning-rate "$LEARNING_RATE"
+  --learning-rate "$LEARNING_RATE" \
+  --debug-generate-every-records "$DEBUG_GENERATE_EVERY_RECORDS" \
+  --debug-generate-max-frames "$DEBUG_GENERATE_MAX_FRAMES"
 
 echo "runtime_config=${RUNTIME_CONFIG}"
 echo "checkpoint_dir=${CHECKPOINT_DIR}"

@@ -65,6 +65,8 @@ def main():
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--max-epochs", type=int, default=1)
     parser.add_argument("--learning-rate", type=float, default=None)
+    parser.add_argument("--debug-generate-every-records", type=int, default=0)
+    parser.add_argument("--debug-generate-max-frames", type=int, default=96)
     parser.add_argument("--no-validate-paths", action="store_true")
     args = parser.parse_args()
 
@@ -82,6 +84,12 @@ def main():
     config.training.max_epochs = args.max_epochs
     if args.learning_rate is not None:
         config.optimizer.args.lr = args.learning_rate
+    if args.debug_generate_every_records > 0:
+        config.training.debug_generation = {
+            "enabled": True,
+            "every_records": args.debug_generate_every_records,
+            "max_frames": args.debug_generate_max_frames,
+        }
     if "max_steps" in config.training:
         del config.training.max_steps
     config.wandb.use = True
@@ -106,6 +114,9 @@ def main():
     print(f"batch_size={args.batch_size}")
     print(f"max_epochs={args.max_epochs}")
     print(f"learning_rate={config.optimizer.args.lr}")
+    if args.debug_generate_every_records > 0:
+        print(f"debug_generate_every_records={args.debug_generate_every_records}")
+        print(f"debug_generate_max_frames={args.debug_generate_max_frames}")
 
 
 if __name__ == "__main__":

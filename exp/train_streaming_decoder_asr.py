@@ -124,6 +124,66 @@ def estimate_streaming_optimizer_steps(dataloader, chunk_size: int, chunk_overla
     return max(per_epoch_steps * max_epochs, 1)
 
 
+def decode_prediction_ids(tokenizer, prediction_ids, silence_id: int, max_tokens: int = 256) -> str:
+    tokens = []
+    previous = None
+    for idx in prediction_ids:
+        idx = int(idx)
+        if idx == silence_id:
+            previous = idx
+            continue
+        if idx == previous:
+            continue
+        tokens.append(idx)
+        previous = idx
+        if len(tokens) >= max_tokens:
+            break
+    return "" if len(tokens) == 0 else tokenizer.decode(tokens)
+
+
+def reference_words(transcript) -> str:
+    words = []
+    for item in transcript:
+        words.append(str(item.get("word", item.get("text", ""))))
+    return " ".join(word for word in words if word)
+
+
+def maybe_log_debug_generation(
+    args,
+    model,
+    tokenizer,
+    chunk,
+    chunk_lengths,
+    chunk_transcripts,
+    ids,
+    global_step,
+    records_seen,
+):
+    debug_config = args.config["training"].get("debug_generation", {})
+    if not debug_config.get("enabled", False):
+        return
+    if not args.config["wandb"].get("use", False):
+        return
+
+    max_frames = int(debug_config.get("max_frames", 96))
+    max_tokens = int(debug_config.get("max_tokens", 256))
+    sample_idx = 0
+    generated = model.greedy_decode(
+        audio_signal=chunk[sample_idx : sample_idx + 1],
+        length=chunk_lengths[sample_idx : sample_idx + 1],
+        max_frames=max_frames,
+    )
+    pred_len = int(generated["length"][0].item())
+    prediction_ids = generated["predictions"][0, :pred_len].detach().cpu().tolist()
+    prediction = decode_prediction_ids(tokenizer, prediction_ids, model.get_silence_id(), max_tokens=max_tokens)
+    reference = reference_words(chunk_transcripts[sample_idx])
+    table = wandb.Table(
+        columns=["step", "records_seen", "id", "prediction", "reference"],
+        data=[[global_step, records_seen, ids[sample_idx], prediction, reference]],
+    )
+    wandb.log({"debug_generation/autoregressive_sample": table, "debug_generation/records_seen": records_seen})
+
+
 def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_ids=None, epoch=0):
     seen_ids = [] if seen_ids is None else seen_ids
     scaler = GradScaler(enabled=torch.cuda.is_available())
@@ -148,6 +208,10 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     model_dtype = next(model.parameters()).dtype
     optimizer.zero_grad()
     global_step = step
+    records_seen = 0
+    debug_config = args.config["training"].get("debug_generation", {})
+    debug_every_records = int(debug_config.get("every_records", 0)) if debug_config.get("enabled", False) else 0
+    next_debug_record = debug_every_records
     print(f"Scheduler total optimizer steps: {scheduler_total_steps}")
 
     for cur_epoch in range(epoch, max_epochs):
@@ -155,6 +219,8 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
         for batch in pbar:
             audio, audio_lengths, transcripts, ids = batch
             seen_ids.extend(ids)
+            records_seen += len(ids)
+            should_log_generation = debug_every_records > 0 and records_seen >= next_debug_record
             stride = chunk_size - chunk_overlap
             for chunk_start in range(0, int(audio_lengths.max().item()), stride):
                 active = audio_lengths > chunk_start
@@ -186,6 +252,22 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                     chunk_start_frames=chunk_starts,
                     silence_id=model.get_silence_id(),
                 ).to(device)
+
+                if should_log_generation:
+                    maybe_log_debug_generation(
+                        args=args,
+                        model=model,
+                        tokenizer=dataloader.tokenizer,
+                        chunk=chunk,
+                        chunk_lengths=chunk_lengths,
+                        chunk_transcripts=chunk_transcripts,
+                        ids=[ids[i] for i, keep in enumerate(active.tolist()) if keep],
+                        global_step=global_step,
+                        records_seen=records_seen,
+                    )
+                    while next_debug_record <= records_seen:
+                        next_debug_record += debug_every_records
+                    should_log_generation = False
 
                 with torch.autocast(device.type, dtype=dtype) if torch.cuda.is_available() else nullcontext():
                     out = model.calc_loss(audio_signal=chunk, length=chunk_lengths, frame_targets=frame_targets)
