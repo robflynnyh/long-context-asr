@@ -62,7 +62,7 @@ def main():
     parser.add_argument("--checkpoint-dir", required=True)
     parser.add_argument("--wandb-dir", required=True)
     parser.add_argument("--wandb-name", default="streaming_decoder_asr_100m_mimas_full_epoch")
-    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--batch-size", type=int, default=48)
     parser.add_argument("--max-epochs", type=int, default=1)
     parser.add_argument("--learning-rate", type=float, default=None)
     parser.add_argument("--debug-generate-every-records", type=int, default=0)
