@@ -64,6 +64,7 @@ def main():
     parser.add_argument("--wandb-name", default="streaming_decoder_asr_100m_mimas_full_epoch")
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--max-epochs", type=int, default=1)
+    parser.add_argument("--learning-rate", type=float, default=None)
     parser.add_argument("--no-validate-paths", action="store_true")
     args = parser.parse_args()
 
@@ -79,6 +80,8 @@ def main():
     config.checkpointing.dir = args.checkpoint_dir
     config.training.batch_size = args.batch_size
     config.training.max_epochs = args.max_epochs
+    if args.learning_rate is not None:
+        config.optimizer.args.lr = args.learning_rate
     if "max_steps" in config.training:
         del config.training.max_steps
     config.wandb.use = True
@@ -102,6 +105,7 @@ def main():
     print(f"wandb_name={args.wandb_name}")
     print(f"batch_size={args.batch_size}")
     print(f"max_epochs={args.max_epochs}")
+    print(f"learning_rate={config.optimizer.args.lr}")
 
 
 if __name__ == "__main__":

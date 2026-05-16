@@ -12,6 +12,7 @@ model:
   subsampling: dw_striding
   subsampling_act: silu
   subsampling_conv_channels: 256
+  subsampling_conv_chunking_factor: 2
   subsampling_norm_out: true
   decoder_norm: true
   previous_token_dropout: 0.0

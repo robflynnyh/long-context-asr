@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import random
 import time
@@ -13,6 +14,7 @@ from torch.cuda.amp import GradScaler
 from tqdm import tqdm
 
 from lcasr.utils.dataloading import VariableBatchSimpleDataloader, reset_seen_ids
+from lcasr.utils.audio_tools import total_frames
 from lcasr.utils.general import get_model_class, load_checkpoint, load_model, load_optimizer, save_model
 from lcasr.utils.streaming_targets import (
     build_streaming_frame_targets,
@@ -95,6 +97,33 @@ def make_dataloader(config, tokenizer, args, seen_ids):
     )
 
 
+def estimate_streaming_optimizer_steps(dataloader, chunk_size: int, chunk_overlap: int, max_epochs: int) -> int:
+    stride = chunk_size - chunk_overlap
+    fallback = int(dataloader.total_recordings()) * max_epochs
+    if stride <= 0:
+        return fallback
+
+    dataset = getattr(getattr(dataloader, "dataloader", None), "dataset", None)
+    pairs = getattr(dataset, "pairs", None)
+    batch_size = getattr(dataloader, "batch_size", None)
+    if pairs is None or "duration" not in pairs or batch_size is None:
+        return fallback
+
+    frame_lengths = []
+    for duration in pairs["duration"].tolist():
+        try:
+            frame_lengths.append(max(total_frames(float(duration)), 1))
+        except (TypeError, ValueError):
+            return fallback
+
+    per_epoch_steps = 0
+    for start in range(0, len(frame_lengths), int(batch_size)):
+        batch_lengths = frame_lengths[start : start + int(batch_size)]
+        if batch_lengths:
+            per_epoch_steps += max(math.ceil(max(batch_lengths) / stride), 1)
+    return max(per_epoch_steps * max_epochs, 1)
+
+
 def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_ids=None, epoch=0):
     seen_ids = [] if seen_ids is None else seen_ids
     scaler = GradScaler(enabled=torch.cuda.is_available())
@@ -102,19 +131,24 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     clip_value = args.config["training"].get("clip_value", 0.8)
     max_epochs = args.config["training"].get("max_epochs", 1)
     max_steps = args.config["training"].get("max_steps", float("inf"))
-    scheduler_total_steps = args.config["training"].get(
-        "scheduler_total_steps",
-        max_steps if max_steps != float("inf") else dataloader.total_recordings() * max_epochs,
-    )
     backprop_every = args.config["training"].get("backprop_every", 1)
     delay_seconds = args.config["streaming"].get("delay_seconds", 2.0)
     buffer_seconds = args.config["streaming"].get("buffer_seconds", 0.25)
     chunk_size = args.config["audio_chunking"]["size"]
     chunk_overlap = args.config["audio_chunking"].get("overlap", 0)
     assert chunk_size > chunk_overlap, "audio_chunking.size must be greater than overlap"
+    scheduler_total_steps = args.config["training"].get("scheduler_total_steps")
+    if scheduler_total_steps is None:
+        scheduler_total_steps = (
+            max_steps
+            if max_steps != float("inf")
+            else estimate_streaming_optimizer_steps(dataloader, chunk_size, chunk_overlap, max_epochs)
+        )
+    scheduler_total_steps = int(scheduler_total_steps)
     model_dtype = next(model.parameters()).dtype
     optimizer.zero_grad()
     global_step = step
+    print(f"Scheduler total optimizer steps: {scheduler_total_steps}")
 
     for cur_epoch in range(epoch, max_epochs):
         pbar = tqdm(dataloader, desc=f"Streaming decoder training - Epoch {cur_epoch}")

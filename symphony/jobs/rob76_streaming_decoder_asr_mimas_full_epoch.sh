@@ -13,11 +13,12 @@ BASE_CONFIG="${ROB76_BASE_CONFIG:-exp/configs/streaming_decoder_asr_100m.yaml}"
 SOURCE_PAIRS="${ROB76_SOURCE_PAIRS:-/store/store5/data/spotify/renamed_audio_text_pairs_10_percent.json}"
 MANIFEST_PATH="${ROB76_MANIFEST_PATH:-$RUN_DIR/spotify_10percent_mimas_manifest.json}"
 RUNTIME_CONFIG="${ROB76_RUNTIME_CONFIG:-$RUN_DIR/streaming_decoder_asr_100m_mimas_full_epoch.yaml}"
-CHECKPOINT_DIR="${ROB76_CHECKPOINT_DIR:-/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_mimas_full_epoch}"
+CHECKPOINT_DIR="${ROB76_CHECKPOINT_DIR:-/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_mimas_full_epoch_${RUN_ID}}"
 WANDB_DIR="${ROB76_WANDB_DIR:-$ARTIFACT_ROOT/wandb}"
 WANDB_NAME="${ROB76_WANDB_NAME:-streaming_decoder_asr_100m_mimas_full_epoch}"
-BATCH_SIZE="${ROB76_BATCH_SIZE:-1}"
+BATCH_SIZE="${ROB76_BATCH_SIZE:-4}"
 MAX_EPOCHS="${ROB76_MAX_EPOCHS:-1}"
+LEARNING_RATE="${ROB76_LEARNING_RATE:-5e-5}"
 NUM_WORKERS="${ROB76_NUM_WORKERS:-0}"
 PREFETCH="${ROB76_PREFETCH:-1}"
 PIN_MEMORY="${ROB76_PIN_MEMORY:-0}"
@@ -45,6 +46,7 @@ on_exit() {
     echo "wandb_name=${WANDB_NAME}"
     echo "batch_size=${BATCH_SIZE}"
     echo "max_epochs=${MAX_EPOCHS}"
+    echo "learning_rate=${LEARNING_RATE}"
     echo "max_records=${ROB76_MAX_RECORDS:-unset}"
     echo "max_steps=${ROB76_MAX_STEPS:-unset}"
   } >> "$SUMMARY_FILE"
@@ -112,7 +114,8 @@ python symphony/scripts/prepare_rob76_mimas_full_epoch.py \
   --wandb-dir "$WANDB_DIR" \
   --wandb-name "$WANDB_NAME" \
   --batch-size "$BATCH_SIZE" \
-  --max-epochs "$MAX_EPOCHS"
+  --max-epochs "$MAX_EPOCHS" \
+  --learning-rate "$LEARNING_RATE"
 
 echo "runtime_config=${RUNTIME_CONFIG}"
 echo "checkpoint_dir=${CHECKPOINT_DIR}"

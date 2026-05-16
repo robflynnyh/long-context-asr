@@ -21,14 +21,16 @@ class CosineLRScheduler(torch.optim.lr_scheduler._LRScheduler):
         # reset the step to 0
         self.last_epoch = 0
         self.is_warmup = False
-        self.steps = total_recordings - cur_podcast + 1
+        self.steps = max(total_recordings - cur_podcast + 1, 1)
         self.offset = -cur_podcast
 
     def get_lr(self):
         if self.is_warmup:
             return [self.peak_value * min(1.0, self.last_epoch / self.warmup_steps) for _ in self.base_lrs]
         else:
-            return [self.final_value + 0.5 * (self.peak_value - self.final_value) * (1 + np.cos((self.last_epoch + self.offset) / (self.steps) * np.pi)) for _ in self.base_lrs]
+            progress = (self.last_epoch + self.offset) / self.steps
+            progress = min(max(progress, 0.0), 1.0)
+            return [self.final_value + 0.5 * (self.peak_value - self.final_value) * (1 + np.cos(progress * np.pi)) for _ in self.base_lrs]
 
 
 class ConstantLRScheduler(torch.optim.lr_scheduler._LRScheduler):
