@@ -212,11 +212,12 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     debug_config = args.config["training"].get("debug_generation", {})
     debug_every_records = int(debug_config.get("every_records", 0)) if debug_config.get("enabled", False) else 0
     next_debug_record = debug_every_records
-    checkpoint_every = int(args.config["checkpointing"].get("save_every_n_steps", 0) or 0)
+    checkpoint_every_records = int(args.config["checkpointing"].get("save_every_n_steps", 0) or 0)
+    next_checkpoint_record = checkpoint_every_records
     last_saved_step = None
     print(f"Scheduler total optimizer steps: {scheduler_total_steps}")
-    if checkpoint_every > 0:
-        print(f"Checkpoint save interval: {checkpoint_every} steps")
+    if checkpoint_every_records > 0:
+        print(f"Checkpoint save interval: {checkpoint_every_records} recordings")
     else:
         print("Checkpoint save interval: disabled")
 
@@ -227,11 +228,14 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
             seen_ids.extend(ids)
             records_seen += len(ids)
             should_log_generation = debug_every_records > 0 and records_seen >= next_debug_record
+            should_save_checkpoint = checkpoint_every_records > 0 and records_seen >= next_checkpoint_record
+            processed_chunk = False
             stride = chunk_size - chunk_overlap
             for chunk_start in range(0, int(audio_lengths.max().item()), stride):
                 active = audio_lengths > chunk_start
                 if active.sum().item() == 0:
                     continue
+                processed_chunk = True
                 chunk = audio[active, :, chunk_start : chunk_start + chunk_size]
                 chunk_lengths = torch.clamp(audio_lengths[active] - chunk_start, min=0, max=chunk.size(-1))
                 chunk_transcripts = [
@@ -304,13 +308,15 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                         }
                     )
                 pbar.set_postfix({"loss": f"{out['display_losses']['loss']:.4f}", "step": global_step})
-                if checkpoint_every > 0 and global_step % checkpoint_every == 0:
-                    save_model(model, optimizer, scheduler, global_step, args.config, seen_ids=seen_ids, epoch=cur_epoch)
-                    last_saved_step = global_step
                 if global_step >= max_steps:
                     if last_saved_step != global_step:
                         save_model(model, optimizer, scheduler, global_step, args.config, seen_ids=seen_ids, epoch=cur_epoch)
                     return model, global_step, cur_epoch
+            if should_save_checkpoint and processed_chunk and last_saved_step != global_step:
+                save_model(model, optimizer, scheduler, global_step, args.config, seen_ids=seen_ids, epoch=cur_epoch)
+                last_saved_step = global_step
+                while next_checkpoint_record <= records_seen:
+                    next_checkpoint_record += checkpoint_every_records
         seen_ids = reset_seen_ids(seen_ids, epoch=cur_epoch)
 
     if last_saved_step != global_step:
