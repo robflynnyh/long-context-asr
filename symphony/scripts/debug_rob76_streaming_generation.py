@@ -79,16 +79,25 @@ def main():
     print(f"checkpoint={checkpoint_path}")
     print(f"step={checkpoint.get('podcast_step')} epoch={checkpoint.get('epoch')}")
     print(f"device={device} silence_id={silence_id} max_frames={max_frames}")
+    prediction_head_type = getattr(model, "prediction_head_type", "two_head")
+    print(f"prediction_head_type={prediction_head_type}")
     print(
         "silence_target_soft_dilation="
         f"{silence_soft_dilation_seconds:.3f}s {silence_soft_dilation_direction} "
         f"-> {silence_soft_dilation_frames} decoder frames"
     )
-    print(
-        "silence_head_sampling="
-        f"runs={args.sample_runs} temperature={args.sample_temperature} "
-        f"seed={args.sample_seed}; text head is greedy"
-    )
+    if prediction_head_type == "two_head":
+        print(
+            "silence_head_sampling="
+            f"runs={args.sample_runs} temperature={args.sample_temperature} "
+            f"seed={args.sample_seed}; text head is greedy"
+        )
+    else:
+        print(
+            "single_head_sampling="
+            f"runs={args.sample_runs} temperature={args.sample_temperature} "
+            f"seed={args.sample_seed}; samples full vocab+silence distribution"
+        )
 
     reported = 0
     with torch.no_grad():
@@ -144,10 +153,14 @@ def main():
                     frame_targets=silence_feedback_targets,
                     return_logits=True,
                 )
-                silence_ids = model._predict_ids(
-                    silence_feedback["silence_logits"],
-                    silence_feedback["text_logits"],
-                )[0, : int(output_lengths[0].item())].detach().cpu().tolist()
+                if prediction_head_type == "two_head":
+                    silence_predictions = model._predict_ids(
+                        silence_feedback["silence_logits"],
+                        silence_feedback["text_logits"],
+                    )
+                else:
+                    silence_predictions = silence_feedback["logits"].argmax(dim=-1)
+                silence_ids = silence_predictions[0, : int(output_lengths[0].item())].detach().cpu().tolist()
                 silence_fb_ns = sum(int(idx) != silence_id for idx in silence_ids) / max(len(silence_ids), 1)
                 silence_fb_text = decode_prediction_ids(tokenizer, silence_ids, silence_id=silence_id, max_tokens=80)
 

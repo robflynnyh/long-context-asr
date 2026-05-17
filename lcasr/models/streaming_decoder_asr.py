@@ -80,14 +80,19 @@ class StreamingDecoderASR(BaseModel):
         dropout_attn: float = 0.0,
         decoder_norm: bool = True,
         previous_token_dropout: float = 0.0,
+        prediction_head_type: str = "two_head",
         **kwargs,
     ):
         super().__init__()
+        prediction_head_type = str(prediction_head_type).lower()
+        if prediction_head_type not in {"two_head", "single_head_ce"}:
+            raise ValueError(f"unsupported prediction_head_type: {prediction_head_type}")
         self.vocab_size = vocab_size
         self.silence_id = vocab_size
         self.num_classes = vocab_size + 1
         self.subsampling_factor = subsampling_factor
         self.previous_token_dropout = previous_token_dropout
+        self.prediction_head_type = prediction_head_type
 
         self.subsampling = ConvSubsampling(
             subsampling=subsampling,
@@ -116,8 +121,11 @@ class StreamingDecoderASR(BaseModel):
             ]
         )
         self.norm = LayerNorm(d_model) if decoder_norm else nn.Identity()
-        self.silence_head = nn.Linear(d_model, 2, bias=False)
-        self.text_head = nn.Linear(d_model, vocab_size, bias=False)
+        if self.prediction_head_type == "two_head":
+            self.silence_head = nn.Linear(d_model, 2, bias=False)
+            self.text_head = nn.Linear(d_model, vocab_size, bias=False)
+        else:
+            self.decoder = nn.Linear(d_model, self.num_classes, bias=False)
 
     def get_silence_id(self) -> int:
         return self.silence_id
@@ -154,6 +162,21 @@ class StreamingDecoderASR(BaseModel):
         silence_score = silence_logits[..., 0:1]
         token_scores = text_logits + silence_logits[..., 1:2]
         return torch.cat([token_scores, silence_score], dim=-1)
+
+    def _step_predictions(self, hidden: torch.Tensor, sample: bool = False, temperature: float = 1.0) -> torch.Tensor:
+        if self.prediction_head_type == "two_head":
+            return self._predict_ids(
+                self.silence_head(hidden),
+                self.text_head(hidden),
+                sample_silence=sample,
+                silence_temperature=temperature,
+            )
+        logits = self.decoder(hidden)
+        if not sample:
+            return logits.argmax(dim=-1)
+        temperature = max(float(temperature), 1e-6)
+        probs = (logits / temperature).softmax(dim=-1)
+        return torch.multinomial(probs.reshape(-1, probs.size(-1)), num_samples=1).view(logits.shape[:-1])
 
     def _predict_ids(
         self,
@@ -238,18 +261,67 @@ class StreamingDecoderASR(BaseModel):
         for layer in self.layers:
             x = layer(x, key_padding_mask=key_padding_mask)
         x = self.norm(x)
-        silence_logits = self.silence_head(x)
-        text_logits = self.text_head(x)
-        logits = self._combined_logits(silence_logits, text_logits)
-        output = {
-            "logits": logits,
-            "silence_logits": silence_logits,
-            "text_logits": text_logits,
-            "length": out_lengths,
-        }
+        if self.prediction_head_type == "two_head":
+            silence_logits = self.silence_head(x)
+            text_logits = self.text_head(x)
+            logits = self._combined_logits(silence_logits, text_logits)
+            output = {
+                "logits": logits,
+                "silence_logits": silence_logits,
+                "text_logits": text_logits,
+                "length": out_lengths,
+            }
+        else:
+            logits = self.decoder(x)
+            output = {"logits": logits, "length": out_lengths}
         if not return_logits:
             output["final_posteriors"] = F.log_softmax(logits, dim=-1)
         return output
+
+    def _calc_single_head_ce_loss(
+        self,
+        out: dict,
+        frame_targets: torch.Tensor,
+        valid: torch.Tensor,
+    ) -> dict:
+        logits = out["logits"]
+        per_frame_loss = F.cross_entropy(
+            logits.reshape(-1, logits.size(-1)),
+            frame_targets.reshape(-1),
+            ignore_index=-100,
+            reduction="none",
+        ).view_as(frame_targets)
+        loss = per_frame_loss[valid].mean() if valid.any() else per_frame_loss.sum() * 0.0
+        with torch.no_grad():
+            silence = (frame_targets == self.silence_id) & valid
+            non_silence = (frame_targets != self.silence_id) & valid
+            silence_fraction = silence.sum().float() / valid.sum().clamp_min(1).float()
+            non_silence_fraction = non_silence.sum().float() / valid.sum().clamp_min(1).float()
+            predictions = logits.argmax(dim=-1)
+            predicted_non_silence = (predictions != self.silence_id) & valid
+            predicted_non_silence_fraction = (
+                predicted_non_silence.sum().float() / valid.sum().clamp_min(1).float()
+            )
+            silence_loss = per_frame_loss[silence].mean() if silence.any() else per_frame_loss.new_tensor(0.0)
+            non_silence_loss = (
+                per_frame_loss[non_silence].mean() if non_silence.any() else per_frame_loss.new_tensor(0.0)
+            )
+        return {
+            **out,
+            "loss": loss,
+            "predictions": predictions,
+            "display_losses": {
+                "loss": float(loss.detach().cpu()),
+                "unweighted_loss": float(loss.detach().cpu()),
+                "silence_loss": float(silence_loss.detach().cpu()),
+                "non_silence_loss": float(non_silence_loss.detach().cpu()),
+                "text_loss": float(non_silence_loss.detach().cpu()),
+                "silence_fraction": float(silence_fraction.detach().cpu()),
+                "non_silence_fraction": float(non_silence_fraction.detach().cpu()),
+                "soft_non_silence_fraction": float(non_silence_fraction.detach().cpu()),
+                "predicted_non_silence_fraction": float(predicted_non_silence_fraction.detach().cpu()),
+            },
+        }
 
     def calc_loss(
         self,
@@ -271,6 +343,8 @@ class StreamingDecoderASR(BaseModel):
 
         valid = frame_targets != -100
         non_silence = (frame_targets != self.silence_id) & valid
+        if self.prediction_head_type == "single_head_ce":
+            return self._calc_single_head_ce_loss(out, frame_targets, valid)
         soft_non_silence = self._mass_preserving_soft_targets(
             non_silence=non_silence,
             valid=valid,
@@ -348,11 +422,7 @@ class StreamingDecoderASR(BaseModel):
             for layer in self.layers:
                 h = layer(h, key_padding_mask=key_padding_mask)
             step_h = self.norm(h[:, step])
-            step_prediction = self._predict_ids(
-                self.silence_head(step_h),
-                self.text_head(step_h),
-                sample_silence=False,
-            )
+            step_prediction = self._step_predictions(step_h, sample=False)
             predictions.append(step_prediction)
             if step + 1 < x.size(1):
                 prev_ids[:, step + 1] = step_prediction
@@ -392,12 +462,7 @@ class StreamingDecoderASR(BaseModel):
             for layer in self.layers:
                 h = layer(h, key_padding_mask=key_padding_mask)
             step_h = self.norm(h[:, step])
-            step_prediction = self._predict_ids(
-                self.silence_head(step_h),
-                self.text_head(step_h),
-                sample_silence=True,
-                silence_temperature=temperature,
-            )
+            step_prediction = self._step_predictions(step_h, sample=True, temperature=temperature)
             predictions.append(step_prediction)
             if step + 1 < x.size(1):
                 prev_ids[:, step + 1] = step_prediction

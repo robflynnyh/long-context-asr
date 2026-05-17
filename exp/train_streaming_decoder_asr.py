@@ -261,7 +261,11 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     next_checkpoint_record = checkpoint_every_records
     last_saved_step = None
     print(f"Scheduler total optimizer steps: {scheduler_total_steps}")
-    print("Prediction heads: binary silence + conditional text")
+    prediction_head_type = getattr(model, "prediction_head_type", "two_head")
+    if prediction_head_type == "single_head_ce":
+        print("Prediction heads: single shared vocab+silence CE")
+    else:
+        print("Prediction heads: binary silence + conditional text")
     print(f"Shuffle chunks: {shuffle_chunks}")
     print(
         "Silence target soft dilation: "
