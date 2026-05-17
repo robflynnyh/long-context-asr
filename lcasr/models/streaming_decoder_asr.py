@@ -182,8 +182,38 @@ class StreamingDecoderASR(BaseModel):
         length: torch.Tensor,
         frame_targets: torch.Tensor,
         silence_loss_weight: float = 1.0,
+        scheduled_sampling_probability: float = 0.0,
     ) -> dict:
-        out = self.forward(audio_signal=audio_signal, length=length, frame_targets=frame_targets, return_logits=True)
+        feedback_targets = frame_targets
+        scheduled_feedback_fraction = frame_targets.new_tensor(0.0, dtype=torch.float)
+        scheduled_feedback_pred_non_silence_fraction = frame_targets.new_tensor(0.0, dtype=torch.float)
+        scheduled_sampling_probability = float(scheduled_sampling_probability)
+        if self.training and scheduled_sampling_probability > 0:
+            with torch.no_grad():
+                teacher_out = self.forward(
+                    audio_signal=audio_signal,
+                    length=length,
+                    frame_targets=frame_targets,
+                    return_logits=True,
+                )
+                teacher_predictions = teacher_out["logits"].argmax(dim=-1)
+                if teacher_predictions.size(1) != frame_targets.size(1):
+                    if teacher_predictions.size(1) < frame_targets.size(1):
+                        pad = frame_targets.size(1) - teacher_predictions.size(1)
+                        teacher_predictions = F.pad(teacher_predictions, (0, pad), value=self.silence_id)
+                    else:
+                        teacher_predictions = teacher_predictions[:, : frame_targets.size(1)]
+                valid = frame_targets != -100
+                sample_mask = (torch.rand_like(frame_targets, dtype=torch.float) < scheduled_sampling_probability) & valid
+                feedback_targets = frame_targets.masked_scatter(sample_mask, teacher_predictions[sample_mask])
+                scheduled_feedback_fraction = sample_mask.sum().float() / valid.sum().clamp_min(1).float()
+                sampled_predictions = teacher_predictions[sample_mask]
+                if sampled_predictions.numel() > 0:
+                    scheduled_feedback_pred_non_silence_fraction = (
+                        sampled_predictions.ne(self.silence_id).sum().float() / sampled_predictions.numel()
+                    )
+
+        out = self.forward(audio_signal=audio_signal, length=length, frame_targets=feedback_targets, return_logits=True)
         logits = out["logits"]
         if frame_targets.size(1) != logits.size(1):
             if frame_targets.size(1) < logits.size(1):
@@ -234,6 +264,10 @@ class StreamingDecoderASR(BaseModel):
                 "silence_fraction": float(silence_fraction.detach().cpu()),
                 "non_silence_fraction": float(non_silence_fraction.detach().cpu()),
                 "predicted_non_silence_fraction": float(predicted_non_silence_fraction.detach().cpu()),
+                "scheduled_feedback_fraction": float(scheduled_feedback_fraction.detach().cpu()),
+                "scheduled_feedback_pred_non_silence_fraction": float(
+                    scheduled_feedback_pred_non_silence_fraction.detach().cpu()
+                ),
             },
         }
 

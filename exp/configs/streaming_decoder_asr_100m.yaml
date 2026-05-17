@@ -33,6 +33,7 @@ streaming:
   delay_seconds: 2.0
   buffer_seconds: 0.25
   silence_loss_weight: 0.1
+  scheduled_sampling_probability: 0.25
 
 wandb:
   use: true

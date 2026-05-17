@@ -236,6 +236,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     delay_seconds = args.config["streaming"].get("delay_seconds", 2.0)
     buffer_seconds = args.config["streaming"].get("buffer_seconds", 0.25)
     silence_loss_weight = float(args.config["streaming"].get("silence_loss_weight", 1.0))
+    scheduled_sampling_probability = float(args.config["streaming"].get("scheduled_sampling_probability", 0.0))
     chunk_size = args.config["audio_chunking"]["size"]
     chunk_overlap = args.config["audio_chunking"].get("overlap", 0)
     assert chunk_size > chunk_overlap, "audio_chunking.size must be greater than overlap"
@@ -259,6 +260,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     last_saved_step = None
     print(f"Scheduler total optimizer steps: {scheduler_total_steps}")
     print(f"Silence loss weight: {silence_loss_weight}")
+    print(f"Scheduled sampling probability: {scheduled_sampling_probability}")
     if checkpoint_every_records > 0:
         print(f"Checkpoint save interval: {checkpoint_every_records} recordings")
     else:
@@ -329,6 +331,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                         length=chunk_lengths,
                         frame_targets=frame_targets,
                         silence_loss_weight=silence_loss_weight,
+                        scheduled_sampling_probability=scheduled_sampling_probability,
                     )
                     loss = out["loss"] / backprop_every
 
