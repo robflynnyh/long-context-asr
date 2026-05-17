@@ -182,17 +182,28 @@ class StreamingDecoderASR(BaseModel):
         non_silence: torch.Tensor,
         valid: torch.Tensor,
         radius_frames: int,
+        direction: str = "past",
     ) -> torch.Tensor:
         hard_targets = non_silence.float()
         if radius_frames <= 0:
             return hard_targets
 
-        kernel_width = 2 * radius_frames + 1
+        direction = direction.lower()
+        if direction == "symmetric":
+            kernel_width = 2 * radius_frames + 1
+            padding = radius_frames
+            padded_targets = hard_targets.unsqueeze(1)
+        elif direction == "past":
+            kernel_width = radius_frames + 1
+            padding = 0
+            padded_targets = F.pad(hard_targets.unsqueeze(1), (0, radius_frames))
+        else:
+            raise ValueError(f"unsupported soft-target dilation direction: {direction}")
         kernel = hard_targets.new_full((1, 1, kernel_width), 1.0 / kernel_width)
         soft_targets = F.conv1d(
-            hard_targets.unsqueeze(1),
+            padded_targets,
             kernel,
-            padding=radius_frames,
+            padding=padding,
         ).squeeze(1)
         soft_targets = soft_targets * valid.float()
 
@@ -246,6 +257,7 @@ class StreamingDecoderASR(BaseModel):
         length: torch.Tensor,
         frame_targets: torch.Tensor,
         silence_soft_dilation_frames: int = 0,
+        silence_soft_dilation_direction: str = "past",
     ) -> dict:
         out = self.forward(audio_signal=audio_signal, length=length, frame_targets=frame_targets, return_logits=True)
         logits = out["logits"]
@@ -263,6 +275,7 @@ class StreamingDecoderASR(BaseModel):
             non_silence=non_silence,
             valid=valid,
             radius_frames=int(silence_soft_dilation_frames),
+            direction=silence_soft_dilation_direction,
         )
         silence_log_probs = F.log_softmax(out["silence_logits"], dim=-1)
         silence_loss_terms = -(

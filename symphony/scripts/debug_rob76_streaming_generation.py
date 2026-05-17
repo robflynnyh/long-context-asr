@@ -71,6 +71,7 @@ def main():
     delay_seconds = float(config["streaming"].get("delay_seconds", 2.0))
     buffer_seconds = float(config["streaming"].get("buffer_seconds", 0.25))
     silence_soft_dilation_seconds = float(config["streaming"].get("silence_soft_dilation_seconds", 0.0))
+    silence_soft_dilation_direction = str(config["streaming"].get("silence_soft_dilation_direction", "past"))
     silence_soft_dilation_frames = int(round(total_frames(silence_soft_dilation_seconds) / model.subsampling_factor))
     silence_id = model.get_silence_id()
     max_frames = None if args.max_frames <= 0 else args.max_frames
@@ -80,7 +81,8 @@ def main():
     print(f"device={device} silence_id={silence_id} max_frames={max_frames}")
     print(
         "silence_target_soft_dilation="
-        f"{silence_soft_dilation_seconds:.3f}s -> {silence_soft_dilation_frames} decoder frames"
+        f"{silence_soft_dilation_seconds:.3f}s {silence_soft_dilation_direction} "
+        f"-> {silence_soft_dilation_frames} decoder frames"
     )
     print(
         "silence_head_sampling="
@@ -129,6 +131,7 @@ def main():
                     length=chunk_lengths,
                     frame_targets=frame_targets,
                     silence_soft_dilation_frames=silence_soft_dilation_frames,
+                    silence_soft_dilation_direction=silence_soft_dilation_direction,
                 )
                 tf_ids = loss_out["predictions"][0, : int(output_lengths[0].item())].detach().cpu().tolist()
                 tf_text = decode_prediction_ids(tokenizer, tf_ids, silence_id=silence_id, max_tokens=80)

@@ -236,6 +236,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     delay_seconds = args.config["streaming"].get("delay_seconds", 2.0)
     buffer_seconds = args.config["streaming"].get("buffer_seconds", 0.25)
     silence_soft_dilation_seconds = float(args.config["streaming"].get("silence_soft_dilation_seconds", 0.0))
+    silence_soft_dilation_direction = str(args.config["streaming"].get("silence_soft_dilation_direction", "past"))
     silence_soft_dilation_frames = int(round(total_frames(silence_soft_dilation_seconds) / model.subsampling_factor))
     chunk_size = args.config["audio_chunking"]["size"]
     chunk_overlap = args.config["audio_chunking"].get("overlap", 0)
@@ -264,7 +265,8 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     print(f"Shuffle chunks: {shuffle_chunks}")
     print(
         "Silence target soft dilation: "
-        f"{silence_soft_dilation_seconds:.3f}s -> {silence_soft_dilation_frames} decoder frames"
+        f"{silence_soft_dilation_seconds:.3f}s {silence_soft_dilation_direction} "
+        f"-> {silence_soft_dilation_frames} decoder frames"
     )
     if checkpoint_every_records > 0:
         print(f"Checkpoint save interval: {checkpoint_every_records} recordings")
@@ -339,6 +341,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                         length=chunk_lengths,
                         frame_targets=frame_targets,
                         silence_soft_dilation_frames=silence_soft_dilation_frames,
+                        silence_soft_dilation_direction=silence_soft_dilation_direction,
                     )
                     loss = out["loss"] / backprop_every
 
