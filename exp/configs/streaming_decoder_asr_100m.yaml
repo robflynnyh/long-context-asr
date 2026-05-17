@@ -32,6 +32,7 @@ audio_chunking:
 streaming:
   delay_seconds: 2.0
   buffer_seconds: 0.25
+  silence_loss_weight: 0.1
 
 wandb:
   use: true
@@ -49,7 +50,7 @@ data:
 
 training:
   tokenizer_path: lcasr/artifacts/tokenizer.model
-  batch_size: 176
+  batch_size: 48
   backprop_every: 1
   max_epochs: 3
   clip_value: 0.8

@@ -155,6 +155,7 @@ def maybe_log_debug_generation(
     chunk,
     chunk_lengths,
     chunk_transcripts,
+    frame_targets,
     ids,
     global_step,
     records_seen,
@@ -169,6 +170,12 @@ def maybe_log_debug_generation(
     max_frames = None if max_frames <= 0 else max_frames
     max_tokens = int(debug_config.get("max_tokens", 256))
     sample_idx = 0
+    for idx, transcript in enumerate(chunk_transcripts):
+        has_words = len(transcript) > 0
+        has_targets = bool(((frame_targets[idx] != model.get_silence_id()) & (frame_targets[idx] != -100)).any().item())
+        if has_words or has_targets:
+            sample_idx = idx
+            break
     generated = model.greedy_decode(
         audio_signal=chunk[sample_idx : sample_idx + 1],
         length=chunk_lengths[sample_idx : sample_idx + 1],
@@ -178,11 +185,44 @@ def maybe_log_debug_generation(
     prediction_ids = generated["predictions"][0, :pred_len].detach().cpu().tolist()
     prediction = decode_prediction_ids(tokenizer, prediction_ids, model.get_silence_id(), max_tokens=max_tokens)
     reference = reference_words(chunk_transcripts[sample_idx])
-    table = wandb.Table(
-        columns=["step", "records_seen", "id", "prediction", "reference"],
-        data=[[global_step, records_seen, ids[sample_idx], prediction, reference]],
+    pred_non_silence_fraction = 0.0
+    if pred_len > 0:
+        pred_non_silence_fraction = sum(int(idx) != model.get_silence_id() for idx in prediction_ids) / pred_len
+    valid_targets = frame_targets[sample_idx] != -100
+    target_non_silence = (frame_targets[sample_idx] != model.get_silence_id()) & valid_targets
+    target_non_silence_fraction = float(
+        target_non_silence.sum().float().div(valid_targets.sum().clamp_min(1).float()).detach().cpu()
     )
-    wandb.log({"debug_generation/autoregressive_sample": table, "debug_generation/records_seen": records_seen})
+    table = wandb.Table(
+        columns=[
+            "step",
+            "records_seen",
+            "id",
+            "prediction",
+            "reference",
+            "pred_non_silence_fraction",
+            "target_non_silence_fraction",
+        ],
+        data=[
+            [
+                global_step,
+                records_seen,
+                ids[sample_idx],
+                prediction,
+                reference,
+                pred_non_silence_fraction,
+                target_non_silence_fraction,
+            ]
+        ],
+    )
+    wandb.log(
+        {
+            "debug_generation/autoregressive_sample": table,
+            "debug_generation/records_seen": records_seen,
+            "debug_generation/pred_non_silence_fraction": pred_non_silence_fraction,
+            "debug_generation/target_non_silence_fraction": target_non_silence_fraction,
+        }
+    )
 
 
 def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_ids=None, epoch=0):
@@ -195,6 +235,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     backprop_every = args.config["training"].get("backprop_every", 1)
     delay_seconds = args.config["streaming"].get("delay_seconds", 2.0)
     buffer_seconds = args.config["streaming"].get("buffer_seconds", 0.25)
+    silence_loss_weight = float(args.config["streaming"].get("silence_loss_weight", 1.0))
     chunk_size = args.config["audio_chunking"]["size"]
     chunk_overlap = args.config["audio_chunking"].get("overlap", 0)
     assert chunk_size > chunk_overlap, "audio_chunking.size must be greater than overlap"
@@ -217,6 +258,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     next_checkpoint_record = checkpoint_every_records
     last_saved_step = None
     print(f"Scheduler total optimizer steps: {scheduler_total_steps}")
+    print(f"Silence loss weight: {silence_loss_weight}")
     if checkpoint_every_records > 0:
         print(f"Checkpoint save interval: {checkpoint_every_records} recordings")
     else:
@@ -272,6 +314,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                         chunk=chunk,
                         chunk_lengths=chunk_lengths,
                         chunk_transcripts=chunk_transcripts,
+                        frame_targets=frame_targets,
                         ids=[ids[i] for i, keep in enumerate(active.tolist()) if keep],
                         global_step=global_step,
                         records_seen=records_seen,
@@ -281,7 +324,12 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                     should_log_generation = False
 
                 with torch.autocast(device.type, dtype=dtype) if torch.cuda.is_available() else nullcontext():
-                    out = model.calc_loss(audio_signal=chunk, length=chunk_lengths, frame_targets=frame_targets)
+                    out = model.calc_loss(
+                        audio_signal=chunk,
+                        length=chunk_lengths,
+                        frame_targets=frame_targets,
+                        silence_loss_weight=silence_loss_weight,
+                    )
                     loss = out["loss"] / backprop_every
 
                 scaler.scale(loss).backward()
@@ -308,7 +356,14 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                             "step": global_step,
                         }
                     )
-                pbar.set_postfix({"loss": f"{out['display_losses']['loss']:.4f}", "step": global_step})
+                pbar.set_postfix(
+                    {
+                        "loss": f"{out['display_losses']['loss']:.4f}",
+                        "tgt_ns": f"{out['display_losses']['non_silence_fraction']:.3f}",
+                        "pred_ns": f"{out['display_losses']['predicted_non_silence_fraction']:.3f}",
+                        "step": global_step,
+                    }
+                )
                 if global_step >= max_steps:
                     if last_saved_step != global_step:
                         save_model(model, optimizer, scheduler, global_step, args.config, seen_ids=seen_ids, epoch=cur_epoch)

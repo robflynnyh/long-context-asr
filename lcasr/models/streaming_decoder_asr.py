@@ -181,6 +181,7 @@ class StreamingDecoderASR(BaseModel):
         audio_signal: torch.Tensor,
         length: torch.Tensor,
         frame_targets: torch.Tensor,
+        silence_loss_weight: float = 1.0,
     ) -> dict:
         out = self.forward(audio_signal=audio_signal, length=length, frame_targets=frame_targets, return_logits=True)
         logits = out["logits"]
@@ -191,21 +192,48 @@ class StreamingDecoderASR(BaseModel):
             else:
                 frame_targets = frame_targets[:, : logits.size(1)]
 
-        loss = F.cross_entropy(
+        per_frame_loss = F.cross_entropy(
+            logits.reshape(-1, logits.size(-1)),
+            frame_targets.reshape(-1).to(logits.device),
+            ignore_index=-100,
+            reduction="none",
+        ).view_as(frame_targets)
+        valid = frame_targets != -100
+        weights = torch.ones_like(per_frame_loss)
+        if silence_loss_weight != 1.0:
+            weights = weights.masked_fill(frame_targets == self.silence_id, float(silence_loss_weight))
+        loss = (per_frame_loss * weights * valid).sum() / (weights * valid).sum().clamp_min(1.0)
+
+        unweighted_loss = F.cross_entropy(
             logits.reshape(-1, logits.size(-1)),
             frame_targets.reshape(-1).to(logits.device),
             ignore_index=-100,
         )
         with torch.no_grad():
-            valid = frame_targets != -100
             silence = (frame_targets == self.silence_id) & valid
+            non_silence = (frame_targets != self.silence_id) & valid
             silence_fraction = silence.sum().float() / valid.sum().clamp_min(1).float()
+            non_silence_fraction = non_silence.sum().float() / valid.sum().clamp_min(1).float()
+            predictions = logits.argmax(dim=-1)
+            predicted_non_silence = (predictions != self.silence_id) & valid
+            predicted_non_silence_fraction = (
+                predicted_non_silence.sum().float() / valid.sum().clamp_min(1).float()
+            )
+            silence_loss = per_frame_loss[silence].mean() if silence.any() else per_frame_loss.new_tensor(0.0)
+            non_silence_loss = (
+                per_frame_loss[non_silence].mean() if non_silence.any() else per_frame_loss.new_tensor(0.0)
+            )
         return {
             **out,
             "loss": loss,
             "display_losses": {
                 "loss": float(loss.detach().cpu()),
+                "unweighted_loss": float(unweighted_loss.detach().cpu()),
+                "silence_loss": float(silence_loss.detach().cpu()),
+                "non_silence_loss": float(non_silence_loss.detach().cpu()),
                 "silence_fraction": float(silence_fraction.detach().cpu()),
+                "non_silence_fraction": float(non_silence_fraction.detach().cpu()),
+                "predicted_non_silence_fraction": float(predicted_non_silence_fraction.detach().cpu()),
             },
         }
 

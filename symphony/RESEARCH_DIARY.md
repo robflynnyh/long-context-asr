@@ -12,6 +12,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-17
 
 - ROB-76 final validation follow-up: after the batch-48 Mimas full-epoch run completed successfully, reran the requested Stanage CPU smoke from a clean clone pinned to PR head `db26b3d517b299b32858a196f4e46eaaa513f23c`. Job `10227532` completed on `interactive` with exit `0`, instantiated the 107.73M streaming decoder, reached one optimizer step on one Spotify record, and the targeted stdout/stderr scan found no traceback/error/failure/OOM lines. Logs are under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-76/rob76-stream-cpu-smoke-10227532.{out,err}`.
+- ROB-76 silence-collapse follow-up: after Linear noted the issue should not be in review because the Stanage GPU job had not completed and Mimas generations were blank, confirmed Stanage GPU job `10221264` failed in first-batch causal-subsampling `conv2d` with PyTorch's 32-bit indexing limit. The Mimas full-epoch run reduced loss but logged silence-heavy batches, including a final `silence_fraction=1.0`, so the trainer now downweights silence CE via `streaming.silence_loss_weight: 0.1`, logs target/predicted non-silence fractions plus silence/non-silence losses, and makes W&B debug generation prefer samples with word/non-silence targets. The full 100M config batch size is reduced from `176` to `48`, matching the Mimas batch that already smoked cleanly.
 
 ## 2026-05-13
 
