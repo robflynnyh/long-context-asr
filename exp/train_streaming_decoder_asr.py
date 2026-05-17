@@ -235,6 +235,8 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     backprop_every = args.config["training"].get("backprop_every", 1)
     delay_seconds = args.config["streaming"].get("delay_seconds", 2.0)
     buffer_seconds = args.config["streaming"].get("buffer_seconds", 0.25)
+    silence_soft_dilation_seconds = float(args.config["streaming"].get("silence_soft_dilation_seconds", 0.0))
+    silence_soft_dilation_frames = int(round(total_frames(silence_soft_dilation_seconds) / model.subsampling_factor))
     chunk_size = args.config["audio_chunking"]["size"]
     chunk_overlap = args.config["audio_chunking"].get("overlap", 0)
     shuffle_chunks = bool(args.config["training"].get("shuffle_chunks", True))
@@ -260,6 +262,10 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     print(f"Scheduler total optimizer steps: {scheduler_total_steps}")
     print("Prediction heads: binary silence + conditional text")
     print(f"Shuffle chunks: {shuffle_chunks}")
+    print(
+        "Silence target soft dilation: "
+        f"{silence_soft_dilation_seconds:.3f}s -> {silence_soft_dilation_frames} decoder frames"
+    )
     if checkpoint_every_records > 0:
         print(f"Checkpoint save interval: {checkpoint_every_records} recordings")
     else:
@@ -332,6 +338,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                         audio_signal=chunk,
                         length=chunk_lengths,
                         frame_targets=frame_targets,
+                        silence_soft_dilation_frames=silence_soft_dilation_frames,
                     )
                     loss = out["loss"] / backprop_every
 
@@ -363,6 +370,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                     {
                         "loss": f"{out['display_losses']['loss']:.4f}",
                         "tgt_ns": f"{out['display_losses']['non_silence_fraction']:.3f}",
+                        "soft_ns": f"{out['display_losses']['soft_non_silence_fraction']:.3f}",
                         "pred_ns": f"{out['display_losses']['predicted_non_silence_fraction']:.3f}",
                         "step": global_step,
                     }

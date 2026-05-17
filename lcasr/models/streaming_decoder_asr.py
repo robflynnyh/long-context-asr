@@ -177,6 +177,34 @@ class StreamingDecoderASR(BaseModel):
             torch.full_like(text_pred, self.silence_id),
         )
 
+    @staticmethod
+    def _mass_preserving_soft_targets(
+        non_silence: torch.Tensor,
+        valid: torch.Tensor,
+        radius_frames: int,
+    ) -> torch.Tensor:
+        hard_targets = non_silence.float()
+        if radius_frames <= 0:
+            return hard_targets
+
+        kernel_width = 2 * radius_frames + 1
+        kernel = hard_targets.new_full((1, 1, kernel_width), 1.0 / kernel_width)
+        soft_targets = F.conv1d(
+            hard_targets.unsqueeze(1),
+            kernel,
+            padding=radius_frames,
+        ).squeeze(1)
+        soft_targets = soft_targets * valid.float()
+
+        hard_mass = hard_targets.sum(dim=1, keepdim=True)
+        soft_mass = soft_targets.sum(dim=1, keepdim=True)
+        scale = torch.where(
+            soft_mass > 0,
+            hard_mass / soft_mass.clamp_min(1e-8),
+            torch.ones_like(soft_mass),
+        )
+        return (soft_targets * scale).clamp(max=1.0)
+
     def forward(
         self,
         audio_signal: torch.Tensor,
@@ -217,6 +245,7 @@ class StreamingDecoderASR(BaseModel):
         audio_signal: torch.Tensor,
         length: torch.Tensor,
         frame_targets: torch.Tensor,
+        silence_soft_dilation_frames: int = 0,
     ) -> dict:
         out = self.forward(audio_signal=audio_signal, length=length, frame_targets=frame_targets, return_logits=True)
         logits = out["logits"]
@@ -230,16 +259,17 @@ class StreamingDecoderASR(BaseModel):
 
         valid = frame_targets != -100
         non_silence = (frame_targets != self.silence_id) & valid
-        silence_targets = torch.where(
-            valid,
-            non_silence.long(),
-            torch.full_like(frame_targets, -100),
+        soft_non_silence = self._mass_preserving_soft_targets(
+            non_silence=non_silence,
+            valid=valid,
+            radius_frames=int(silence_soft_dilation_frames),
         )
-        silence_loss = F.cross_entropy(
-            out["silence_logits"].reshape(-1, 2),
-            silence_targets.reshape(-1).to(logits.device),
-            ignore_index=-100,
+        silence_log_probs = F.log_softmax(out["silence_logits"], dim=-1)
+        silence_loss_terms = -(
+            (1.0 - soft_non_silence) * silence_log_probs[..., 0]
+            + soft_non_silence * silence_log_probs[..., 1]
         )
+        silence_loss = silence_loss_terms[valid].mean() if valid.any() else silence_loss_terms.sum() * 0.0
         if non_silence.any():
             text_loss = F.cross_entropy(
                 out["text_logits"][non_silence],
@@ -253,6 +283,7 @@ class StreamingDecoderASR(BaseModel):
             silence = (frame_targets == self.silence_id) & valid
             silence_fraction = silence.sum().float() / valid.sum().clamp_min(1).float()
             non_silence_fraction = non_silence.sum().float() / valid.sum().clamp_min(1).float()
+            soft_non_silence_fraction = soft_non_silence.sum() / valid.sum().clamp_min(1).float()
             predictions = self._predict_ids(out["silence_logits"], out["text_logits"])
             predicted_non_silence = (predictions != self.silence_id) & valid
             predicted_non_silence_fraction = (
@@ -269,6 +300,7 @@ class StreamingDecoderASR(BaseModel):
                 "text_loss": float(text_loss.detach().cpu()),
                 "silence_fraction": float(silence_fraction.detach().cpu()),
                 "non_silence_fraction": float(non_silence_fraction.detach().cpu()),
+                "soft_non_silence_fraction": float(soft_non_silence_fraction.detach().cpu()),
                 "predicted_non_silence_fraction": float(predicted_non_silence_fraction.detach().cpu()),
             },
         }
