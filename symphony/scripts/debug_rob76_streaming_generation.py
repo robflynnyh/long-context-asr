@@ -40,7 +40,6 @@ def main():
     parser.add_argument("--max-frames", type=int, default=0)
     parser.add_argument("--sample-runs", type=int, default=1)
     parser.add_argument("--sample-temperature", type=float, default=1.0)
-    parser.add_argument("--sample-top-k", type=int, default=0)
     parser.add_argument("--sample-seed", type=int, default=1337)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
@@ -77,9 +76,9 @@ def main():
     print(f"step={checkpoint.get('podcast_step')} epoch={checkpoint.get('epoch')}")
     print(f"device={device} silence_id={silence_id} max_frames={max_frames}")
     print(
-        "sampling="
+        "silence_head_sampling="
         f"runs={args.sample_runs} temperature={args.sample_temperature} "
-        f"top_k={args.sample_top_k} seed={args.sample_seed}"
+        f"seed={args.sample_seed}; text head is greedy"
     )
 
     reported = 0
@@ -122,9 +121,8 @@ def main():
                     audio_signal=chunk,
                     length=chunk_lengths,
                     frame_targets=frame_targets,
-                    silence_loss_weight=float(config["streaming"].get("silence_loss_weight", 1.0)),
                 )
-                tf_ids = loss_out["logits"].argmax(dim=-1)[0, : int(output_lengths[0].item())].detach().cpu().tolist()
+                tf_ids = loss_out["predictions"][0, : int(output_lengths[0].item())].detach().cpu().tolist()
                 tf_text = decode_prediction_ids(tokenizer, tf_ids, silence_id=silence_id, max_tokens=80)
 
                 silence_feedback_targets = torch.full_like(frame_targets, silence_id)
@@ -135,9 +133,10 @@ def main():
                     frame_targets=silence_feedback_targets,
                     return_logits=True,
                 )
-                silence_ids = (
-                    silence_feedback["logits"].argmax(dim=-1)[0, : int(output_lengths[0].item())].detach().cpu().tolist()
-                )
+                silence_ids = model._predict_ids(
+                    silence_feedback["silence_logits"],
+                    silence_feedback["text_logits"],
+                )[0, : int(output_lengths[0].item())].detach().cpu().tolist()
                 silence_fb_ns = sum(int(idx) != silence_id for idx in silence_ids) / max(len(silence_ids), 1)
                 silence_fb_text = decode_prediction_ids(tokenizer, silence_ids, silence_id=silence_id, max_tokens=80)
 
@@ -173,7 +172,6 @@ def main():
                         length=chunk_lengths[:1],
                         max_frames=max_frames,
                         temperature=args.sample_temperature,
-                        top_k=args.sample_top_k,
                     )
                     sampled_len = int(sampled["length"][0].item())
                     sampled_ids = sampled["predictions"][0, :sampled_len].detach().cpu().tolist()

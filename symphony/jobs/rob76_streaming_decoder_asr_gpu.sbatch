@@ -14,7 +14,7 @@ set -Eeuo pipefail
 REPO_DIR="${ROB76_REPO_DIR:-/mnt/parscratch/users/acp21rjf/symphony-workspaces-long-context-asr/ROB-76}"
 ARTIFACT_DIR="${ROB76_ARTIFACT_DIR:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-76}"
 CONFIG_PATH="${ROB76_CONFIG_PATH:-exp/configs/streaming_decoder_asr_100m.yaml}"
-CHECKPOINT_DIR="${ROB76_CHECKPOINT_DIR:-/mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m}"
+CHECKPOINT_DIR="${ROB76_CHECKPOINT_DIR:-/mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m_two_head}"
 LINEAR_KEY_FILE="${ROB76_LINEAR_KEY_FILE:-$ARTIFACT_DIR/.linear_api_key}"
 JOB_ID="${SLURM_JOB_ID:-manual}"
 OUT_LOG="$ARTIFACT_DIR/rob76-stream-train-${JOB_ID}.out"

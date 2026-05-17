@@ -31,8 +31,6 @@ audio_chunking:
 streaming:
   delay_seconds: 0.2
   buffer_seconds: 0.05
-  silence_loss_weight: 0.1
-  scheduled_sampling_probability: 0.5
 
 wandb:
   use: false
@@ -60,3 +58,4 @@ training:
   clip_value: 0.8
   dtype: float32
   random_seed: 6433
+  shuffle_chunks: true

@@ -116,7 +116,8 @@ class StreamingDecoderASR(BaseModel):
             ]
         )
         self.norm = LayerNorm(d_model) if decoder_norm else nn.Identity()
-        self.decoder = nn.Linear(d_model, self.num_classes, bias=False)
+        self.silence_head = nn.Linear(d_model, 2, bias=False)
+        self.text_head = nn.Linear(d_model, vocab_size, bias=False)
 
     def get_silence_id(self) -> int:
         return self.silence_id
@@ -149,6 +150,33 @@ class StreamingDecoderASR(BaseModel):
             prev = prev.masked_fill(drop, self.silence_id)
         return prev
 
+    def _combined_logits(self, silence_logits: torch.Tensor, text_logits: torch.Tensor) -> torch.Tensor:
+        silence_score = silence_logits[..., 0:1]
+        token_scores = text_logits + silence_logits[..., 1:2]
+        return torch.cat([token_scores, silence_score], dim=-1)
+
+    def _predict_ids(
+        self,
+        silence_logits: torch.Tensor,
+        text_logits: torch.Tensor,
+        sample_silence: bool = False,
+        silence_temperature: float = 1.0,
+    ) -> torch.Tensor:
+        if sample_silence:
+            silence_temperature = max(float(silence_temperature), 1e-6)
+            silence_pred = torch.multinomial(
+                (silence_logits / silence_temperature).softmax(dim=-1).reshape(-1, 2),
+                num_samples=1,
+            ).view(silence_logits.shape[:-1])
+        else:
+            silence_pred = silence_logits.argmax(dim=-1)
+        text_pred = text_logits.argmax(dim=-1)
+        return torch.where(
+            silence_pred.bool(),
+            text_pred,
+            torch.full_like(text_pred, self.silence_id),
+        )
+
     def forward(
         self,
         audio_signal: torch.Tensor,
@@ -170,8 +198,16 @@ class StreamingDecoderASR(BaseModel):
             x = x.masked_fill(key_padding_mask.unsqueeze(-1), 0)
         for layer in self.layers:
             x = layer(x, key_padding_mask=key_padding_mask)
-        logits = self.decoder(self.norm(x))
-        output = {"logits": logits, "length": out_lengths}
+        x = self.norm(x)
+        silence_logits = self.silence_head(x)
+        text_logits = self.text_head(x)
+        logits = self._combined_logits(silence_logits, text_logits)
+        output = {
+            "logits": logits,
+            "silence_logits": silence_logits,
+            "text_logits": text_logits,
+            "length": out_lengths,
+        }
         if not return_logits:
             output["final_posteriors"] = F.log_softmax(logits, dim=-1)
         return output
@@ -181,39 +217,8 @@ class StreamingDecoderASR(BaseModel):
         audio_signal: torch.Tensor,
         length: torch.Tensor,
         frame_targets: torch.Tensor,
-        silence_loss_weight: float = 1.0,
-        scheduled_sampling_probability: float = 0.0,
     ) -> dict:
-        feedback_targets = frame_targets
-        scheduled_feedback_fraction = frame_targets.new_tensor(0.0, dtype=torch.float)
-        scheduled_feedback_pred_non_silence_fraction = frame_targets.new_tensor(0.0, dtype=torch.float)
-        scheduled_sampling_probability = float(scheduled_sampling_probability)
-        if self.training and scheduled_sampling_probability > 0:
-            with torch.no_grad():
-                teacher_out = self.forward(
-                    audio_signal=audio_signal,
-                    length=length,
-                    frame_targets=frame_targets,
-                    return_logits=True,
-                )
-                teacher_predictions = teacher_out["logits"].argmax(dim=-1)
-                if teacher_predictions.size(1) != frame_targets.size(1):
-                    if teacher_predictions.size(1) < frame_targets.size(1):
-                        pad = frame_targets.size(1) - teacher_predictions.size(1)
-                        teacher_predictions = F.pad(teacher_predictions, (0, pad), value=self.silence_id)
-                    else:
-                        teacher_predictions = teacher_predictions[:, : frame_targets.size(1)]
-                valid = frame_targets != -100
-                sample_mask = (torch.rand_like(frame_targets, dtype=torch.float) < scheduled_sampling_probability) & valid
-                feedback_targets = frame_targets.masked_scatter(sample_mask, teacher_predictions[sample_mask])
-                scheduled_feedback_fraction = sample_mask.sum().float() / valid.sum().clamp_min(1).float()
-                sampled_predictions = teacher_predictions[sample_mask]
-                if sampled_predictions.numel() > 0:
-                    scheduled_feedback_pred_non_silence_fraction = (
-                        sampled_predictions.ne(self.silence_id).sum().float() / sampled_predictions.numel()
-                    )
-
-        out = self.forward(audio_signal=audio_signal, length=length, frame_targets=feedback_targets, return_logits=True)
+        out = self.forward(audio_signal=audio_signal, length=length, frame_targets=frame_targets, return_logits=True)
         logits = out["logits"]
         if frame_targets.size(1) != logits.size(1):
             if frame_targets.size(1) < logits.size(1):
@@ -221,53 +226,50 @@ class StreamingDecoderASR(BaseModel):
                 frame_targets = F.pad(frame_targets, (0, pad), value=-100)
             else:
                 frame_targets = frame_targets[:, : logits.size(1)]
+        frame_targets = frame_targets.to(logits.device)
 
-        per_frame_loss = F.cross_entropy(
-            logits.reshape(-1, logits.size(-1)),
-            frame_targets.reshape(-1).to(logits.device),
-            ignore_index=-100,
-            reduction="none",
-        ).view_as(frame_targets)
         valid = frame_targets != -100
-        weights = torch.ones_like(per_frame_loss)
-        if silence_loss_weight != 1.0:
-            weights = weights.masked_fill(frame_targets == self.silence_id, float(silence_loss_weight))
-        loss = (per_frame_loss * weights * valid).sum() / (weights * valid).sum().clamp_min(1.0)
-
-        unweighted_loss = F.cross_entropy(
-            logits.reshape(-1, logits.size(-1)),
-            frame_targets.reshape(-1).to(logits.device),
+        non_silence = (frame_targets != self.silence_id) & valid
+        silence_targets = torch.where(
+            valid,
+            non_silence.long(),
+            torch.full_like(frame_targets, -100),
+        )
+        silence_loss = F.cross_entropy(
+            out["silence_logits"].reshape(-1, 2),
+            silence_targets.reshape(-1).to(logits.device),
             ignore_index=-100,
         )
+        if non_silence.any():
+            text_loss = F.cross_entropy(
+                out["text_logits"][non_silence],
+                frame_targets[non_silence].to(logits.device),
+            )
+        else:
+            text_loss = out["text_logits"].sum() * 0.0
+        loss = silence_loss + text_loss
+
         with torch.no_grad():
             silence = (frame_targets == self.silence_id) & valid
-            non_silence = (frame_targets != self.silence_id) & valid
             silence_fraction = silence.sum().float() / valid.sum().clamp_min(1).float()
             non_silence_fraction = non_silence.sum().float() / valid.sum().clamp_min(1).float()
-            predictions = logits.argmax(dim=-1)
+            predictions = self._predict_ids(out["silence_logits"], out["text_logits"])
             predicted_non_silence = (predictions != self.silence_id) & valid
             predicted_non_silence_fraction = (
                 predicted_non_silence.sum().float() / valid.sum().clamp_min(1).float()
             )
-            silence_loss = per_frame_loss[silence].mean() if silence.any() else per_frame_loss.new_tensor(0.0)
-            non_silence_loss = (
-                per_frame_loss[non_silence].mean() if non_silence.any() else per_frame_loss.new_tensor(0.0)
-            )
         return {
             **out,
             "loss": loss,
+            "predictions": predictions,
             "display_losses": {
                 "loss": float(loss.detach().cpu()),
-                "unweighted_loss": float(unweighted_loss.detach().cpu()),
                 "silence_loss": float(silence_loss.detach().cpu()),
-                "non_silence_loss": float(non_silence_loss.detach().cpu()),
+                "non_silence_loss": float(text_loss.detach().cpu()),
+                "text_loss": float(text_loss.detach().cpu()),
                 "silence_fraction": float(silence_fraction.detach().cpu()),
                 "non_silence_fraction": float(non_silence_fraction.detach().cpu()),
                 "predicted_non_silence_fraction": float(predicted_non_silence_fraction.detach().cpu()),
-                "scheduled_feedback_fraction": float(scheduled_feedback_fraction.detach().cpu()),
-                "scheduled_feedback_pred_non_silence_fraction": float(
-                    scheduled_feedback_pred_non_silence_fraction.detach().cpu()
-                ),
             },
         }
 
@@ -300,8 +302,12 @@ class StreamingDecoderASR(BaseModel):
                 h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
             for layer in self.layers:
                 h = layer(h, key_padding_mask=key_padding_mask)
-            step_logits = self.decoder(self.norm(h[:, step]))
-            step_prediction = step_logits.argmax(dim=-1)
+            step_h = self.norm(h[:, step])
+            step_prediction = self._predict_ids(
+                self.silence_head(step_h),
+                self.text_head(step_h),
+                sample_silence=False,
+            )
             predictions.append(step_prediction)
             if step + 1 < x.size(1):
                 prev_ids[:, step + 1] = step_prediction
@@ -317,14 +323,12 @@ class StreamingDecoderASR(BaseModel):
         length: Optional[torch.Tensor] = None,
         max_frames: Optional[int] = None,
         temperature: float = 1.0,
-        top_k: int = 0,
     ) -> dict:
         was_training = self.training
         self.eval()
         if length is None:
             length = torch.full((audio_signal.size(0),), audio_signal.size(-1), device=audio_signal.device)
 
-        temperature = max(float(temperature), 1e-6)
         x = audio_signal.transpose(1, 2)
         x, out_lengths = self.subsampling(x, lengths=length)
         if max_frames is not None and x.size(1) > max_frames:
@@ -342,11 +346,13 @@ class StreamingDecoderASR(BaseModel):
                 h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
             for layer in self.layers:
                 h = layer(h, key_padding_mask=key_padding_mask)
-            step_logits = self.decoder(self.norm(h[:, step])) / temperature
-            if top_k > 0 and top_k < step_logits.size(-1):
-                threshold = step_logits.topk(top_k, dim=-1).values[:, -1].unsqueeze(-1)
-                step_logits = step_logits.masked_fill(step_logits < threshold, float("-inf"))
-            step_prediction = torch.multinomial(step_logits.softmax(dim=-1), num_samples=1).squeeze(-1)
+            step_h = self.norm(h[:, step])
+            step_prediction = self._predict_ids(
+                self.silence_head(step_h),
+                self.text_head(step_h),
+                sample_silence=True,
+                silence_temperature=temperature,
+            )
             predictions.append(step_prediction)
             if step + 1 < x.size(1):
                 prev_ids[:, step + 1] = step_prediction

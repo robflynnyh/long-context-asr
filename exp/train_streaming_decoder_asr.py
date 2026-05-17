@@ -235,10 +235,9 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     backprop_every = args.config["training"].get("backprop_every", 1)
     delay_seconds = args.config["streaming"].get("delay_seconds", 2.0)
     buffer_seconds = args.config["streaming"].get("buffer_seconds", 0.25)
-    silence_loss_weight = float(args.config["streaming"].get("silence_loss_weight", 1.0))
-    scheduled_sampling_probability = float(args.config["streaming"].get("scheduled_sampling_probability", 0.0))
     chunk_size = args.config["audio_chunking"]["size"]
     chunk_overlap = args.config["audio_chunking"].get("overlap", 0)
+    shuffle_chunks = bool(args.config["training"].get("shuffle_chunks", True))
     assert chunk_size > chunk_overlap, "audio_chunking.size must be greater than overlap"
     scheduler_total_steps = args.config["training"].get("scheduler_total_steps")
     if scheduler_total_steps is None:
@@ -259,8 +258,8 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     next_checkpoint_record = checkpoint_every_records
     last_saved_step = None
     print(f"Scheduler total optimizer steps: {scheduler_total_steps}")
-    print(f"Silence loss weight: {silence_loss_weight}")
-    print(f"Scheduled sampling probability: {scheduled_sampling_probability}")
+    print("Prediction heads: binary silence + conditional text")
+    print(f"Shuffle chunks: {shuffle_chunks}")
     if checkpoint_every_records > 0:
         print(f"Checkpoint save interval: {checkpoint_every_records} recordings")
     else:
@@ -276,7 +275,10 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
             should_save_checkpoint = checkpoint_every_records > 0 and records_seen >= next_checkpoint_record
             processed_chunk = False
             stride = chunk_size - chunk_overlap
-            for chunk_start in range(0, int(audio_lengths.max().item()), stride):
+            chunk_starts_for_batch = list(range(0, int(audio_lengths.max().item()), stride))
+            if shuffle_chunks and len(chunk_starts_for_batch) > 1:
+                random.shuffle(chunk_starts_for_batch)
+            for chunk_start in chunk_starts_for_batch:
                 active = audio_lengths > chunk_start
                 if active.sum().item() == 0:
                     continue
@@ -330,8 +332,6 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                         audio_signal=chunk,
                         length=chunk_lengths,
                         frame_targets=frame_targets,
-                        silence_loss_weight=silence_loss_weight,
-                        scheduled_sampling_probability=scheduled_sampling_probability,
                     )
                     loss = out["loss"] / backprop_every
 
