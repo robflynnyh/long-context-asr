@@ -24,6 +24,9 @@ CALLBACK_PYTHON="${ROB76_CALLBACK_PYTHON:-python3}"
 NUM_WORKERS="${ROB76_NUM_WORKERS:-0}"
 PREFETCH="${ROB76_PREFETCH:-1}"
 PIN_MEMORY="${ROB76_PIN_MEMORY:-0}"
+BATCH_SIZE="${ROB76_BATCH_SIZE:-}"
+MAX_RECORDS="${ROB76_MAX_RECORDS:-}"
+MAX_STEPS="${ROB76_MAX_STEPS:-}"
 
 on_exit() {
   local status=$?
@@ -39,6 +42,9 @@ on_exit() {
     echo "num_workers=${NUM_WORKERS}"
     echo "prefetch=${PREFETCH}"
     echo "pin_memory=${PIN_MEMORY}"
+    echo "batch_size_override=${BATCH_SIZE:-unset}"
+    echo "max_records=${MAX_RECORDS:-unset}"
+    echo "max_steps=${MAX_STEPS:-unset}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB76_ENABLE_CALLBACK:-1}" == "1" ]]; then
     if [[ -z "${LINEAR_API_KEY:-}" && -f "$LINEAR_KEY_FILE" ]]; then
@@ -105,18 +111,27 @@ echo "checkpoint_dir=${CHECKPOINT_DIR}"
 echo "num_workers=${NUM_WORKERS}"
 echo "prefetch=${PREFETCH}"
 echo "pin_memory=${PIN_MEMORY}"
+echo "batch_size_override=${BATCH_SIZE:-unset}"
+echo "max_records=${MAX_RECORDS:-unset}"
+echo "max_steps=${MAX_STEPS:-unset}"
 
+train_args=(
+  -config "$CONFIG_PATH"
+  -num_workers "$NUM_WORKERS"
+  -prefetch "$PREFETCH"
+  -checkpoint_dir "$CHECKPOINT_DIR"
+)
 if [[ "$PIN_MEMORY" == "1" ]]; then
-  python exp/train_streaming_decoder_asr.py \
-    -config "$CONFIG_PATH" \
-    -num_workers "$NUM_WORKERS" \
-    -pin_memory \
-    -prefetch "$PREFETCH" \
-    -checkpoint_dir "$CHECKPOINT_DIR"
-else
-  python exp/train_streaming_decoder_asr.py \
-    -config "$CONFIG_PATH" \
-    -num_workers "$NUM_WORKERS" \
-    -prefetch "$PREFETCH" \
-    -checkpoint_dir "$CHECKPOINT_DIR"
+  train_args+=(-pin_memory)
 fi
+if [[ -n "$BATCH_SIZE" ]]; then
+  train_args+=(-batch_size "$BATCH_SIZE")
+fi
+if [[ -n "$MAX_RECORDS" ]]; then
+  train_args+=(-max_records "$MAX_RECORDS")
+fi
+if [[ -n "$MAX_STEPS" ]]; then
+  train_args+=(-max_steps "$MAX_STEPS")
+fi
+
+python exp/train_streaming_decoder_asr.py "${train_args[@]}"

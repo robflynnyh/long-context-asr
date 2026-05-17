@@ -12,7 +12,7 @@ model:
   subsampling: dw_striding
   subsampling_act: silu
   subsampling_conv_channels: 256
-  subsampling_conv_chunking_factor: 2
+  subsampling_conv_chunking_factor: 8
   subsampling_norm_out: true
   decoder_norm: true
   previous_token_dropout: 0.0
@@ -50,7 +50,7 @@ data:
 
 training:
   tokenizer_path: lcasr/artifacts/tokenizer.model
-  batch_size: 48
+  batch_size: 176
   backprop_every: 1
   max_epochs: 3
   clip_value: 0.8
