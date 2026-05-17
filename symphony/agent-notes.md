@@ -25,6 +25,11 @@ edits, short inspections, and Linear updates. Stanage is the default execution
 target for long-context ASR compute; use SSH from Mimas and submit work through
 Slurm unless a human explicitly asks for Mimas/local execution.
 
+Never use `/tmp` on Mimas for Symphony work. For short-lived local scratch on
+Mimas, use the repo-local ignored `.tmp/` directory or another issue-specific,
+user-owned path under `/exp/exp4/acp21rjf/`, then clean it before handoff unless
+it is retained as validation evidence.
+
 Older repo Slurm scripts usually use:
 
 ```bash
@@ -60,6 +65,7 @@ Many scripts contain Rob-specific parscratch defaults. Before running training o
 workflow. Repo-specific reminders:
 
 - For default Stanage work, use `/mnt/parscratch/users/acp21rjf/symphony-tmp` for temporary files and `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts` for job logs/artifacts. Keep large outputs, checkpoints, downloads, logs, and validation artifacts out of the repo.
+- For Mimas-local scratch, never use `/tmp`; prefer `.tmp/` in the checkout or another issue-specific user-owned path under `/exp/exp4/acp21rjf/`.
 - Keep command output bounded with targeted `rg`, `head`, `tail`, `sed -n`, filtered Slurm fields, and `git diff --stat`. Summarize large artifacts and reference paths instead of loading raw output into context.
 - Use `symphony/RESEARCH_DIARY.md` for concise outcome summaries only. Put routine queue checks, repeated resume observations, and detailed troubleshooting trails in the Linear workpad when needed.
 - After launching long-running GPU training or evaluation, hand off with job IDs, log paths, expected outputs, and follow-up commands, then stop.

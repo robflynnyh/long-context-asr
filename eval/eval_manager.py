@@ -112,7 +112,7 @@ def main(args, config):
                 if config.args.save_dataframe_path != '':
                     print(f'Saving results to {config.args.save_dataframe_path}')
                     df = pd.DataFrame(data_to_save)
-                    df.to_csv(config.args.save_dataframe_path, mode='a', header=not os.path.exists(config.args.save_dataframe_path)) 
+                    df.to_csv(config.args.save_dataframe_path, mode='a', header=not os.path.exists(config.args.save_dataframe_path), index=False)
 
                 evals_completed += 1
                 pbar.update(1)

@@ -9,6 +9,14 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-17
+
+- ROB-76 final validation follow-up: after the batch-48 Mimas full-epoch run completed successfully, reran the requested Stanage CPU smoke from a clean clone pinned to PR head `db26b3d517b299b32858a196f4e46eaaa513f23c`. Job `10227532` completed on `interactive` with exit `0`, instantiated the 107.73M streaming decoder, reached one optimizer step on one Spotify record, and the targeted stdout/stderr scan found no traceback/error/failure/OOM lines. Logs are under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-76/rob76-stream-cpu-smoke-10227532.{out,err}`.
+
+## 2026-05-13
+
+- ROB-85 on branch `symphony/ROB-85-update-rules`: updated Symphony execution rules and agent notes to ban `/tmp` on Mimas. Future Mimas-local scratch should use repo-local `.tmp/` or another issue-specific user-owned path under `/exp/exp4/acp21rjf/`; Stanage scratch remains `/mnt/parscratch/users/acp21rjf/symphony-tmp`.
+
 ## 2026-05-01
 
 - ROB-24 on branch `symphony/ROB-24-agent-docs`: added focused future-agent notes under `symphony/` for repo orientation, training, evaluation, and Slurm patterns. Opened PR https://github.com/robflynnyh/long-context-asr/pull/2 against `dev`. No Slurm jobs launched.
@@ -27,6 +35,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 ## 2026-05-11
 
+- ROB-69 on branch `symphony/ROB-69-18l-long-context-benchmark`: added an 18L long-only finetune benchmark config comparing `FT_3epoch_18L` checkpoints against matched 18L baseline checkpoints. Stanage CPU smoke job `10156237` completed successfully after seeding 75 baseline rows and checking 30 model entries, five dataset loaders, output paths, and sampled checkpoint metadata. Queued H100 eval job `10156464` with finalizer/callback job `10156465`; remote result path is `/mnt/parscratch/users/acp21rjf/symphony-workspaces-long-context-asr/ROB-69/eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`.
 - ROB-76 on branch `symphony/ROB-76-streaming-decoder-asr`: added a decoder-only streaming ASR training path with causal subsampling, causal transformer decoding, previous-token teacher forcing into the next acoustic frame, delayed frame-synchronous targets from word timings, and an explicit silence class. The intended config `exp/configs/streaming_decoder_asr_100m.yaml` instantiates `StreamingDecoderASR` at 107.73M parameters. Stanage CPU smoke job `10159374` completed successfully on `interactive`; logs are under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-76/rob76-stream-smoke-10159374.{out,err}`.
 - ROB-76 review follow-up: clarified that the streaming decoder uses PyTorch SDPA, then changed unpadded self-attention to call SDPA with `is_causal=True` directly while retaining the explicit causal-plus-padding mask for padded batches. Local validation confirmed the native causal branch and padded-mask fallback both run, and the synthetic CPU training smoke still completes. Fresh Stanage CPU smoke job `10160096` completed successfully on `interactive`; logs are under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-76/rob76-stream-smoke-fresh-10160096.{out,err}`.
 - ROB-76 shared-attention follow-up: answered Linear QQ about reusing `lcasr.components.attention.Attention`, removed the duplicate streaming self-attention block, and routed `StreamingDecoderASR` through the shared causal attention component. The shared CPU SDPA path now combines causal and padding masks explicitly only when a padding mask is present, preserving `is_causal=True` for unmasked batches. Local compile, padded forward/backward, and synthetic one-step training smokes passed. Stanage CPU smoke job `10160756` completed successfully on `interactive` from commit `446158dfb8893a17fe83e7b604d3bf806c6328e6`; logs are under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-76/rob76-component-attn-smoke-10160756.{out,err}`.
@@ -47,6 +56,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - ROB-76 Mimas batch-size follow-up: after Linear requested a larger Mimas run batch, changed the Mimas full-epoch wrapper/helper defaults from `batch_size: 4` to `batch_size: 16`. This supersedes the active batch-4 Mimas launch once a replacement is smoked and started.
 - ROB-76 Mimas generation-length follow-up: after Linear asked what `debug_generate_max_frames` means and requested whole-recording generation, changed the Mimas wrapper/helper default to `debug_generate_max_frames: 0` and made non-positive values disable the greedy-decoding frame cap. The current debug hook still runs inside the chunked training path, so uncapped means the full current training chunk rather than a separate full original source-recording decode.
 - ROB-76 Mimas batch-48 follow-up: after Linear requested tripling the Mimas batch size while keeping LR unchanged, changed the Mimas full-epoch wrapper/helper defaults from `batch_size: 16` to `batch_size: 48` and kept `ROB76_LEARNING_RATE` at `5e-5`. Validation smoke `rob76-mimas-b48-smoke-20260516T215103Z` ran through `/store/store5/software/simple-gpu-schedule/with-gpu` on GPU 0 with `max_records=48`, `max_steps=1`, W&B disabled, and callbacks disabled; it reached step 1, exited `0`, wrote checkpoint `step_1.pt`, and the targeted log scan found no traceback/error/failure/OOM lines.
+
+## 2026-05-12
+
+- ROB-69 eval job `10156464` completed successfully, but finalizer job `10156465` failed because appended finetuned CSV rows included an extra pandas index field. Normalized the completed remote result into `eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`, made ROB-69 summarization tolerate and normalize that output shape, and fixed eval manager CSV appends to write `index=False`. Mean WER was slightly worse for the long-only finetuned checkpoints on most dataset/window pairs, with small improvements only on `rev16` window 128, `tedlium` window 8192, and `this_american_life` windows 128 and 22500.
 
 ## 2026-05-02
 
