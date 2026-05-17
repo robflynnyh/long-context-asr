@@ -38,6 +38,10 @@ def main():
     parser.add_argument("--samples", type=int, default=4)
     parser.add_argument("--max-records", type=int, default=64)
     parser.add_argument("--max-frames", type=int, default=0)
+    parser.add_argument("--sample-runs", type=int, default=1)
+    parser.add_argument("--sample-temperature", type=float, default=1.0)
+    parser.add_argument("--sample-top-k", type=int, default=0)
+    parser.add_argument("--sample-seed", type=int, default=1337)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
 
@@ -72,6 +76,11 @@ def main():
     print(f"checkpoint={checkpoint_path}")
     print(f"step={checkpoint.get('podcast_step')} epoch={checkpoint.get('epoch')}")
     print(f"device={device} silence_id={silence_id} max_frames={max_frames}")
+    print(
+        "sampling="
+        f"runs={args.sample_runs} temperature={args.sample_temperature} "
+        f"top_k={args.sample_top_k} seed={args.sample_seed}"
+    )
 
     reported = 0
     with torch.no_grad():
@@ -155,6 +164,30 @@ def main():
                 print(f"  teacher_forced_text='{tf_text[:200]}'")
                 print(f"  silence_feedback_text='{silence_fb_text[:200]}'")
                 print(f"  free_text='{free_text[:200]}'")
+                for sample_run in range(args.sample_runs):
+                    torch.manual_seed(args.sample_seed + reported * max(args.sample_runs, 1) + sample_run)
+                    if device.type == "cuda":
+                        torch.cuda.manual_seed_all(args.sample_seed + reported * max(args.sample_runs, 1) + sample_run)
+                    sampled = model.sample_decode(
+                        audio_signal=chunk[:1],
+                        length=chunk_lengths[:1],
+                        max_frames=max_frames,
+                        temperature=args.sample_temperature,
+                        top_k=args.sample_top_k,
+                    )
+                    sampled_len = int(sampled["length"][0].item())
+                    sampled_ids = sampled["predictions"][0, :sampled_len].detach().cpu().tolist()
+                    sampled_ns = sum(int(idx) != silence_id for idx in sampled_ids) / max(sampled_len, 1)
+                    sampled_text = decode_prediction_ids(
+                        tokenizer,
+                        sampled_ids,
+                        silence_id=silence_id,
+                        max_tokens=80,
+                    )
+                    print(
+                        f"  sampled[{sample_run}]_pred_ns={sampled_ns:.4f} "
+                        f"text='{sampled_text[:200]}'"
+                    )
 
                 reported += 1
                 if reported >= args.samples:

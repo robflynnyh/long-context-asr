@@ -275,3 +275,48 @@ class StreamingDecoderASR(BaseModel):
         if was_training:
             self.train()
         return {"predictions": torch.stack(predictions, dim=1), "length": out_lengths}
+
+    @torch.no_grad()
+    def sample_decode(
+        self,
+        audio_signal: torch.Tensor,
+        length: Optional[torch.Tensor] = None,
+        max_frames: Optional[int] = None,
+        temperature: float = 1.0,
+        top_k: int = 0,
+    ) -> dict:
+        was_training = self.training
+        self.eval()
+        if length is None:
+            length = torch.full((audio_signal.size(0),), audio_signal.size(-1), device=audio_signal.device)
+
+        temperature = max(float(temperature), 1e-6)
+        x = audio_signal.transpose(1, 2)
+        x, out_lengths = self.subsampling(x, lengths=length)
+        if max_frames is not None and x.size(1) > max_frames:
+            x = x[:, :max_frames]
+            out_lengths = out_lengths.clamp(max=max_frames)
+
+        key_padding_mask = torch.arange(x.size(1), device=x.device).expand(x.size(0), -1) >= out_lengths.unsqueeze(1)
+        key_padding_mask = key_padding_mask if key_padding_mask.any() else None
+        prev_ids = torch.full((x.size(0), x.size(1)), self.silence_id, dtype=torch.long, device=x.device)
+        predictions = []
+
+        for step in range(x.size(1)):
+            h = x + self.prev_token_embedding(prev_ids)
+            if key_padding_mask is not None:
+                h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
+            for layer in self.layers:
+                h = layer(h, key_padding_mask=key_padding_mask)
+            step_logits = self.decoder(self.norm(h[:, step])) / temperature
+            if top_k > 0 and top_k < step_logits.size(-1):
+                threshold = step_logits.topk(top_k, dim=-1).values[:, -1].unsqueeze(-1)
+                step_logits = step_logits.masked_fill(step_logits < threshold, float("-inf"))
+            step_prediction = torch.multinomial(step_logits.softmax(dim=-1), num_samples=1).squeeze(-1)
+            predictions.append(step_prediction)
+            if step + 1 < x.size(1):
+                prev_ids[:, step + 1] = step_prediction
+
+        if was_training:
+            self.train()
+        return {"predictions": torch.stack(predictions, dim=1), "length": out_lengths}
