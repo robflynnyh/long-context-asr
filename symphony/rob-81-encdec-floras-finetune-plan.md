@@ -527,3 +527,22 @@ the finalizer can see `LINEAR_API_KEY` from either the submit environment or
 local-only `symphony/.env`. Earlier 130GB and 100GB CPU-smoke requests, jobs
 `10234141` and `10234143`, were canceled while pending because the interactive
 partition reported `QOSMaxMemoryPerJob`.
+
+`_nw0` retry validation and queue:
+
+```text
+CPU smoke job: 10234146
+CPU smoke state: COMPLETED 0:0
+CPU smoke elapsed: 00:32:46
+CPU smoke MaxRSS: 27541300K
+CPU smoke stdout: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/finetune-smoke-10234146.out
+CPU smoke stderr: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/finetune-smoke-10234146.err
+CPU smoke result: records=26957, batch=88, num_workers=0, pin_memory=False, prefetch_factor=1, audio_shape=(88, 80, 574934), encoded_chunks=5378
+Finalizer dry-run job: 10234288
+Finalizer dry-run state: COMPLETED 0:0
+GPU retry job: 10234291
+Finalizer job: 10234292
+Queued code commit: efdae7f
+Status command: squeue -j 10234291,10234292 -o '%i|%j|%T|%R|%S|%M|%l|%P'
+Accounting command: sacct -j 10234291 --format=JobID,JobName,State,ExitCode,Elapsed,MaxRSS
+```
