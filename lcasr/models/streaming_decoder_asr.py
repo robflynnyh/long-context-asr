@@ -15,6 +15,8 @@ except Exception:
 
 
 class CausalDecoderLayer(nn.Module):
+    """Causal self-attention plus feed-forward block for streaming decoder ASR."""
+
     def __init__(
         self,
         d_model: int,
@@ -24,6 +26,7 @@ class CausalDecoderLayer(nn.Module):
         dropout_attn: float = 0.0,
         activation: str = "silu",
     ):
+        """Initialize one causal decoder layer with residual attention and FFN paths."""
         super().__init__()
         assert d_model % n_heads == 0, "d_model must be divisible by n_heads"
         self.attn_norm = LayerNorm(d_model)
@@ -47,6 +50,7 @@ class CausalDecoderLayer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply causal self-attention and feed-forward residual updates to `[B, T, D]`."""
         x_norm = self.attn_norm(x)
         x = x + self.attn(
             x_norm,
@@ -57,6 +61,8 @@ class CausalDecoderLayer(nn.Module):
 
 
 class StreamingDecoderASR(BaseModel):
+    """Decoder-only streaming ASR model with causal acoustic subsampling."""
+
     def __init__(
         self,
         vocab_size: int = 4095,
@@ -77,6 +83,7 @@ class StreamingDecoderASR(BaseModel):
         previous_token_dropout: float = 0.0,
         **kwargs,
     ):
+        """Build the streaming decoder, previous-token embedding, and two prediction heads."""
         super().__init__()
         self.vocab_size = vocab_size
         self.silence_id = vocab_size
@@ -115,6 +122,7 @@ class StreamingDecoderASR(BaseModel):
         self.text_head = nn.Linear(d_model, vocab_size, bias=False)
 
     def get_silence_id(self) -> int:
+        """Return the extra class id used for frame-level silence predictions."""
         return self.silence_id
 
     def _decode_prediction_ids(
@@ -123,6 +131,7 @@ class StreamingDecoderASR(BaseModel):
         prediction_ids: Iterable[int],
         max_tokens: int = 256,
     ) -> str:
+        """Collapse repeated non-silence ids and decode them with the provided tokenizer."""
         tokens = []
         previous = None
         for idx in prediction_ids:
@@ -139,6 +148,7 @@ class StreamingDecoderASR(BaseModel):
         return "" if not tokens else tokenizer.decode(tokens)
 
     def output_lengths(self, lengths: torch.Tensor) -> torch.Tensor:
+        """Compute post-subsampling frame lengths for input spectrogram lengths."""
         return calc_length(
             lengths=lengths,
             all_paddings=self.subsampling._left_padding + self.subsampling._right_padding,
@@ -149,6 +159,7 @@ class StreamingDecoderASR(BaseModel):
         )
 
     def _previous_targets(self, frame_targets: Optional[torch.Tensor], batch: int, length: int, device) -> torch.Tensor:
+        """Shift teacher frame targets right to form previous-token decoder inputs."""
         if frame_targets is None:
             return torch.full((batch, length), self.silence_id, dtype=torch.long, device=device)
 
@@ -167,6 +178,7 @@ class StreamingDecoderASR(BaseModel):
         return prev
 
     def _combined_logits(self, silence_logits: torch.Tensor, text_logits: torch.Tensor) -> torch.Tensor:
+        """Combine two-head outputs as log `P(token, not-silence)` plus log `P(silence)`."""
         silence_log_probs = F.log_softmax(silence_logits, dim=-1)
         text_log_probs = F.log_softmax(text_logits, dim=-1)
         silence_score = silence_log_probs[..., 0:1]
@@ -174,6 +186,7 @@ class StreamingDecoderASR(BaseModel):
         return torch.cat([token_scores, silence_score], dim=-1)
 
     def _step_predictions(self, hidden: torch.Tensor, sample: bool = False, temperature: float = 1.0) -> torch.Tensor:
+        """Predict the next frame ids from hidden states for one autoregressive step."""
         return self._predict_ids(
             self.silence_head(hidden),
             self.text_head(hidden),
@@ -188,6 +201,7 @@ class StreamingDecoderASR(BaseModel):
         sample_silence: bool = False,
         silence_temperature: float = 1.0,
     ) -> torch.Tensor:
+        """Return frame ids using greedy two-head scoring or sampled silence decisions."""
         if not sample_silence:
             return self._combined_logits(silence_logits, text_logits).argmax(dim=-1)
         silence_temperature = max(float(silence_temperature), 1e-6)
@@ -209,6 +223,7 @@ class StreamingDecoderASR(BaseModel):
         frame_targets: Optional[torch.Tensor] = None,
         return_logits: bool = True,
     ) -> dict:
+        """Run teacher-forced streaming decoding over `[B, F, T]` spectrogram batches."""
         if length is None:
             length = torch.full((audio_signal.size(0),), audio_signal.size(-1), device=audio_signal.device)
 
@@ -243,6 +258,7 @@ class StreamingDecoderASR(BaseModel):
         length: torch.Tensor,
         frame_targets: torch.Tensor,
     ) -> dict:
+        """Compute the two-head training loss for frame-synchronous ASR targets."""
         out = self.forward(audio_signal=audio_signal, length=length, frame_targets=frame_targets, return_logits=True)
         logits = out["logits"]
         if frame_targets.size(1) != logits.size(1):
@@ -303,6 +319,7 @@ class StreamingDecoderASR(BaseModel):
         length: Optional[torch.Tensor] = None,
         max_frames: Optional[int] = None,
     ) -> dict:
+        """Autoregressively decode by greedy two-head prediction at each output frame."""
         was_training = self.training
         self.eval()
         if length is None:
@@ -343,6 +360,7 @@ class StreamingDecoderASR(BaseModel):
         max_frames: Optional[int] = None,
         temperature: float = 1.0,
     ) -> dict:
+        """Autoregressively decode while sampling the silence gate and greedily taking text ids."""
         was_training = self.training
         self.eval()
         if length is None:
@@ -389,6 +407,7 @@ class StreamingDecoderASR(BaseModel):
         return_metadata: bool = False,
         **kwargs,
     ):
+        """Transcribe one spectrogram, or a list of spectrograms, through streaming decoding."""
         del kwargs
         if isinstance(audio_spec, (list, tuple)):
             return [
