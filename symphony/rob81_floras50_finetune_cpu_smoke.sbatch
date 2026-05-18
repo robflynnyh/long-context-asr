@@ -2,7 +2,7 @@
 #SBATCH --job-name=rob81-ft-smoke
 #SBATCH --partition=interactive
 #SBATCH --time=01:00:00
-#SBATCH --mem=48GB
+#SBATCH --mem=130GB
 #SBATCH --cpus-per-task=8
 #SBATCH --output=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/finetune-smoke-%j.out
 #SBATCH --error=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/finetune-smoke-%j.err
@@ -37,8 +37,10 @@ python symphony/rob81_prepare_floras_manifest.py \
   --summary-json "${SUMMARY_JSON}"
 
 python symphony/rob81_finetune_smoke.py \
-  --config exp/configs/enc_dec/rob81_floras50_supervised_12ep_lr1e-4.yaml \
-  --max-records 4
+  --config exp/configs/enc_dec/rob81_floras50_supervised_12ep_lr1e-4_nw0.yaml \
+  --max-records 88 \
+  --num-workers 0 \
+  --prefetch-factor 1
 
 python symphony/rob81_linear_callback.py \
   --dry-run \
@@ -46,4 +48,4 @@ python symphony/rob81_linear_callback.py \
   --status success \
   --out-log "${ARTIFACT_DIR}/finetune-smoke-${SLURM_JOB_ID}.out" \
   --err-log "${ARTIFACT_DIR}/finetune-smoke-${SLURM_JOB_ID}.err" \
-  --checkpoint-dir /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep
+  --checkpoint-dir /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_nw0

@@ -19,6 +19,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--max-records", type=int, default=4)
+    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--pin-memory", action="store_true")
+    parser.add_argument("--prefetch-factor", type=int, default=1)
     return parser.parse_args()
 
 
@@ -49,9 +52,9 @@ def main() -> None:
         batch_size=min(config.training.batch_size, max(1, len(small_data))),
         chunk_size=config.audio_chunking.size,
         chunk_overlap=config.audio_chunking.overlap,
-        num_workers=0,
-        pin_memory=False,
-        prefetch=None,
+        num_workers=args.num_workers,
+        pin_memory=args.pin_memory,
+        prefetch=args.prefetch_factor,
         random_seed=config.training.get("random_seed", 1234),
     )
 
@@ -77,6 +80,8 @@ def main() -> None:
     print(
         "smoke_ok "
         f"records={len(paired_data)} batch={len(ids)} "
+        f"num_workers={args.num_workers} pin_memory={args.pin_memory} "
+        f"prefetch_factor={args.prefetch_factor} "
         f"audio_shape={tuple(audio.shape)} max_audio_len={int(audio_lengths.max())} "
         f"encoded_chunks={len(encoded_nonempty)}"
     )

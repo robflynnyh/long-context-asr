@@ -487,3 +487,41 @@ Finalizer state at queue handoff: PENDING (Dependency)
 Queued code commit: 960f54a
 Status command: squeue -j 10225753,10225754 -o '%i|%j|%T|%R|%S|%M|%l|%P'
 ```
+
+130GB same-batch retry outcome:
+
+```text
+GPU retry job: 10225753
+GPU retry state: OUT_OF_MEMORY
+GPU retry elapsed: 00:22:43
+GPU retry MaxRSS: 136316708K
+Finalizer job: 10225754
+Finalizer state: FAILED, because LINEAR_API_KEY was missing in the Slurm environment
+GPU stdout: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-10225753.out
+GPU stderr: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-10225753.err
+Partial checkpoints:
+  /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep/step_2024.pt
+  /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep/step_4048.pt
+```
+
+Next same-batch retry keeps the human-requested `batch_size=88`, but removes
+the loader-side memory multiplier instead of going back to `batch_size=22`:
+
+```text
+config: exp/configs/enc_dec/rob81_floras50_supervised_12ep_lr1e-4_nw0.yaml
+lr: 1e-4
+max_epochs: 12
+audio_chunking.size: 2048
+batch_size: 88
+num_workers: 0
+pin_memory: false
+prefetch_factor: 1
+Slurm memory: 160GB
+checkpoint dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_nw0
+stdout/stderr prefix: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-nw0-<job_id>
+```
+
+Before queueing the replacement GPU job, run the updated CPU smoke with
+`--max-records 88` and the same `num_workers=0` loader path, then verify that
+the finalizer can see `LINEAR_API_KEY` from either the submit environment or
+local-only `symphony/.env`.

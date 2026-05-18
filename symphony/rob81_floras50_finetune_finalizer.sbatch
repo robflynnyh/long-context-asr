@@ -12,11 +12,19 @@ set -euo pipefail
 REPO_DIR="${REPO_DIR:-/users/acp21rjf/long-context-asr}"
 ARTIFACT_DIR=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81
 GPU_JOB_ID="${ROB81_GPU_JOB_ID:?ROB81_GPU_JOB_ID must be exported}"
-OUT_LOG="${ARTIFACT_DIR}/floras12-${GPU_JOB_ID}.out"
-ERR_LOG="${ARTIFACT_DIR}/floras12-${GPU_JOB_ID}.err"
-CHECKPOINT_DIR="${ARTIFACT_DIR}/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep"
+LOG_PREFIX="${ROB81_LOG_PREFIX:-floras12-nw0}"
+OUT_LOG="${ARTIFACT_DIR}/${LOG_PREFIX}-${GPU_JOB_ID}.out"
+ERR_LOG="${ARTIFACT_DIR}/${LOG_PREFIX}-${GPU_JOB_ID}.err"
+CHECKPOINT_DIR="${ROB81_CHECKPOINT_DIR:-${ARTIFACT_DIR}/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_nw0}"
 
 cd "${REPO_DIR}"
+
+if [[ -z "${LINEAR_API_KEY:-}" && -f symphony/.env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source symphony/.env
+  set +a
+fi
 
 module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main
