@@ -82,6 +82,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-18
 
 - ROB-91 LR-tuning follow-up: after the initial frozen BEST-RQ CTC-head run showed unstable losses and blank-heavy W&B summaries, added checkpoint-subset, learning-rate-grid, and scheduler-selection support to the Mimas probe wrapper. The same callback-backed wrapper now records LR/scheduler settings in its summary and can run a targeted TEDLIUM LR pilot before comparing all three SSL checkpoints.
+- ROB-91 self-conditioning correction: the constant-LR 100% checkpoint pilot completed but returned ~100% TEDLIUM WER for all tested LRs. Inspection found the generated probe config had `model.self_conditioning: false` while the ROB-70 SSL checkpoint config used `self_conditioning: true`, changing the frozen acoustic-model forward path. Patched the ROB-91 config generator to preserve self-conditioning, revalidated compile/bash/diff checks, passed callback-only dry run `rob91-callback-smoke-selfcond-fix`, and passed W&B-enabled 100% checkpoint smoke `rob91-selfcond-100pct-smoke-20260518T204117Z` / run `l9zu7h7m`, confirming the corrected config is generated and the same wrapper path trains/evaluates.
 
 ## 2026-05-12
 

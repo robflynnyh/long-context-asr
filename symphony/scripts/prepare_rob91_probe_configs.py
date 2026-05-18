@@ -50,7 +50,7 @@ def base_config(args, label, checkpoint_file, learning_rate, run_label):
             "conv_kernel_size": 9,
             "qk_rms_norm": False,
             "shift_kvs": False,
-            "self_conditioning": False,
+            "self_conditioning": True,
             "gated_sc": False,
             "decoder_norm": True,
             "use_rotary": True,
