@@ -1,13 +1,13 @@
-import argparse
-import torch, lcasr
+import torch, argparse, lcasr
 from lcasr.eval.utils import fetch_logits as moving_average_eval
 from lcasr.eval.buffered_transcription import fetch_logits as buffered_eval
 from lcasr.utils.general import load_model, get_model_class
 from lcasr.eval.wer import word_error_rate_detail 
 #from lcasr.eval.dynamic_eval import dynamic_eval
 from lcasr.decoding.greedy import GreedyCTCDecoder
+from whisper.normalizers import EnglishTextNormalizer
+normalize = EnglishTextNormalizer()
 from tqdm import tqdm
-import streaming_decoder_eval
 
 from earnings22_full.run import get_text_and_audio as get_text_and_audio_earnings22_full
 from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
@@ -67,7 +67,7 @@ def main(args):
     transcribe_kwargs = get_transcribe_kwargs(args, verbose)
 
     tokenizer = {}
-    if args.__dict__.get("tokenizer_path", None) is not None:
+    if args.get("tokenizer_path", None) is not None:
         tokenizer = {"tokenizer_path": args.tokenizer_path}
         print("Using tokenizer path from args:", args.tokenizer_path)
 
@@ -77,17 +77,13 @@ def main(args):
     model.load_state_dict(checkpoint['model'], strict=False)
     print(f'Loaded model from {args.checkpoint}')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    eval_dtype = streaming_decoder_eval.select_dtype(args.__dict__.get('eval_dtype', 'float32'), device)
     model.device = device
-    model = model.to(device=device, dtype=eval_dtype) if eval_dtype is not None else model.to(device)
+    model = model.to(device)
     model.eval()
 
-    decoder = None
     if not hasattr(model, 'transcribe'): decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
 
-    data = datasets_functions[args.dataset](args.split, **streaming_decoder_eval.get_dataset_kwargs(args))
-    if args.__dict__.get('max_recordings', None) is not None:
-        data = data[:args.max_recordings]
+    data = datasets_functions[args.dataset](args.split)
 
     # for idx, module in enumerate([el.attend.fn for el in model.layers]):
     #     module.return_attention_weights = True
@@ -95,65 +91,65 @@ def main(args):
     all_texts = []
     all_golds = []
     wer_data = []
-    records = []
-    utterance_count = 0
-    max_utterances = args.__dict__.get('max_utterances', None)
-    utterance_level = args.__dict__.get('utterance_level', False)
 
-    pbar = tqdm(range(len(data)), total=len(data), disable=args.__dict__.get('no_progress', False)) #if verbose else range(len(data))
+    pbar = tqdm(range(len(data)), total=len(data)) #if verbose else range(len(data))
     for rec in pbar:
         if verbose: print(f'Processing {rec+1}/{len(data)}')
 
         if verbose: print('\n-------\n'+data[rec]['id']+'\n-------\n')
-        for eval_item in streaming_decoder_eval.iter_eval_items(data[rec], data[rec]['process_fn'](data[rec]), utterance_level):
-            out, metadata = streaming_decoder_eval.decode_audio(
-                model=model,
-                audio_spec=eval_item['audio_spec'],
-                tokenizer=tokenizer,
-                args=args,
+        
+        audio_spec, gold_text = data[rec]['process_fn'](data[rec])
+        
+
+        if hasattr(model, 'transcribe'):
+            all_text = model.transcribe(
+                audio_spec,
+                tokenizer,
                 device=device,
-                eval_fn=eval_fn,
-                decoder=decoder,
-                transcribe_kwargs=transcribe_kwargs,
+                max_sequence_length=args.seq_len,
+                **transcribe_kwargs,
             )
+            out = normalize(all_text).lower().strip()
+            
+        else: # assume ctc
+            logits = eval_fn(
+                args = args, 
+                model = model, 
+                spec = audio_spec,
+                seq_len = args.seq_len,
+                overlap = args.overlap,
+                tokenizer = tokenizer
+            ) 
+            out_text = decoder(torch.as_tensor(logits))
+            out = normalize(out_text).lower()
+        
+        if verbose: print(gold_text, '\n', out, '\n\n')
+        
+        all_texts.append(out)
+        all_golds.append(gold_text)
 
-            gold_text = eval_item['gold_text']
-            if verbose: print(gold_text, '\n', out, '\n\n')
+        # wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
+        # print(wer)
+        # exit()
 
-            all_texts.append(out)
-            all_golds.append(gold_text)
-            record = streaming_decoder_eval.prediction_record(eval_item, out, metadata)
-            records.append(record)
-
-            if include_per_recording_evaluations:
-                wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
-                wer_data.append({
-                    'recording': eval_item['recording'],
-                    'wer': wer,
-                    'words': words,
-                    'ins_rate': ins_rate,
-                    'del_rate': del_rate,
-                    'sub_rate': sub_rate
-                })
-
-            utterance_count += 1
-            if max_utterances is not None and utterance_count >= max_utterances:
-                break
-
-        if max_utterances is not None and utterance_count >= max_utterances:
-            break
+        if include_per_recording_evaluations:
+            wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
+            wer_data.append({
+                'recording': data[rec]['id'],
+                'wer': wer,
+                'words': words,
+                'ins_rate': ins_rate,
+                'del_rate': del_rate,
+                'sub_rate': sub_rate
+            })
 
         if args.__dict__.get('break_eval', False): break
 
-    if not all_texts:
-        raise RuntimeError('No evaluation items selected')
+        
 
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
 
     if verbose: print(f'WER: {wer}')
-
-    summary = streaming_decoder_eval.build_summary(args, records, (wer, words, ins_rate, del_rate, sub_rate), device, eval_dtype)
-    streaming_decoder_eval.write_artifacts(args, summary, records)
 
     wer_data.append({
         'recording': 'all',
@@ -177,11 +173,9 @@ if __name__ == '__main__':
     parser.add_argument('-model_class', '--model_class', type=str, default='SCConformerXL', help='model class')
     parser.add_argument('-repeat', '--repeat', type=int, default=1, help='number of times to rerun evaluation')
     parser.add_argument('-eval_mode', '--evaluation_mode', type=str, default='averaged_moving_window', choices=['averaged_moving_window', 'windowed_attention', 'buffered'])
-    streaming_decoder_eval.add_cli_args(parser)
 
     parser.add_argument('-break', '--break_eval', action='store_true', help='break after first recording') 
     args = parser.parse_args()
-    args.command = streaming_decoder_eval.command_from_argv(__import__('sys').argv)
     main(args)
     
 

@@ -1,11 +1,11 @@
 # ROB-90 Streaming Decoder TEDLIUM Utterance Eval
 
-This is a bounded wiring sanity check for the ROB-76 decoder-only streaming ASR checkpoint. Poor recognition quality is expected; the goal is to prove TEDLIUM utterance decoding runs through the generic eval path and to inspect representative outputs.
+This is a bounded wiring sanity check for the ROB-76 decoder-only streaming ASR checkpoint. Poor recognition quality is expected; the goal is to prove TEDLIUM utterance decoding runs through `StreamingDecoderASR.transcribe(...)` and to inspect representative outputs.
 
 ## Command
 
 ```bash
-PYTHONPATH=. python eval/run.py --dataset tedlium --checkpoint /store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_mimas_full_epoch_rob76-mimas-3epoch-b48-two-head-20260517T140145Z/step_82737.pt --tedlium-root /store/store4/data/TEDLIUM_release1/legacy --split test --utterance-level --max-recordings 1 --max-utterances 8 --decode-mode greedy --eval-dtype bfloat16 --output-jsonl /store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/generic-eval-run-8utt/predictions.jsonl --summary-json /store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/generic-eval-run-8utt/summary.json --report-md symphony/reports/ROB-90-streaming-decoder-tedlium-eval.md --report-samples 8 --no-progress
+/store/store5/software/simple-gpu-schedule/with-gpu any --num 1 --idle-seconds 0 -- bash -lc 'cd /exp/exp4/acp21rjf/symphony-workspaces-long-context-asr/ROB-90 && PYTHONPATH=. python eval/tedlium/run.py -c /store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_mimas_full_epoch_rob76-mimas-3epoch-b48-two-head-20260517T140145Z/step_82737.pt -split test -single_utt -ted_root /store/store4/data/TEDLIUM_release1/legacy -max_utts 8 -decode_mode greedy -eval_dtype bfloat16 -output_jsonl /store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/tedlium-run-rework-8utt/predictions.jsonl -nv'
 ```
 
 ## Configuration
@@ -16,9 +16,8 @@ PYTHONPATH=. python eval/run.py --dataset tedlium --checkpoint /store/store5/dat
 - utterance level: `True`
 - decode mode: `greedy`
 - utterances: `8`
-- output JSONL: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/generic-eval-run-8utt/predictions.jsonl`
-- summary JSON: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/generic-eval-run-8utt/summary.json`
-- device/dtype: `cuda` / `bfloat16`
+- output JSONL: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/tedlium-run-rework-8utt/predictions.jsonl`
+- device/dtype: Mimas `cuda` via `with-gpu` GPU 2 / `bfloat16`
 
 ## Summary
 
