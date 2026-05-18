@@ -521,9 +521,9 @@ checkpoint dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/che
 stdout/stderr prefix: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-nw0-<job_id>
 ```
 
-Before queueing the replacement GPU job, run the updated 100GB CPU smoke with
+Before queueing the replacement GPU job, run the updated 60GB CPU smoke with
 `--max-records 88` and the same `num_workers=0` loader path, then verify that
 the finalizer can see `LINEAR_API_KEY` from either the submit environment or
-local-only `symphony/.env`. The first 130GB CPU-smoke request, job `10234141`,
-was canceled while pending because the interactive partition reported
-`QOSMaxMemoryPerJob`.
+local-only `symphony/.env`. Earlier 130GB and 100GB CPU-smoke requests, jobs
+`10234141` and `10234143`, were canceled while pending because the interactive
+partition reported `QOSMaxMemoryPerJob`.
