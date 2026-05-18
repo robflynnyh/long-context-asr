@@ -9,6 +9,16 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-18
+
+- ROB-76 PR cleanup: Linear selected the two-head streaming decoder, so the single-head CE and canceled soft-dilation ablations were removed from the PR. The retained Mimas run `rob76-mimas-3epoch-b48-two-head-20260517T140145Z` reached step `82737`; future long Mimas runs now execute immutable run-dir wrapper/callback copies to avoid live-script edits affecting exit traps.
+- ROB-76 padding cleanup: the streaming decoder no longer passes a padding mask into causal self-attention because padding is right-tail only, valid queries cannot attend to future padded keys, and padded target positions are ignored by the loss. This also removes the shared `attention.py` padded-causal SDPA fallback from the PR.
+
+## 2026-05-17
+
+- ROB-76 design pivot: debugging showed teacher-forced predictions could learn non-silence while free-running greedy decode stayed blank, so the PR moved to a two-head decoder with separate silence and text heads, shuffled training chunks, and no scheduled sampling or loss weighting. The required Stanage CPU smoke job `10228966` passed from a clean clone with the 107.73M model and one optimizer step.
+- ROB-76 run evidence: the two-head Mimas 3-epoch run `rob76-mimas-3epoch-b48-two-head-20260517T140145Z` was launched after wrapper and callback dry runs; earlier scheduled-feedback, soft-dilation, and single-head CE explorations were superseded and are not part of the final PR surface.
+
 ## 2026-05-13
 
 - ROB-85 on branch `symphony/ROB-85-update-rules`: updated Symphony execution rules and agent notes to ban `/tmp` on Mimas. Future Mimas-local scratch should use repo-local `.tmp/` or another issue-specific user-owned path under `/exp/exp4/acp21rjf/`; Stanage scratch remains `/mnt/parscratch/users/acp21rjf/symphony-tmp`.
@@ -32,6 +42,15 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-11
 
 - ROB-69 on branch `symphony/ROB-69-18l-long-context-benchmark`: added an 18L long-only finetune benchmark config comparing `FT_3epoch_18L` checkpoints against matched 18L baseline checkpoints. Stanage CPU smoke job `10156237` completed successfully after seeding 75 baseline rows and checking 30 model entries, five dataset loaders, output paths, and sampled checkpoint metadata. Queued H100 eval job `10156464` with finalizer/callback job `10156465`; remote result path is `/mnt/parscratch/users/acp21rjf/symphony-workspaces-long-context-asr/ROB-69/eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`.
+- ROB-76 on branch `symphony/ROB-76-streaming-decoder-asr`: added the initial decoder-only streaming ASR path with causal subsampling, causal shared attention, previous-label feedback, delayed frame-synchronous word targets, and an explicit silence class. The 100M config instantiated at 107.73M parameters; Stanage CPU smokes through job `10160756` validated the shared-attention version, including the padded causal SDPA fallback.
+
+## 2026-05-15
+
+- ROB-76 queue follow-up: updated the full config to 2048-frame chunks, batch 176, no accumulation, and three epochs; Stanage CPU smoke job `10221260` passed and the callback-backed GPU wrapper path was queued for `gpu-h100-nvl`.
+
+## 2026-05-16
+
+- ROB-76 Mimas/debug path: added the Mimas Spotify-10% manifest helper, W&B/callback wrapper, debug generation, checkpoint interval handling, and batch-48 wrapper defaults. Also fixed the cosine schedule horizon and causal-subsampling chunking after the Stanage `conv2d` indexing failure; bounded Mimas smokes validated these paths.
 
 ## 2026-05-12
 
