@@ -11,6 +11,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 ## 2026-05-18
 
+- ROB-90 on branch `symphony/ROB-90-streaming-decoder-tedlium-eval`: added a bounded TEDLIUM utterance eval harness for `StreamingDecoderASR` and ran the ROB-76 two-head checkpoint `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_mimas_full_epoch_rob76-mimas-3epoch-b48-two-head-20260517T140145Z/step_82737.pt` on Mimas GPU 3. The one-utterance smoke passed, then the 8-utterance greedy test wrote JSONL/summary artifacts under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/greedy-8utt/`; compact report committed at `symphony/reports/ROB-90-streaming-decoder-tedlium-eval.md`.
 - ROB-76 PR cleanup: Linear selected the two-head streaming decoder, so the single-head CE and canceled soft-dilation ablations were removed from the PR. The retained Mimas run `rob76-mimas-3epoch-b48-two-head-20260517T140145Z` reached step `82737`; future long Mimas runs now execute immutable run-dir wrapper/callback copies to avoid live-script edits affecting exit traps.
 - ROB-76 padding cleanup: the streaming decoder no longer passes a padding mask into causal self-attention because padding is right-tail only, valid queries cannot attend to future padded keys, and padded target positions are ignored by the loss. This also removes the shared `attention.py` padded-causal SDPA fallback from the PR.
 
