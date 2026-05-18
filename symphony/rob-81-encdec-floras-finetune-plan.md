@@ -516,7 +516,7 @@ batch_size: 88
 num_workers: 0
 pin_memory: false
 prefetch_factor: 1
-Slurm memory: 160GB
+Slurm memory: 130GB
 checkpoint dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_nw0
 stdout/stderr prefix: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-nw0-<job_id>
 ```
