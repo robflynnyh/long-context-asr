@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import lcasr
 import torch
 import argparse
@@ -484,4 +486,3 @@ if __name__ == '__main__':
 
 
     main(args)
-      
