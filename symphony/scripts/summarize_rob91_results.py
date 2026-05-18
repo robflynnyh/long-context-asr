@@ -24,6 +24,8 @@ def classify(rows):
     ordered = sorted(comparison_rows, key=lambda row: LABEL_ORDER[row["base_label"]])
     wers = [row["wer"] for row in ordered]
     if wers[-1] < wers[0] and wers[1] <= max(wers[0], wers[-1]):
+        if wers[-1] >= 0.9:
+            return "inconclusive: later SSL checkpoints improve slightly, but all probes remain near 100% WER"
         return "promising: later SSL checkpoints improve over the 25% checkpoint"
     if wers[-1] >= wers[0]:
         return "negative: the final SSL checkpoint does not improve over the 25% checkpoint"
