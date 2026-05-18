@@ -9,6 +9,8 @@ RUN_DIR="${ROB76_RUN_DIR:-$ARTIFACT_ROOT/$RUN_ID}"
 OUT_LOG="${ROB76_OUT_LOG:-$RUN_DIR/${RUN_ID}.out}"
 ERR_LOG="${ROB76_ERR_LOG:-$RUN_DIR/${RUN_ID}.err}"
 SUMMARY_FILE="${ROB76_SUMMARY_FILE:-$RUN_DIR/${RUN_ID}.summary.txt}"
+EXECUTED_SCRIPT="${ROB76_EXECUTED_SCRIPT:-$RUN_DIR/$(basename "$0")}"
+CALLBACK_SCRIPT="${ROB76_CALLBACK_SCRIPT:-$RUN_DIR/linear_job_callback.py}"
 BASE_CONFIG="${ROB76_BASE_CONFIG:-exp/configs/streaming_decoder_asr_100m.yaml}"
 SOURCE_PAIRS="${ROB76_SOURCE_PAIRS:-/store/store5/data/spotify/renamed_audio_text_pairs_10_percent.json}"
 MANIFEST_PATH="${ROB76_MANIFEST_PATH:-$RUN_DIR/spotify_10percent_mimas_manifest.json}"
@@ -26,6 +28,24 @@ PREFETCH="${ROB76_PREFETCH:-1}"
 PIN_MEMORY="${ROB76_PIN_MEMORY:-0}"
 CALLBACK_PYTHON="${ROB76_CALLBACK_PYTHON:-python3}"
 LINEAR_KEY_FILE="${ROB76_LINEAR_KEY_FILE:-$ARTIFACT_ROOT/.linear_api_key}"
+
+if [[ "${ROB76_RUN_DIR_EXEC:-0}" != "1" ]]; then
+  mkdir -p "$RUN_DIR"
+  cp "${BASH_SOURCE[0]}" "$EXECUTED_SCRIPT"
+  cp "$REPO_DIR/symphony/scripts/linear_job_callback.py" "$CALLBACK_SCRIPT"
+  chmod +x "$EXECUTED_SCRIPT"
+  export ROB76_RUN_DIR_EXEC=1
+  export ROB76_REPO_DIR="$REPO_DIR"
+  export ROB76_RUN_ID="$RUN_ID"
+  export ROB76_ARTIFACT_ROOT="$ARTIFACT_ROOT"
+  export ROB76_RUN_DIR="$RUN_DIR"
+  export ROB76_OUT_LOG="$OUT_LOG"
+  export ROB76_ERR_LOG="$ERR_LOG"
+  export ROB76_SUMMARY_FILE="$SUMMARY_FILE"
+  export ROB76_EXECUTED_SCRIPT="$EXECUTED_SCRIPT"
+  export ROB76_CALLBACK_SCRIPT="$CALLBACK_SCRIPT"
+  exec bash "$EXECUTED_SCRIPT" "$@"
+fi
 
 mkdir -p "$RUN_DIR" "$CHECKPOINT_DIR" "$WANDB_DIR"
 exec > >(tee -a "$OUT_LOG") 2> >(tee -a "$ERR_LOG" >&2)
@@ -60,7 +80,7 @@ on_exit() {
       LINEAR_API_KEY="$(cat "$LINEAR_KEY_FILE")"
     fi
     if [[ "${ROB76_CALLBACK_DRY_RUN:-0}" == "1" ]]; then
-      "$CALLBACK_PYTHON" "$REPO_DIR/symphony/scripts/linear_job_callback.py" \
+      "$CALLBACK_PYTHON" "$CALLBACK_SCRIPT" \
         --issue-id ROB-76 \
         --state-name Todo \
         --job-id "$RUN_ID" \
@@ -73,7 +93,7 @@ on_exit() {
         --title "ROB-76 Mimas streaming decoder full-epoch training finished" \
         --dry-run >> "$SUMMARY_FILE" 2>&1
     else
-      "$CALLBACK_PYTHON" "$REPO_DIR/symphony/scripts/linear_job_callback.py" \
+      "$CALLBACK_PYTHON" "$CALLBACK_SCRIPT" \
         --issue-id ROB-76 \
         --state-name Todo \
         --job-id "$RUN_ID" \
@@ -98,6 +118,8 @@ trap 'trap - TERM INT; exit 130' INT
   echo "host=$(hostname)"
   echo "repo_dir=${REPO_DIR}"
   echo "commit=$(cd "$REPO_DIR" && git rev-parse HEAD)"
+  echo "executed_script=${EXECUTED_SCRIPT}"
+  echo "callback_script=${CALLBACK_SCRIPT}"
   echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-unset}"
 } > "$SUMMARY_FILE"
 
