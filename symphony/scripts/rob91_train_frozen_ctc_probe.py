@@ -6,6 +6,7 @@ import time
 from typing import Iterable
 
 import torch
+import wandb
 from omegaconf import OmegaConf
 
 import lcasr
@@ -105,6 +106,31 @@ def build_optimizer_and_scheduler(config, params, device_type: str):
     return optimizer, scheduler
 
 
+def init_wandb(config, config_path: str, total_params: int):
+    wandb_config = config.get("wandb", {})
+    if not wandb_config.get("use", False):
+        return None
+    wandb_dir = wandb_config.get("dir", "./wandb")
+    os.makedirs(wandb_dir, exist_ok=True)
+    init_kwargs = {
+        "project": wandb_config["project_name"],
+        "config": OmegaConf.to_container(config, resolve=True),
+        "name": wandb_config.get("name", None),
+        "dir": wandb_dir,
+    }
+    run_id = wandb_config.get("id", "")
+    if run_id:
+        run = wandb.init(id=run_id, resume="must", allow_val_change=True, **init_kwargs)
+    else:
+        run = wandb.init(**init_kwargs)
+    wandb.config.update({"total_params": total_params}, allow_val_change=True)
+    print(f"\nLogging with WandB id: {wandb.run.id}\n")
+    config.wandb.id = wandb.run.id
+    if wandb_config.get("update_config_with_wandb_id", False):
+        OmegaConf.save(config=config, f=config_path)
+    return run
+
+
 def main(args):
     args.config_path = args.config
     config = OmegaConf.load(args.config)
@@ -130,9 +156,10 @@ def main(args):
         load_decoder=bool(config.probe.get("load_decoder_from_ssl", False)),
     )
     freeze_except(model, config.probe.get("trainable_prefixes", ["decoder."]))
-    model.print_total_params()
+    total_params = model.print_total_params()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    wandb_run = init_wandb(config, args.config_path, total_params)
     model = model.to(device)
     optimizer, scheduler = build_optimizer_and_scheduler(
         config=config,
@@ -186,19 +213,23 @@ def main(args):
     augmentation = SpecAugment(**config.spec_augment) if "spec_augment" in config else None
     assert exists(augmentation) or config.training.get("start_spec_augment_after_n_epochs", -1) == -1
 
-    train(
-        args=args,
-        model=model,
-        dataloader=dataloader,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        sequence_scheduler=sequence_scheduler,
-        device=device,
-        seen_ids=seen_ids,
-        step=step,
-        epoch=epoch,
-        augmentation=augmentation,
-    )
+    try:
+        train(
+            args=args,
+            model=model,
+            dataloader=dataloader,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            sequence_scheduler=sequence_scheduler,
+            device=device,
+            seen_ids=seen_ids,
+            step=step,
+            epoch=epoch,
+            augmentation=augmentation,
+        )
+    finally:
+        if wandb_run is not None:
+            wandb.finish()
 
 
 if __name__ == "__main__":

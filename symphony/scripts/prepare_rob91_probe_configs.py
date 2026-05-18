@@ -17,6 +17,7 @@ CHECKPOINTS = [
 def base_config(args, label, checkpoint_file):
     batch_size = args.smoke_batch_size if args.smoke else args.batch_size
     max_epochs = 1 if args.smoke else args.max_epochs
+    run_id = Path(args.run_dir).name
     return {
         "model_class": "SCConformerXL",
         "description": f"ROB-91 frozen BEST-RQ CTC probe for {label}.",
@@ -60,9 +61,9 @@ def base_config(args, label, checkpoint_file):
         "scheduler": {"warmup_steps": args.warmup_steps},
         "audio_chunking": {"size": args.seq_len, "overlap": 0},
         "wandb": {
-            "use": not args.disable_wandb and not args.smoke,
+            "use": not args.disable_wandb and (not args.smoke or args.enable_smoke_wandb),
             "project_name": "rob91_bestrq_ctc_probe",
-            "name": f"rob91_{label}_frozen_ctc_probe",
+            "name": f"{run_id}_{label}_frozen_ctc_probe",
             "id": "",
             "dir": str(Path(args.run_dir) / "wandb"),
             "update_config_with_wandb_id": False,
@@ -93,6 +94,7 @@ def main():
     parser.add_argument("--manifest-out", required=True)
     parser.add_argument("--stanage-checkpoint-dir", default="/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch_lr3e4_20260516")
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--enable-smoke-wandb", action="store_true")
     parser.add_argument("--disable-wandb", action="store_true")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--smoke-batch-size", type=int, default=1)

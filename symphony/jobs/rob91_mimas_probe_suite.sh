@@ -35,6 +35,7 @@ MAX_EPOCHS="${ROB91_MAX_EPOCHS:-3}"
 SMOKE_MAX_RECORDS="${ROB91_SMOKE_MAX_RECORDS:-1}"
 FULL_MAX_RECORDS="${ROB91_FULL_MAX_RECORDS:-}"
 DISABLE_WANDB="${ROB91_DISABLE_WANDB:-0}"
+SMOKE_ENABLE_WANDB="${ROB91_SMOKE_ENABLE_WANDB:-0}"
 
 if [[ "${ROB91_RUN_DIR_EXEC:-0}" != "1" ]]; then
   mkdir -p "$RUN_DIR"
@@ -157,7 +158,12 @@ prepare_args=(
   --max-epochs "$MAX_EPOCHS"
 )
 if [[ "$MODE" == "smoke" ]]; then
-  prepare_args+=(--smoke --disable-wandb)
+  prepare_args+=(--smoke)
+  if [[ "$SMOKE_ENABLE_WANDB" == "1" ]]; then
+    prepare_args+=(--enable-smoke-wandb)
+  else
+    prepare_args+=(--disable-wandb)
+  fi
 elif [[ "$DISABLE_WANDB" == "1" ]]; then
   prepare_args+=(--disable-wandb)
 fi
@@ -178,7 +184,10 @@ while read -r config_path; do
     train_args+=(-pin_memory)
   fi
   if [[ "$MODE" == "smoke" ]]; then
-    train_args+=(--max_records "$SMOKE_MAX_RECORDS" --max_steps "$SMOKE_MAX_RECORDS" --disable_wandb)
+    train_args+=(--max_records "$SMOKE_MAX_RECORDS" --max_steps "$SMOKE_MAX_RECORDS")
+    if [[ "$SMOKE_ENABLE_WANDB" != "1" ]]; then
+      train_args+=(--disable_wandb)
+    fi
   fi
   python symphony/scripts/rob91_train_frozen_ctc_probe.py "${train_args[@]}"
 done < <(python - <<'PY'
