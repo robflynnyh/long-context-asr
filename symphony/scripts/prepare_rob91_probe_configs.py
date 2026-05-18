@@ -29,9 +29,23 @@ def base_config(args, label, checkpoint_file, learning_rate, run_label):
     batch_size = args.smoke_batch_size if args.smoke else args.batch_size
     max_epochs = 1 if args.smoke else args.max_epochs
     run_id = Path(args.run_dir).name
+    trainable_prefixes = ["decoder."]
+    load_decoder_from_ssl = False
+    probe_description = "linear"
+    final_decoder_config = {}
+    if args.probe_head == "bilstm":
+        trainable_prefixes = ["final_decoder."]
+        load_decoder_from_ssl = True
+        probe_description = f"{args.bilstm_num_layers}-layer BiLSTM({args.bilstm_hidden_size})+linear"
+        final_decoder_config = {
+            "final_decoder_type": "bilstm",
+            "final_decoder_bilstm_hidden_size": args.bilstm_hidden_size,
+            "final_decoder_bilstm_num_layers": args.bilstm_num_layers,
+            "final_decoder_bilstm_dropout": args.bilstm_dropout,
+        }
     return {
         "model_class": "SCConformerXL",
-        "description": f"ROB-91 frozen BEST-RQ CTC probe for {label} at lr={learning_rate}.",
+        "description": f"ROB-91 frozen BEST-RQ {probe_description} CTC probe for {label} at lr={learning_rate}.",
         "model": {
             "feat_in": 80,
             "n_layers": 6,
@@ -61,12 +75,14 @@ def base_config(args, label, checkpoint_file, learning_rate, run_label):
             "checkpoint_every_n_layers": 0,
             "rotary_base_freq": 1500000,
             "flash_attn": True,
+            **final_decoder_config,
         },
         "probe": {
             "ssl_checkpoint": str(Path(args.checkpoint_cache) / checkpoint_file),
             "source_checkpoint": f"{args.stanage_checkpoint_dir}/{checkpoint_file}",
-            "load_decoder_from_ssl": False,
-            "trainable_prefixes": ["decoder."],
+            "head": args.probe_head,
+            "load_decoder_from_ssl": load_decoder_from_ssl,
+            "trainable_prefixes": trainable_prefixes,
         },
         "optimizer": {"name": "madgrad", "args": {"lr": learning_rate}},
         "scheduler": {"name": args.scheduler, "warmup_steps": args.warmup_steps},
@@ -120,6 +136,10 @@ def main():
     parser.add_argument("--save-every-n-steps", type=int, default=200)
     parser.add_argument("--random-seed", type=int, default=1234)
     parser.add_argument("--dtype", default="bfloat16")
+    parser.add_argument("--probe-head", choices=["linear", "bilstm"], default="linear")
+    parser.add_argument("--bilstm-hidden-size", type=int, default=1024)
+    parser.add_argument("--bilstm-num-layers", type=int, default=2)
+    parser.add_argument("--bilstm-dropout", type=float, default=0.2)
     args = parser.parse_args()
 
     selected_labels = parse_csv(args.checkpoint_labels) or [label for label, _ in CHECKPOINTS]
@@ -148,6 +168,7 @@ def main():
                     "base_label": label,
                     "learning_rate": learning_rate,
                     "checkpoint_file": checkpoint_file,
+                    "probe_head": args.probe_head,
                     "source_checkpoint": f"{args.stanage_checkpoint_dir}/{checkpoint_file}",
                     "local_checkpoint": str(Path(args.checkpoint_cache) / checkpoint_file),
                     "train_config": str(config_path),

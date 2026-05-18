@@ -42,6 +42,10 @@ SMOKE_BATCH_SIZE="${ROB91_SMOKE_BATCH_SIZE:-1}"
 FULL_MAX_RECORDS="${ROB91_FULL_MAX_RECORDS:-}"
 DISABLE_WANDB="${ROB91_DISABLE_WANDB:-0}"
 SMOKE_ENABLE_WANDB="${ROB91_SMOKE_ENABLE_WANDB:-0}"
+PROBE_HEAD="${ROB91_PROBE_HEAD:-linear}"
+BILSTM_HIDDEN_SIZE="${ROB91_BILSTM_HIDDEN_SIZE:-1024}"
+BILSTM_NUM_LAYERS="${ROB91_BILSTM_NUM_LAYERS:-2}"
+BILSTM_DROPOUT="${ROB91_BILSTM_DROPOUT:-0.2}"
 
 if [[ "${ROB91_RUN_DIR_EXEC:-0}" != "1" ]]; then
   mkdir -p "$RUN_DIR"
@@ -87,6 +91,10 @@ on_exit() {
     echo "scheduler=${SCHEDULER}"
     echo "warmup_steps=${WARMUP_STEPS}"
     echo "checkpoint_labels=${CHECKPOINT_LABELS:-default}"
+    echo "probe_head=${PROBE_HEAD}"
+    echo "bilstm_hidden_size=${BILSTM_HIDDEN_SIZE}"
+    echo "bilstm_num_layers=${BILSTM_NUM_LAYERS}"
+    echo "bilstm_dropout=${BILSTM_DROPOUT}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB91_ENABLE_CALLBACK:-1}" == "1" ]]; then
     if [[ -z "${LINEAR_API_KEY:-}" && -f "$LINEAR_KEY_FILE" ]]; then
@@ -131,6 +139,10 @@ trap 'trap - INT; exit 130' INT
   echo "scheduler=${SCHEDULER}"
   echo "warmup_steps=${WARMUP_STEPS}"
   echo "checkpoint_labels=${CHECKPOINT_LABELS:-default}"
+  echo "probe_head=${PROBE_HEAD}"
+  echo "bilstm_hidden_size=${BILSTM_HIDDEN_SIZE}"
+  echo "bilstm_num_layers=${BILSTM_NUM_LAYERS}"
+  echo "bilstm_dropout=${BILSTM_DROPOUT}"
 } > "$SUMMARY_FILE"
 
 if [[ "${ROB91_CALLBACK_ONLY:-0}" == "1" ]]; then
@@ -176,6 +188,10 @@ prepare_args=(
   --learning-rate "$LEARNING_RATE"
   --scheduler "$SCHEDULER"
   --warmup-steps "$WARMUP_STEPS"
+  --probe-head "$PROBE_HEAD"
+  --bilstm-hidden-size "$BILSTM_HIDDEN_SIZE"
+  --bilstm-num-layers "$BILSTM_NUM_LAYERS"
+  --bilstm-dropout "$BILSTM_DROPOUT"
 )
 if [[ -n "$LEARNING_RATES" ]]; then
   prepare_args+=(--learning-rates "$LEARNING_RATES")

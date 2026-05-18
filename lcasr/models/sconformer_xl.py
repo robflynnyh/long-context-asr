@@ -128,6 +128,21 @@ class SCConformerXL(BaseModel):
             norm_fn = default_norm,
             **kwargs
         )
+        final_decoder_type = kwargs.get('final_decoder_type', 'linear')
+        if final_decoder_type == 'linear':
+            self.final_decoder = None
+        elif final_decoder_type == 'bilstm':
+            self.final_decoder = decoder.BiLSTMCTCDecoder(
+                d_model = d_model,
+                vocab_size = vocab_size,
+                norm = decoder_norm,
+                norm_fn = default_norm,
+                bilstm_hidden_size = kwargs.get('final_decoder_bilstm_hidden_size', 1024),
+                bilstm_num_layers = kwargs.get('final_decoder_bilstm_num_layers', 2),
+                bilstm_dropout = kwargs.get('final_decoder_bilstm_dropout', 0.2),
+            )
+        else:
+            raise ValueError(f'Unknown final_decoder_type {final_decoder_type}')
 
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
         self.subsampling = \
@@ -176,6 +191,7 @@ class SCConformerXL(BaseModel):
         '''
 
         decoder = self.decoder
+        final_decoder = self.decoder if self.final_decoder is None else self.final_decoder
         max_audio_length: int = audio_signal.size(-1)
 
         if cached_kvs is not None:
@@ -247,8 +263,8 @@ class SCConformerXL(BaseModel):
         if skip_vocab_projection:
             output_dict = {'hidden_states': audio_signal, 'length': length,}
         else:
-            audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
-            final_posts = decoder(x = audio_signal, logits = return_logits) 
+            audio_signal = final_decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
+            final_posts = final_decoder(x = audio_signal, logits = return_logits)
             output_dict = {'final_posteriors': final_posts, 'length': length,}
 
         if self.training and self.rotary_pos_emb is not None:
@@ -394,4 +410,3 @@ if __name__ == '__main__':
     lengths = lengths.to(device)
     out = model(audio, length=lengths)
     print(out['final_posteriors'].shape)
-    

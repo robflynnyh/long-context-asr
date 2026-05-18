@@ -35,6 +35,7 @@ def main():
                 "label": run["label"],
                 "base_label": run.get("base_label", run["label"]),
                 "learning_rate": run.get("learning_rate"),
+                "probe_head": run.get("probe_head", "linear"),
                 "source_ssl_checkpoint": run["local_checkpoint"],
                 "path": str(ckpt),
                 "seq_len": args.seq_len,
