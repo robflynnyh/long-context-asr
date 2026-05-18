@@ -31,8 +31,6 @@ audio_chunking:
 streaming:
   delay_seconds: 0.2
   buffer_seconds: 0.05
-  silence_soft_dilation_seconds: 0.1
-  silence_soft_dilation_direction: past
 
 wandb:
   use: false

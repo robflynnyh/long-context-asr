@@ -8,7 +8,6 @@ import torch
 from omegaconf import OmegaConf
 
 from exp.train_streaming_decoder_asr import decode_prediction_ids, make_dataloader
-from lcasr.utils.audio_tools import total_frames
 from lcasr.utils.general import find_latest_checkpoint, get_model_class, load_model
 from lcasr.utils.streaming_targets import (
     build_streaming_frame_targets,
@@ -70,34 +69,17 @@ def main():
     stride = chunk_size - chunk_overlap
     delay_seconds = float(config["streaming"].get("delay_seconds", 2.0))
     buffer_seconds = float(config["streaming"].get("buffer_seconds", 0.25))
-    silence_soft_dilation_seconds = float(config["streaming"].get("silence_soft_dilation_seconds", 0.0))
-    silence_soft_dilation_direction = str(config["streaming"].get("silence_soft_dilation_direction", "past"))
-    silence_soft_dilation_frames = int(round(total_frames(silence_soft_dilation_seconds) / model.subsampling_factor))
     silence_id = model.get_silence_id()
     max_frames = None if args.max_frames <= 0 else args.max_frames
 
     print(f"checkpoint={checkpoint_path}")
     print(f"step={checkpoint.get('podcast_step')} epoch={checkpoint.get('epoch')}")
     print(f"device={device} silence_id={silence_id} max_frames={max_frames}")
-    prediction_head_type = getattr(model, "prediction_head_type", "two_head")
-    print(f"prediction_head_type={prediction_head_type}")
     print(
-        "silence_target_soft_dilation="
-        f"{silence_soft_dilation_seconds:.3f}s {silence_soft_dilation_direction} "
-        f"-> {silence_soft_dilation_frames} decoder frames"
+        "silence_head_sampling="
+        f"runs={args.sample_runs} temperature={args.sample_temperature} "
+        f"seed={args.sample_seed}; text head is greedy"
     )
-    if prediction_head_type == "two_head":
-        print(
-            "silence_head_sampling="
-            f"runs={args.sample_runs} temperature={args.sample_temperature} "
-            f"seed={args.sample_seed}; text head is greedy"
-        )
-    else:
-        print(
-            "single_head_sampling="
-            f"runs={args.sample_runs} temperature={args.sample_temperature} "
-            f"seed={args.sample_seed}; samples full vocab+silence distribution"
-        )
 
     reported = 0
     with torch.no_grad():
@@ -139,8 +121,6 @@ def main():
                     audio_signal=chunk,
                     length=chunk_lengths,
                     frame_targets=frame_targets,
-                    silence_soft_dilation_frames=silence_soft_dilation_frames,
-                    silence_soft_dilation_direction=silence_soft_dilation_direction,
                 )
                 tf_ids = loss_out["predictions"][0, : int(output_lengths[0].item())].detach().cpu().tolist()
                 tf_text = decode_prediction_ids(tokenizer, tf_ids, silence_id=silence_id, max_tokens=80)
@@ -153,13 +133,10 @@ def main():
                     frame_targets=silence_feedback_targets,
                     return_logits=True,
                 )
-                if prediction_head_type == "two_head":
-                    silence_predictions = model._predict_ids(
-                        silence_feedback["silence_logits"],
-                        silence_feedback["text_logits"],
-                    )
-                else:
-                    silence_predictions = silence_feedback["logits"].argmax(dim=-1)
+                silence_predictions = model._predict_ids(
+                    silence_feedback["silence_logits"],
+                    silence_feedback["text_logits"],
+                )
                 silence_ids = silence_predictions[0, : int(output_lengths[0].item())].detach().cpu().tolist()
                 silence_fb_ns = sum(int(idx) != silence_id for idx in silence_ids) / max(len(silence_ids), 1)
                 silence_fb_text = decode_prediction_ids(tokenizer, silence_ids, silence_id=silence_id, max_tokens=80)
@@ -180,7 +157,6 @@ def main():
                 print(
                     "  metrics "
                     f"target_ns={float(target_ns.cpu()):.4f} "
-                    f"soft_target_ns={display['soft_non_silence_fraction']:.4f} "
                     f"teacher_forced_pred_ns={display['predicted_non_silence_fraction']:.4f} "
                     f"silence_feedback_pred_ns={silence_fb_ns:.4f} "
                     f"free_pred_ns={free_ns:.4f} loss={display['loss']:.4f}"
