@@ -46,15 +46,10 @@ class CausalDecoderLayer(nn.Module):
             nn.Dropout(dropout_ff),
         )
 
-    def forward(self, x: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_norm = self.attn_norm(x)
-        attn_mask = None if key_padding_mask is None else ~key_padding_mask
-        attn_lengths = None if attn_mask is None else attn_mask.sum(dim=-1)
         x = x + self.attn(
             x_norm,
-            attn_mask=attn_mask,
-            length=attn_lengths,
-            pad_mask=key_padding_mask,
             flash_attn=True,
         )
         x = x + self.ff(self.ff_norm(x))
@@ -205,7 +200,7 @@ class StreamingDecoderASR(BaseModel):
         if key_padding_mask is not None:
             x = x.masked_fill(key_padding_mask.unsqueeze(-1), 0)
         for layer in self.layers:
-            x = layer(x, key_padding_mask=key_padding_mask)
+            x = layer(x)
         x = self.norm(x)
         silence_logits = self.silence_head(x)
         text_logits = self.text_head(x)
@@ -307,7 +302,7 @@ class StreamingDecoderASR(BaseModel):
             if key_padding_mask is not None:
                 h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
             for layer in self.layers:
-                h = layer(h, key_padding_mask=key_padding_mask)
+                h = layer(h)
             step_h = self.norm(h[:, step])
             step_prediction = self._step_predictions(step_h, sample=False)
             predictions.append(step_prediction)
@@ -347,7 +342,7 @@ class StreamingDecoderASR(BaseModel):
             if key_padding_mask is not None:
                 h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
             for layer in self.layers:
-                h = layer(h, key_padding_mask=key_padding_mask)
+                h = layer(h)
             step_h = self.norm(h[:, step])
             step_prediction = self._step_predictions(step_h, sample=True, temperature=temperature)
             predictions.append(step_prediction)

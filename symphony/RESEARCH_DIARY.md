@@ -12,6 +12,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-18
 
 - ROB-76 PR cleanup: Linear selected the two-head streaming decoder, so the single-head CE and canceled soft-dilation ablations were removed from the PR. The retained Mimas run `rob76-mimas-3epoch-b48-two-head-20260517T140145Z` reached step `82737`; future long Mimas runs now execute immutable run-dir wrapper/callback copies to avoid live-script edits affecting exit traps.
+- ROB-76 padding cleanup: the streaming decoder no longer passes a padding mask into causal self-attention because padding is right-tail only, valid queries cannot attend to future padded keys, and padded target positions are ignored by the loss. This also removes the shared `attention.py` padded-causal SDPA fallback from the PR.
 
 ## 2026-05-17
 
