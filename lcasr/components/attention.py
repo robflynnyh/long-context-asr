@@ -542,6 +542,8 @@ class Attention(nn.Module):
                 attn_mask = rearrange(attn_mask, 'b s -> b 1 1 s') * -torch.finfo(q.dtype).max
             is_causal = self.causal
             if attn_mask is not None and self.causal:
+                # SDPA forbids passing an explicit mask with is_causal=True, so
+                # padded causal batches need one combined additive mask here.
                 causal_mask = torch.ones(N, N, dtype=torch.bool, device=x.device).triu(1)
                 causal_bias = torch.zeros(N, N, dtype=q.dtype, device=x.device)
                 causal_bias = causal_bias.masked_fill(causal_mask, -torch.finfo(q.dtype).max)
