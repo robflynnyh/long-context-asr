@@ -103,7 +103,11 @@ def train(
     model.train()
 
     model_dtype = next(model.parameters()).dtype
-    ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
+    ctc_loss_fn = torch.nn.CTCLoss(
+        blank=model.decoder.num_classes-1,
+        reduction='sum',
+        zero_infinity=args.config['training'].get('ctc_zero_infinity', False),
+    )
 
     backprop_every, backwards_every = args.config['training']['backprop_every'], args.config['training'].get('backwards_every', 1)
     assert backprop_every >= backwards_every, f'backprop_every ({backprop_every}) must be >= backwards_every ({backwards_every})'
@@ -257,14 +261,15 @@ def train(
                     loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
                     
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
-                # check for nan in loss
-                if torch.isnan(loss):
-                    print('OH NO! NAN IN LOSS, SKIPPING') 
-                    wandb.log({'nan':True}) if wandb_config['use'] else None
+                # check for non-finite loss before it can corrupt trainable weights
+                if not torch.isfinite(loss):
+                    loss_state = 'nan' if torch.isnan(loss) else 'inf'
+                    print(f'OH NO! {loss_state.upper()} IN LOSS, SKIPPING')
+                    wandb.log({'nan':True, 'nonfinite_loss': True}) if wandb_config['use'] else None
                     optimizer.zero_grad() # clear gradients
                     nans_in_a_row += 1
                     if nans_in_a_row > 100:
-                        raise ValueError('100 NANS in a row, exiting!')
+                        raise ValueError('100 non-finite losses in a row, exiting!')
                     continue
                 else:
                     nans_in_a_row = 0

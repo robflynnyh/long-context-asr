@@ -81,6 +81,7 @@ def base_config(args, label, checkpoint_file):
             "clip_value": 0.8,
             "random_seed": args.random_seed,
             "dtype": args.dtype,
+            "ctc_zero_infinity": True,
         },
     }
 
