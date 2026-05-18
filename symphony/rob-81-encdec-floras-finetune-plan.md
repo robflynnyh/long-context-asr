@@ -546,3 +546,21 @@ Queued code commit: efdae7f
 Status command: squeue -j 10234291,10234292 -o '%i|%j|%T|%R|%S|%M|%l|%P'
 Accounting command: sacct -j 10234291 --format=JobID,JobName,State,ExitCode,Elapsed,MaxRSS
 ```
+
+Superseded by the later human request to keep the Slurm memory request at
+`130GB`; jobs `10234291` and `10234292` were canceled while pending.
+
+Corrected 130GB `_nw0` retry queue:
+
+```text
+GPU retry job: 10234385
+Finalizer job: 10234386
+Queued code commit: b56fb7e
+Slurm memory: 130GB
+Loader path: batch_size=88, num_workers=0, pin_memory=false, prefetch_factor=1
+Current queue state at handoff: GPU PENDING (Priority), finalizer PENDING (Dependency)
+GPU stdout: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-nw0-10234385.out
+GPU stderr: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-nw0-10234385.err
+Status command: squeue -j 10234385,10234386 -o '%i|%j|%T|%R|%S|%M|%l|%P'
+Accounting command: sacct -j 10234385 --format=JobID,JobName,State,ExitCode,Elapsed,MaxRSS
+```
