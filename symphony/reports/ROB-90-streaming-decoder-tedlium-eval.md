@@ -29,20 +29,20 @@ PYTHONPATH=. python eval/tedlium/run_streaming_decoder_asr.py --checkpoint /stor
 
 ## Summary
 
-- WER: `0.676259`
+- WER: `0.683453`
 - words: `139`
-- insertions/deletions/substitutions: `0.000000` / `0.266187` / `0.410072`
-- mean predicted non-silence fraction: `0.152739`
+- insertions/deletions/substitutions: `0.000000` / `0.561151` / `0.122302`
+- mean predicted non-silence fraction: `0.071348`
 
 ## Sample Outputs
 
 | utterance | reference | prediction | pred non-silence |
 | --- | --- | --- | --- |
-| `AimeeMullins_2009P:1` | i would like to share with you a discovery that i made a few months ago while writing an article for italian wired i always keep my thesaurus handy whenever i am writing anything but | i like to share with you and discover it in a nate as you meant to go along right in order before deciding where i was keeping with thers | 0.245 |
-| `AimeeMullins_2009P:2` | i would already finished editing the piece and i realized that i had never once in my life looked up the word disabled to see what i would find let me read you the entry | i already finished editing the piece and i realized that eden never once in my life looked up the word the savall the sealed i find i | 0.228 |
-| `AimeeMullins_2009P:4` | disabled adjective crippled helpless useless wrecked | disabled advertisement outlets | 0.114 |
+| `AimeeMullins_2009P:1` | i would like to share with you a discovery that i made a few months ago while writing an article for italian wired i always keep my thesaurus handy whenever i am writing anything but | with you with discovery and a month ago while writing artwork the time wire i was | 0.137 |
+| `AimeeMullins_2009P:2` | i would already finished editing the piece and i realized that i had never once in my life looked up the word disabled to see what i would find let me read you the entry | i already finished editing the piece and i realized that i had never once in my life looked up the word the table the civilizing | 0.200 |
+| `AimeeMullins_2009P:4` | disabled adjective crippled helpless useless wrecked | disabled | 0.034 |
 | `AimeeMullins_2009P:6` | stalled maimed wounded mangled lame mutilated | <empty> | 0.000 |
-| `AimeeMullins_2009P:7` | rundown worn out weakened impotent castrated paralyzed handicapped | renowned warrant weekend infant test creative | 0.092 |
-| `AimeeMullins_2009P:8` | senile decrepit laid up done up done for done in cracked up counted out | female decompeted leo donut do not for donutin | 0.143 |
-| `AimeeMullins_2009P:10` | see also hurt useless and weak antonyms healthy strong capable | philosophical hurt newspaper is enlightened anton is healthy | 0.183 |
-| `AimeeMullins_2009P:12` | i was reading this list out loud to a friend and at 1st was laughing it was so ludicrous but i just gotten past mangled | i was reading this whole set loud to a friend and it starts with laughing at the so lucras but i | 0.218 |
+| `AimeeMullins_2009P:7` | rundown worn out weakened impotent castrated paralyzed handicapped | <empty> | 0.000 |
+| `AimeeMullins_2009P:8` | senile decrepit laid up done up done for done in cracked up counted out | <empty> | 0.000 |
+| `AimeeMullins_2009P:10` | see also hurt useless and weak antonyms healthy strong capable | <empty> | 0.000 |
+| `AimeeMullins_2009P:12` | i was reading this list out loud to a friend and at 1st was laughing it was so ludicrous but i just gotten past mangled | i was reading this without loud to a friend and it starts with laughing with so lucras but i | 0.200 |

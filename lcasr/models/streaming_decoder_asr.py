@@ -146,8 +146,10 @@ class StreamingDecoderASR(BaseModel):
         return prev
 
     def _combined_logits(self, silence_logits: torch.Tensor, text_logits: torch.Tensor) -> torch.Tensor:
-        silence_score = silence_logits[..., 0:1]
-        token_scores = text_logits + silence_logits[..., 1:2]
+        silence_log_probs = F.log_softmax(silence_logits, dim=-1)
+        text_log_probs = F.log_softmax(text_logits, dim=-1)
+        silence_score = silence_log_probs[..., 0:1]
+        token_scores = text_log_probs + silence_log_probs[..., 1:2]
         return torch.cat([token_scores, silence_score], dim=-1)
 
     def _step_predictions(self, hidden: torch.Tensor, sample: bool = False, temperature: float = 1.0) -> torch.Tensor:
@@ -165,14 +167,13 @@ class StreamingDecoderASR(BaseModel):
         sample_silence: bool = False,
         silence_temperature: float = 1.0,
     ) -> torch.Tensor:
-        if sample_silence:
-            silence_temperature = max(float(silence_temperature), 1e-6)
-            silence_pred = torch.multinomial(
-                (silence_logits / silence_temperature).softmax(dim=-1).reshape(-1, 2),
-                num_samples=1,
-            ).view(silence_logits.shape[:-1])
-        else:
-            silence_pred = silence_logits.argmax(dim=-1)
+        if not sample_silence:
+            return self._combined_logits(silence_logits, text_logits).argmax(dim=-1)
+        silence_temperature = max(float(silence_temperature), 1e-6)
+        silence_pred = torch.multinomial(
+            (silence_logits / silence_temperature).softmax(dim=-1).reshape(-1, 2),
+            num_samples=1,
+        ).view(silence_logits.shape[:-1])
         text_pred = text_logits.argmax(dim=-1)
         return torch.where(
             silence_pred.bool(),
