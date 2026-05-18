@@ -1,0 +1,61 @@
+model_class: StreamingDecoderASR
+
+model:
+  feat_in: 80
+  n_layers: 2
+  d_model: 128
+  n_heads: 4
+  expansion_factor: 2
+  dropout_ff: 0.0
+  dropout_attn: 0.0
+  subsampling_factor: 8
+  subsampling: dw_striding
+  subsampling_act: silu
+  subsampling_conv_channels: 32
+  subsampling_norm_out: true
+  decoder_norm: true
+  previous_token_dropout: 0.0
+
+optimizer:
+  name: madgrad
+  args:
+    lr: 1e-3
+
+scheduler:
+  warmup_steps: 2
+
+audio_chunking:
+  size: 96
+  overlap: 0
+
+streaming:
+  delay_seconds: 0.2
+  buffer_seconds: 0.05
+
+wandb:
+  use: false
+  project_name: spotify_long_context
+  name: streaming_decoder_asr_cpu_smoke
+  id: ""
+  dir: /mnt/parscratch/users/acp21rjf/wandb_log/
+
+checkpointing:
+  dir: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-76/cpu-smoke-checkpoints
+  save_every_n_steps: 1000
+
+data:
+  synthetic: true
+  synthetic_args:
+    num_batches: 1
+    frames: 96
+
+training:
+  tokenizer_path: lcasr/artifacts/tokenizer.model
+  batch_size: 1
+  backprop_every: 1
+  max_epochs: 1
+  max_steps: 1
+  clip_value: 0.8
+  dtype: float32
+  random_seed: 6433
+  shuffle_chunks: true

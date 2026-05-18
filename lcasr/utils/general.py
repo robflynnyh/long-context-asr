@@ -8,6 +8,7 @@ from lcasr.models.enc_dec_sconformer_v2 import EncDecSconformerV2, RLEncDecSconf
 from lcasr.models.sconformer_meta import SCConformerMeta
 from lcasr.models.sconformer_test import SCConformerTest
 from lcasr.models.augmentation_model import SoftMaskNN
+from lcasr.models.streaming_decoder_asr import StreamingDecoderASR
 # from lcasr.models.metaconformer import MetaConformer
 # from lcasr.models.stconformer import STConformer
 from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler, ConstantLRScheduler
@@ -32,7 +33,8 @@ def get_model_class(config:Dict={}, args:argparse.Namespace={}):
         'RLEncDecSconformerV2',
         'SCConformerMeta',
         'SCConformerTest',
-        'SoftMaskNN'
+        'SoftMaskNN',
+        'StreamingDecoderASR',
     ]
     
 
@@ -61,6 +63,8 @@ def get_model_class(config:Dict={}, args:argparse.Namespace={}):
         return SCConformerTest
     elif model_class == 'SoftMaskNN':
         return SoftMaskNN
+    elif model_class == 'StreamingDecoderASR':
+        return StreamingDecoderASR
     else:
         raise NotImplementedError(f'Unknown model class {model_class}, must be one of {model_classes}')
     

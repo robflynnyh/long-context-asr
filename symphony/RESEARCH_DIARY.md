@@ -9,15 +9,32 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-18
+
+- ROB-70 BEST-RQ lower-LR one-epoch Spotify run completed successfully on branch `symphony/rob-70-setup-ssl-bestrq`: Stanage job `10226550` finished `COMPLETED 0:0` in `12:22:57` with batch MaxRSS `157290060K`. The run used command `python exp/train_bestRQ.py -config exp/configs/ssl/bestrq_6l_2048_spotify.yaml --remove_scheduler --reset_step --no_resume --num_workers 0 --prefetch_factor 1`, logs `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/gpu-10226550.{out,err}` and `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/train-10226550.log`, checkpoints under `/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch_lr3e4_20260516` through `step_105360.pt`, and W&B run `rob70_bestrq_6l_2048_1epoch_lr3e4_20260516` at `https://wandb.ai/wobrob101/spotify_long_context_ssl/runs/ybonr8wv`. A bounded log scan found no tracebacks, Slurm failure states, NaNs/Infs, or optimizer-step assertions.
+- ROB-76 PR cleanup: Linear selected the two-head streaming decoder, so the single-head CE and canceled soft-dilation ablations were removed from the PR. The retained Mimas run `rob76-mimas-3epoch-b48-two-head-20260517T140145Z` reached step `82737`; future long Mimas runs now execute immutable run-dir wrapper/callback copies to avoid live-script edits affecting exit traps.
+- ROB-76 padding cleanup: the streaming decoder no longer passes a padding mask into causal self-attention because padding is right-tail only, valid queries cannot attend to future padded keys, and padded target positions are ignored by the loss. This also removes the shared `attention.py` padded-causal SDPA fallback from the PR.
+
+## 2026-05-17
+
+- ROB-76 design pivot: debugging showed teacher-forced predictions could learn non-silence while free-running greedy decode stayed blank, so the PR moved to a two-head decoder with separate silence and text heads, shuffled training chunks, and no scheduled sampling or loss weighting. The required Stanage CPU smoke job `10228966` passed from a clean clone with the 107.73M model and one optimizer step.
+- ROB-76 run evidence: the two-head Mimas 3-epoch run `rob76-mimas-3epoch-b48-two-head-20260517T140145Z` was launched after wrapper and callback dry runs; earlier scheduled-feedback, soft-dilation, and single-head CE explorations were superseded and are not part of the final PR surface.
+
 ## 2026-05-16
 
 - ROB-70 BEST-RQ divergence follow-up on branch `symphony/rob-70-setup-ssl-bestrq`: after the human Linear comment flagged divergence, inspected active GPU job `10219000` and canceled it at elapsed `01:49:37`. The log had no NaNs/Infs but showed a real loss-quality regression after warmup: first 1000 logged chunks averaged `6.8779`, chunks `2000-2999` averaged `6.2309`, then chunks `7000-7999` averaged `7.5056`; the isolated very-low losses were high-variance small-mask/no-mask artifacts from the previous forced-mask repair. Patched `exp/configs/ssl/bestrq_6l_2048_spotify.yaml` to lower the BEST-RQ LR from `3e-3` to `3e-4` and use fresh checkpoint/W&B names under `/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch_lr3e4_20260516`; patched `lcasr/models/BestRQ.py` to skip no-mask chunks instead of forcing one target; and added `num_masked_frames` to W&B logging in `exp/train_bestRQ.py`.
 - ROB-70 lower-LR retry validation and queue: local validation passed with `py_compile`, `bash -n`, `git diff --check`, and a direct no-mask skip smoke. The updated files were copied to the Stanage issue workspace, the actual GPU wrapper callback-only dry run succeeded, and Stanage CPU smoke job `10226533` completed `0:0` in `00:01:37` with MaxRSS `5710340K` and loss `9.085878372192383`. Queued replacement GPU job `10226550` on `gpu-h100-nvl`, `ReqMem=150G`, command `python exp/train_bestRQ.py -config exp/configs/ssl/bestrq_6l_2048_spotify.yaml --remove_scheduler --reset_step --no_resume --num_workers 0 --prefetch_factor 1`, logs `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/gpu-10226550.{out,err}` and `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/train-10226550.log`, W&B run `rob70_bestrq_6l_2048_1epoch_lr3e4_20260516`. Also patched `symphony/rob70_linear_callback.py` to inspect terminal Slurm states so manual cancellations and Slurm failures are not reported as success when the wrapper shell status is misleading. The wrapper callback should return ROB-70 to `Todo` when the job exits.
+- ROB-76 Mimas/debug path: added the Mimas Spotify-10% manifest helper, W&B/callback wrapper, debug generation, checkpoint interval handling, and batch-48 wrapper defaults. Also fixed the cosine schedule horizon and causal-subsampling chunking after the Stanage `conv2d` indexing failure; bounded Mimas smokes validated these paths.
 
 ## 2026-05-15
 
 - ROB-70 BEST-RQ empty-mask repair on branch `symphony/rob-70-setup-ssl-bestrq`: failed GPU job `10162668` reached chunk `128/129` then crashed with `AssertionError: No inf checks were recorded for this optimizer` after BEST-RQ returned a standalone zero loss for a chunk with no selected masked frames. Patched `lcasr/models/BestRQ.py` to force one valid mask when possible, skip only truly invalid zero-frame cases, and keep quantizer targets one-dimensional for single-frame masks. Patched `exp/train_bestRQ.py` to skip optimizer steps when no model gradients were produced and added `--no_resume` so retries do not silently load partial failed-run checkpoints. Validation: local `py_compile`, `bash -n`, `git diff --check`, local BEST-RQ empty-mask guard smoke, actual GPU-wrapper callback-only dry run on Stanage, and Stanage CPU smoke job `10218996` completed `0:0` with loss `9.085878372192383`, MaxRSS `5714792K`, and checkpoint `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/smoke-checkpoints/step_1.pt`.
 - ROB-70 BEST-RQ GPU retry queued after the empty-mask repair as Stanage job `10219000` on `gpu-h100-nvl`, using pushed commit `872fd38`, wrapper `/mnt/parscratch/users/acp21rjf/symphony-workspaces-long-context-asr/ROB-70/symphony/rob70_bestrq_train_gpu.sbatch`, and command `python exp/train_bestRQ.py -config exp/configs/ssl/bestrq_6l_2048_spotify.yaml --remove_scheduler --reset_step --no_resume --num_workers 0 --prefetch_factor 1`. Logs are `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/gpu-10219000.{out,err}` and `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/train-10219000.log`; fresh retry checkpoints are under `/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch_retry_20260515`; W&B run name is `rob70_bestrq_6l_2048_1epoch_retry_20260515`. The wrapper callback should move ROB-70 back to `Todo` when the job exits for result inspection.
+- ROB-76 queue follow-up: updated the full config to 2048-frame chunks, batch 176, no accumulation, and three epochs; Stanage CPU smoke job `10221260` passed and the callback-backed GPU wrapper path was queued for `gpu-h100-nvl`.
+
+## 2026-05-13
+
+- ROB-85 on branch `symphony/ROB-85-update-rules`: updated Symphony execution rules and agent notes to ban `/tmp` on Mimas. Future Mimas-local scratch should use repo-local `.tmp/` or another issue-specific user-owned path under `/exp/exp4/acp21rjf/`; Stanage scratch remains `/mnt/parscratch/users/acp21rjf/symphony-tmp`.
 
 ## 2026-05-12
 
@@ -45,6 +62,23 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-26 RL configs were scaled up for the next run: the 3K config now uses batch size 6 and 8 rollouts; the 30K constant-LR sweep configs were renamed to `exp/configs/enc_dec/rl_floras50_30k_b18_r48_const_lr_<lr>.yaml` and now use batch size 18 and 48 rollouts.
 - Added parallel 30K GRPO LR-sweep configs under `exp/configs/enc_dec/rl_floras50_30k_b18_r48_grpo_const_lr_<lr>.yaml`; these keep `rl.reward_threshold: 0.8`, while MaxRL configs no longer include that GRPO-only threshold field.
+
+## 2026-05-11
+
+- ROB-69 on branch `symphony/ROB-69-18l-long-context-benchmark`: added an 18L long-only finetune benchmark config comparing `FT_3epoch_18L` checkpoints against matched 18L baseline checkpoints. Stanage CPU smoke job `10156237` completed successfully after seeding 75 baseline rows and checking 30 model entries, five dataset loaders, output paths, and sampled checkpoint metadata. Queued H100 eval job `10156464` with finalizer/callback job `10156465`; remote result path is `/mnt/parscratch/users/acp21rjf/symphony-workspaces-long-context-asr/ROB-69/eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`.
+- ROB-76 on branch `symphony/ROB-76-streaming-decoder-asr`: added the initial decoder-only streaming ASR path with causal subsampling, causal shared attention, previous-label feedback, delayed frame-synchronous word targets, and an explicit silence class. The 100M config instantiated at 107.73M parameters; Stanage CPU smokes through job `10160756` validated the shared-attention version, including the padded causal SDPA fallback.
+
+## 2026-05-15
+
+- ROB-76 queue follow-up: updated the full config to 2048-frame chunks, batch 176, no accumulation, and three epochs; Stanage CPU smoke job `10221260` passed and the callback-backed GPU wrapper path was queued for `gpu-h100-nvl`.
+
+## 2026-05-16
+
+- ROB-76 Mimas/debug path: added the Mimas Spotify-10% manifest helper, W&B/callback wrapper, debug generation, checkpoint interval handling, and batch-48 wrapper defaults. Also fixed the cosine schedule horizon and causal-subsampling chunking after the Stanage `conv2d` indexing failure; bounded Mimas smokes validated these paths.
+
+## 2026-05-12
+
+- ROB-69 eval job `10156464` completed successfully, but finalizer job `10156465` failed because appended finetuned CSV rows included an extra pandas index field. Normalized the completed remote result into `eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`, made ROB-69 summarization tolerate and normalize that output shape, and fixed eval manager CSV appends to write `index=False`. Mean WER was slightly worse for the long-only finetuned checkpoints on most dataset/window pairs, with small improvements only on `rev16` window 128, `tedlium` window 8192, and `this_american_life` windows 128 and 22500.
 
 ## 2026-05-02
 
