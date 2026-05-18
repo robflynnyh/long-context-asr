@@ -12,15 +12,26 @@ CHECKPOINTS = [
     ("50pct", "step_52800.pt"),
     ("100pct", "step_105360.pt"),
 ]
+CHECKPOINT_MAP = dict(CHECKPOINTS)
 
 
-def base_config(args, label, checkpoint_file):
+def parse_csv(value, cast=str):
+    if value is None:
+        return None
+    return [cast(item.strip()) for item in value.split(",") if item.strip()]
+
+
+def lr_token(value):
+    return f"{value:.0e}".replace("e-0", "e-").replace("e+0", "e").replace("+", "")
+
+
+def base_config(args, label, checkpoint_file, learning_rate, run_label):
     batch_size = args.smoke_batch_size if args.smoke else args.batch_size
     max_epochs = 1 if args.smoke else args.max_epochs
     run_id = Path(args.run_dir).name
     return {
         "model_class": "SCConformerXL",
-        "description": f"ROB-91 frozen BEST-RQ CTC probe for {label}.",
+        "description": f"ROB-91 frozen BEST-RQ CTC probe for {label} at lr={learning_rate}.",
         "model": {
             "feat_in": 80,
             "n_layers": 6,
@@ -57,19 +68,19 @@ def base_config(args, label, checkpoint_file):
             "load_decoder_from_ssl": False,
             "trainable_prefixes": ["decoder."],
         },
-        "optimizer": {"name": "madgrad", "args": {"lr": args.learning_rate}},
+        "optimizer": {"name": "madgrad", "args": {"lr": learning_rate}},
         "scheduler": {"warmup_steps": args.warmup_steps},
         "audio_chunking": {"size": args.seq_len, "overlap": 0},
         "wandb": {
             "use": not args.disable_wandb and (not args.smoke or args.enable_smoke_wandb),
             "project_name": "rob91_bestrq_ctc_probe",
-            "name": f"{run_id}_{label}_frozen_ctc_probe",
+            "name": f"{run_id}_{run_label}_frozen_ctc_probe",
             "id": "",
             "dir": str(Path(args.run_dir) / "wandb"),
             "update_config_with_wandb_id": False,
         },
         "checkpointing": {
-            "dir": str(Path(args.checkpoint_root) / label),
+            "dir": str(Path(args.checkpoint_root) / run_label),
             "save_every_n_steps": args.save_every_n_steps,
         },
         "data": {"path": args.train_manifest},
@@ -102,32 +113,46 @@ def main():
     parser.add_argument("--max-epochs", type=int, default=3)
     parser.add_argument("--seq-len", type=int, default=2048)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
+    parser.add_argument("--learning-rates")
+    parser.add_argument("--checkpoint-labels")
     parser.add_argument("--warmup-steps", type=int, default=500)
     parser.add_argument("--save-every-n-steps", type=int, default=200)
     parser.add_argument("--random-seed", type=int, default=1234)
     parser.add_argument("--dtype", default="bfloat16")
     args = parser.parse_args()
 
-    labels = CHECKPOINTS[:1] if args.smoke else CHECKPOINTS
+    selected_labels = parse_csv(args.checkpoint_labels) or [label for label, _ in CHECKPOINTS]
+    unknown = [label for label in selected_labels if label not in CHECKPOINT_MAP]
+    if unknown:
+        raise SystemExit(f"unknown checkpoint label(s): {', '.join(unknown)}")
+    labels = [(label, CHECKPOINT_MAP[label]) for label in selected_labels]
+    if args.smoke:
+        labels = labels[:1]
+    learning_rates = parse_csv(args.learning_rates, float) or [args.learning_rate]
     config_dir = Path(args.run_dir) / "configs"
     config_dir.mkdir(parents=True, exist_ok=True)
     Path(args.checkpoint_root).mkdir(parents=True, exist_ok=True)
 
     runs = []
+    single_lr = len(learning_rates) == 1
     for label, checkpoint_file in labels:
-        config = OmegaConf.create(base_config(args, label, checkpoint_file))
-        config_path = config_dir / f"rob91_{label}_frozen_ctc_probe.yaml"
-        OmegaConf.save(config=config, f=config_path)
-        runs.append(
-            {
-                "label": label,
-                "checkpoint_file": checkpoint_file,
-                "source_checkpoint": f"{args.stanage_checkpoint_dir}/{checkpoint_file}",
-                "local_checkpoint": str(Path(args.checkpoint_cache) / checkpoint_file),
-                "train_config": str(config_path),
-                "checkpoint_dir": str(Path(args.checkpoint_root) / label),
-            }
-        )
+        for learning_rate in learning_rates:
+            run_label = label if single_lr else f"{label}_lr{lr_token(learning_rate)}"
+            config = OmegaConf.create(base_config(args, label, checkpoint_file, learning_rate, run_label))
+            config_path = config_dir / f"rob91_{run_label}_frozen_ctc_probe.yaml"
+            OmegaConf.save(config=config, f=config_path)
+            runs.append(
+                {
+                    "label": run_label,
+                    "base_label": label,
+                    "learning_rate": learning_rate,
+                    "checkpoint_file": checkpoint_file,
+                    "source_checkpoint": f"{args.stanage_checkpoint_dir}/{checkpoint_file}",
+                    "local_checkpoint": str(Path(args.checkpoint_cache) / checkpoint_file),
+                    "train_config": str(config_path),
+                    "checkpoint_dir": str(Path(args.checkpoint_root) / run_label),
+                }
+            )
 
     manifest = {
         "mode": "smoke" if args.smoke else "full",

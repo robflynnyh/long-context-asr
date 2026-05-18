@@ -33,6 +33,8 @@ def main():
             {
                 "name": f"rob91_{run['label']}_frozen_ctc_probe",
                 "label": run["label"],
+                "base_label": run.get("base_label", run["label"]),
+                "learning_rate": run.get("learning_rate"),
                 "source_ssl_checkpoint": run["local_checkpoint"],
                 "path": str(ckpt),
                 "seq_len": args.seq_len,

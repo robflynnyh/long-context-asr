@@ -32,6 +32,10 @@ PREFETCH="${ROB91_PREFETCH:-1}"
 PIN_MEMORY="${ROB91_PIN_MEMORY:-0}"
 BATCH_SIZE="${ROB91_BATCH_SIZE:-16}"
 MAX_EPOCHS="${ROB91_MAX_EPOCHS:-3}"
+LEARNING_RATE="${ROB91_LEARNING_RATE:-1e-3}"
+LEARNING_RATES="${ROB91_LEARNING_RATES:-}"
+WARMUP_STEPS="${ROB91_WARMUP_STEPS:-500}"
+CHECKPOINT_LABELS="${ROB91_CHECKPOINT_LABELS:-}"
 SMOKE_MAX_RECORDS="${ROB91_SMOKE_MAX_RECORDS:-1}"
 SMOKE_BATCH_SIZE="${ROB91_SMOKE_BATCH_SIZE:-1}"
 FULL_MAX_RECORDS="${ROB91_FULL_MAX_RECORDS:-}"
@@ -77,6 +81,10 @@ on_exit() {
     echo "result_csv=${RESULT_CSV}"
     echo "result_summary=${RESULT_SUMMARY}"
     echo "checkpoint_root=${CHECKPOINT_ROOT}"
+    echo "learning_rate=${LEARNING_RATE}"
+    echo "learning_rates=${LEARNING_RATES:-unset}"
+    echo "warmup_steps=${WARMUP_STEPS}"
+    echo "checkpoint_labels=${CHECKPOINT_LABELS:-default}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB91_ENABLE_CALLBACK:-1}" == "1" ]]; then
     if [[ -z "${LINEAR_API_KEY:-}" && -f "$LINEAR_KEY_FILE" ]]; then
@@ -116,6 +124,10 @@ trap 'trap - INT; exit 130' INT
   echo "executed_script=${EXECUTED_SCRIPT}"
   echo "callback_script=${CALLBACK_SCRIPT}"
   echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-unset}"
+  echo "learning_rate=${LEARNING_RATE}"
+  echo "learning_rates=${LEARNING_RATES:-unset}"
+  echo "warmup_steps=${WARMUP_STEPS}"
+  echo "checkpoint_labels=${CHECKPOINT_LABELS:-default}"
 } > "$SUMMARY_FILE"
 
 if [[ "${ROB91_CALLBACK_ONLY:-0}" == "1" ]]; then
@@ -158,7 +170,15 @@ prepare_args=(
   --batch-size "$BATCH_SIZE"
   --smoke-batch-size "$SMOKE_BATCH_SIZE"
   --max-epochs "$MAX_EPOCHS"
+  --learning-rate "$LEARNING_RATE"
+  --warmup-steps "$WARMUP_STEPS"
 )
+if [[ -n "$LEARNING_RATES" ]]; then
+  prepare_args+=(--learning-rates "$LEARNING_RATES")
+fi
+if [[ -n "$CHECKPOINT_LABELS" ]]; then
+  prepare_args+=(--checkpoint-labels "$CHECKPOINT_LABELS")
+fi
 if [[ "$MODE" == "smoke" ]]; then
   prepare_args+=(--smoke)
   if [[ "$SMOKE_ENABLE_WANDB" == "1" ]]; then

@@ -79,6 +79,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-76 Mimas/debug path: added the Mimas Spotify-10% manifest helper, W&B/callback wrapper, debug generation, checkpoint interval handling, and batch-48 wrapper defaults. Also fixed the cosine schedule horizon and causal-subsampling chunking after the Stanage `conv2d` indexing failure; bounded Mimas smokes validated these paths.
 
+## 2026-05-18
+
+- ROB-91 LR-tuning follow-up: after the initial frozen BEST-RQ CTC-head run showed unstable losses and blank-heavy W&B summaries, added checkpoint-subset and learning-rate-grid support to the Mimas probe wrapper. The same callback-backed wrapper now records LR settings in its summary and can run a 25%-checkpoint TEDLIUM pilot before comparing all three SSL checkpoints.
+
 ## 2026-05-12
 
 - ROB-69 eval job `10156464` completed successfully, but finalizer job `10156465` failed because appended finetuned CSV rows included an extra pandas index field. Normalized the completed remote result into `eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`, made ROB-69 summarization tolerate and normalize that output shape, and fixed eval manager CSV appends to write `index=False`. Mean WER was slightly worse for the long-only finetuned checkpoints on most dataset/window pairs, with small improvements only on `rev16` window 128, `tedlium` window 8192, and `this_american_life` windows 128 and 22500.
