@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional
+from typing import Iterable, Optional
 
 from lcasr.components.attention import Attention
 from lcasr.components.helpers import get_act
@@ -116,6 +116,27 @@ class StreamingDecoderASR(BaseModel):
 
     def get_silence_id(self) -> int:
         return self.silence_id
+
+    def _decode_prediction_ids(
+        self,
+        tokenizer,
+        prediction_ids: Iterable[int],
+        max_tokens: int = 256,
+    ) -> str:
+        tokens = []
+        previous = None
+        for idx in prediction_ids:
+            idx = int(idx)
+            if idx == self.silence_id:
+                previous = idx
+                continue
+            if idx == previous:
+                continue
+            tokens.append(idx)
+            previous = idx
+            if len(tokens) >= max_tokens:
+                break
+        return "" if not tokens else tokenizer.decode(tokens)
 
     def output_lengths(self, lengths: torch.Tensor) -> torch.Tensor:
         return calc_length(
@@ -353,3 +374,77 @@ class StreamingDecoderASR(BaseModel):
         if was_training:
             self.train()
         return {"predictions": torch.stack(predictions, dim=1), "length": out_lengths}
+
+    @torch.no_grad()
+    def transcribe(
+        self,
+        audio_spec,
+        tokenizer,
+        device=None,
+        decode_mode: str = "greedy",
+        temperature: float = 1.0,
+        max_sequence_length: Optional[int] = None,
+        max_output_frames: Optional[int] = None,
+        max_tokens: int = 256,
+        return_metadata: bool = False,
+        **kwargs,
+    ):
+        del kwargs
+        if isinstance(audio_spec, (list, tuple)):
+            return [
+                self.transcribe(
+                    item,
+                    tokenizer,
+                    device=device,
+                    decode_mode=decode_mode,
+                    temperature=temperature,
+                    max_sequence_length=max_sequence_length,
+                    max_output_frames=max_output_frames,
+                    max_tokens=max_tokens,
+                    return_metadata=return_metadata,
+                )
+                for item in audio_spec
+            ]
+
+        if device is None:
+            device = next(self.parameters()).device
+        device = torch.device(device)
+        if audio_spec.dim() == 3 and audio_spec.size(0) == 1:
+            audio_spec = audio_spec.squeeze(0)
+        if audio_spec.dim() != 2:
+            raise ValueError(f"Expected audio spectrogram with shape [features, frames], got {tuple(audio_spec.shape)}")
+
+        if max_sequence_length is not None and max_sequence_length > 0:
+            audio_spec = audio_spec[..., :max_sequence_length]
+
+        model_dtype = next(self.parameters()).dtype
+        audio_signal = audio_spec.to(device=device, dtype=model_dtype).unsqueeze(0)
+        length = torch.tensor([audio_signal.shape[-1]], dtype=torch.long, device=device)
+
+        if decode_mode == "sample":
+            decoded = self.sample_decode(
+                audio_signal=audio_signal,
+                length=length,
+                max_frames=max_output_frames,
+                temperature=temperature,
+            )
+        elif decode_mode == "greedy":
+            decoded = self.greedy_decode(
+                audio_signal=audio_signal,
+                length=length,
+                max_frames=max_output_frames,
+            )
+        else:
+            raise ValueError(f"Unsupported decode_mode: {decode_mode}")
+
+        pred_len = int(decoded["length"][0].item())
+        prediction_ids = decoded["predictions"][0, :pred_len].detach().cpu().tolist()
+        text = self._decode_prediction_ids(tokenizer, prediction_ids, max_tokens=max_tokens)
+        if not return_metadata:
+            return text
+        return {
+            "text": text,
+            "prediction_ids": prediction_ids,
+            "output_frames": pred_len,
+            "pred_non_silence_fraction": sum(idx != self.silence_id for idx in prediction_ids) / max(len(prediction_ids), 1),
+        }

@@ -12,6 +12,7 @@ from functools import partial
 
 TEST_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/test/'
 DEV_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/dev/'
+TRAIN_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/train/'
 
 from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
@@ -48,7 +49,7 @@ def proc_stm_and_timings(stm_path:str):
 def fetch_utterances(stm_path:str, spectogram:torch.Tensor):
     stm = open_stm(stm_path)
     utterances = []
-    for line in stm:
+    for line_index, line in enumerate(stm):
         sline = line.split(' ')
         if len(sline) < 6:
             continue
@@ -57,6 +58,9 @@ def fetch_utterances(stm_path:str, spectogram:torch.Tensor):
         if text == 'ignore_time_segment_in_scoring':
             continue
         utterances.append({
+            'id': f'{a_id}:{line_index}',
+            'recording_id': a_id,
+            'speaker': spk,
             'start': float(start), 
             'end': float(end), 
             'text': re.sub(r" '([a-z])", r"'\1", text).strip(),
@@ -83,6 +87,18 @@ def fetch_data(path:str = TEST_PATH):
     return audio_files, text_files
 
 
+def split_path(split: str, tedlium_root: str = None) -> str:
+    if tedlium_root is not None and tedlium_root != '':
+        return os.path.join(tedlium_root, split)
+    if split == 'test':
+        return TEST_PATH
+    if split == 'dev':
+        return DEV_PATH
+    if split == 'train':
+        return TRAIN_PATH
+    raise ValueError(f'Split must be test, dev, or train (got {split})')
+
+
 def process_text_and_audio_fn(rec_dict, single_utterance=False):
     audio, text = rec_dict['audio'], rec_dict['text']
     audio_spec = processing_chain(audio)
@@ -99,7 +115,7 @@ def process_text_and_audio_fn(rec_dict, single_utterance=False):
 
 def get_text_and_audio(split, **kwargs):
     assert split in ['test', 'dev', 'train'], f'Split must be either test or dev train (got {split})'
-    data_path = TEST_PATH if split == 'test' else DEV_PATH
+    data_path = split_path(split, kwargs.get('tedlium_root', None))
     single_utterance = kwargs.get('single_utterance', False)
     
     audio_files, text_files = fetch_data(path=data_path)
