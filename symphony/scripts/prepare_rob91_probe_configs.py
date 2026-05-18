@@ -69,7 +69,7 @@ def base_config(args, label, checkpoint_file, learning_rate, run_label):
             "trainable_prefixes": ["decoder."],
         },
         "optimizer": {"name": "madgrad", "args": {"lr": learning_rate}},
-        "scheduler": {"warmup_steps": args.warmup_steps},
+        "scheduler": {"name": args.scheduler, "warmup_steps": args.warmup_steps},
         "audio_chunking": {"size": args.seq_len, "overlap": 0},
         "wandb": {
             "use": not args.disable_wandb and (not args.smoke or args.enable_smoke_wandb),
@@ -115,6 +115,7 @@ def main():
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--learning-rates")
     parser.add_argument("--checkpoint-labels")
+    parser.add_argument("--scheduler", choices=["cosine", "constant"], default="cosine")
     parser.add_argument("--warmup-steps", type=int, default=500)
     parser.add_argument("--save-every-n-steps", type=int, default=200)
     parser.add_argument("--random-seed", type=int, default=1234)

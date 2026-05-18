@@ -81,7 +81,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 ## 2026-05-18
 
-- ROB-91 LR-tuning follow-up: after the initial frozen BEST-RQ CTC-head run showed unstable losses and blank-heavy W&B summaries, added checkpoint-subset and learning-rate-grid support to the Mimas probe wrapper. The same callback-backed wrapper now records LR settings in its summary and can run a 25%-checkpoint TEDLIUM pilot before comparing all three SSL checkpoints.
+- ROB-91 LR-tuning follow-up: after the initial frozen BEST-RQ CTC-head run showed unstable losses and blank-heavy W&B summaries, added checkpoint-subset, learning-rate-grid, and scheduler-selection support to the Mimas probe wrapper. The same callback-backed wrapper now records LR/scheduler settings in its summary and can run a targeted TEDLIUM LR pilot before comparing all three SSL checkpoints.
 
 ## 2026-05-12
 
