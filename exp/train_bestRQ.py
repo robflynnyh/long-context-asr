@@ -8,7 +8,7 @@ from lcasr.models.BestRQ import BestRQ
 
 from omegaconf.omegaconf import OmegaConf
 import traceback
-from lcasr.utils.dataloading import VariableBatchSimpleDataloader, chunk_spectogram, chunk_text_json, reset_seen_ids
+from lcasr.utils.dataloading import VariableBatchSimpleDataloader, chunk_spectogram, reset_seen_ids
 from lcasr.utils.hooks import add_debug_backwards_hooks
 from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager
 from lcasr.utils.helpers import exists
@@ -52,7 +52,7 @@ def backwards_pass(
         scheduler:torch.optim.lr_scheduler._LRScheduler,
         scaler:GradScaler,
     ):
-    
+
     scaler.unscale_(optimizer)
     torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value) if clip_value > 0 else None
     scaler.step(optimizer)
@@ -68,7 +68,7 @@ def apply_augmentation(audio, lengths, augmentation, epoch, start_augment_after_
         return audio
     else:
         return augmentation(audio, lengths)
-    
+
 def get_dtype(dtype:str) -> torch.dtype:
     if dtype == 'bfloat16':
         return torch.bfloat16
@@ -81,8 +81,8 @@ def get_dtype(dtype:str) -> torch.dtype:
 
 def train(
         args:argparse.Namespace,
-        best_rq:BestRQ, 
-        dataloader:torch.utils.data.DataLoader, 
+        best_rq:BestRQ,
+        dataloader:torch.utils.data.DataLoader,
         optimizer:torch.optim.Optimizer,
         scheduler:CosineLRScheduler,
         sequence_scheduler:SequenceWarmupManager,
@@ -90,9 +90,10 @@ def train(
         step:int = 0,
         seen_ids:List[str] = [],
         epoch:int = 0,
+        augmentation:SpecAugment|None = None,
     ):
-    scaler = GradScaler() 
-    clip_value = args.config['training'].get('clip_value', 0.8) 
+    scaler = GradScaler()
+    clip_value = args.config['training'].get('clip_value', 0.8)
     random.seed(args.config['training'].get('random_seed', 12345))
     wandb_config = args.config['wandb']
     dtype = get_dtype(args.config['training'].get('dtype', 'bfloat16'))
@@ -105,10 +106,11 @@ def train(
 
     backprop_every, backwards_every = args.config['training']['backprop_every'], args.config['training'].get('backwards_every', 1)
     assert backprop_every >= backwards_every, f'backprop_every ({backprop_every}) must be >= backwards_every ({backwards_every})'
-    
+
     batch_size = args.config['training']['batch_size']
 
-    cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
+    cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
+    cur_loss_count = 0
 
     chunk_size, chunk_overlap = args.config.audio_chunking['size'], 0 # previously args.config.audio_chunking['overlap'] though this is not used anymore
 
@@ -124,6 +126,7 @@ def train(
     total_recordings = dataloader.total_recordings() * max_epochs
     pbar = tqdm(total = len(dataloader), desc = f'Training - Epoch {epoch}')
     start_spec_augment_after_n_epochs = args.config['training'].get('start_spec_augment_after_n_epochs', -1)
+    max_chunks_per_recording = args.config['training'].get('max_chunks_per_recording', None)
 
     while not finished:#################
         try:
@@ -136,7 +139,7 @@ def train(
                 finished = True
             else:
                 dataloader.update(
-                    batch_size = dataloader.batch_size, 
+                    batch_size = dataloader.batch_size,
                     seen_ids = seen_ids,
                     random_seed = random.randint(0, 10000),
                 )
@@ -156,26 +159,27 @@ def train(
         if args.config["training"].get("max_steps", float("inf")) <= cur_podcast:
             finished = True
         if podcasts_since_last_save > args.config['checkpointing']['save_every_n_steps']:
-            torch.cuda.empty_cache() 
+            torch.cuda.empty_cache()
             save_model(
-                model = best_rq.model, 
-                optimizer = optimizer, 
-                scheduler = scheduler, 
-                podcast_step = cur_podcast, 
+                model = best_rq,
+                optimizer = optimizer,
+                scheduler = scheduler,
+                podcast_step = cur_podcast,
                 config = args.config,
                 sequence_scheduler = sequence_scheduler,
                 seen_ids = seen_ids,
                 epoch = epoch,
-                other = {'best_rq_out_projection': best_rq.out_projection.state_dict()},
+                other = {'acoustic_model': best_rq.model.state_dict()},
             )
             podcasts_since_last_save = 0
         last_podcast = cur_podcast
         ###############################
-        
+
         audio_chunks_ = chunk_spectogram(spec = audio, chunk_size = chunk_size, chunk_overlap = chunk_overlap)
 
         del audio
         backwards_every_loss, steps_since_backwards = 0.0, 0
+        has_pending_gradients = False
         chunks, culm_lengths_audio, nans_in_a_row = [], torch.zeros_like(audio_lengths), 0
 
         ################################
@@ -184,6 +188,10 @@ def train(
             remove_mask = ~(culm_lengths_audio > audio_lengths)
             cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
             cur_lengths = cur_chunks.shape[-1] - (cur_culm_lengths + cur_chunks.shape[-1] - audio_lengths[remove_mask] - chunk_overlap).clamp(0)
+            keep = cur_lengths > 0
+            cur_chunks, cur_lengths = cur_chunks[keep], cur_lengths[keep]
+            if cur_chunks.shape[0] == 0:
+                continue
 
             chunks.append({
                 'audio':cur_chunks,
@@ -192,6 +200,8 @@ def train(
                 'cur_culm_lengths':cur_culm_lengths,
             })
             culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
+            if max_chunks_per_recording is not None and len(chunks) >= max_chunks_per_recording:
+                break
 
         was_warmup = scheduler.is_warmup
         if was_warmup:
@@ -202,31 +212,69 @@ def train(
         if args.config["training"].get("shuffle_chunks", False):
             random.shuffle(chunks)
         ################################
- 
+
         try:
             for ix, chunk_json in enumerate(chunks):
                 print(f'chunk {ix}/{len(chunks)}')
-               
+
                 audio, a_lengths = chunk_json['audio'], chunk_json['audio_lengths']
-                # 
+                #
                 audio, a_lengths = audio.to(device, dtype=model_dtype), a_lengths.to(device)
 
                 with autocast(device.type, dtype=dtype) if torch.cuda.is_available() else nullcontext():
                     audio = apply_augmentation(audio=audio, lengths=a_lengths, augmentation=augmentation, start_augment_after_n_epochs=start_spec_augment_after_n_epochs, epoch=epoch, is_warmup=scheduler.is_warmup)
-                   
-                    
-                    out = model(
-                        audio_signal = audio, 
-                        length = a_lengths, 
+
+
+                    out = best_rq(
+                        audio_signal = audio,
+                        length = a_lengths,
                     )
 
-                    cur_probs = out['final_posteriors']
-                    B,N,C = cur_probs.shape 
-                    loss = None
-                    
+                    loss = out['loss']
+
+                is_last_chunk = (ix + 1) == len(chunks)
+                if loss is None:
+                    print(f"skipping chunk with no BEST-RQ loss; masked_frames={out.get('num_masked_frames', 0)}")
+                    if wandb_config['use']:
+                        wandb.log({'skipped_empty_bestrq_mask': True}, commit=False)
+                    if is_last_chunk and steps_since_backwards > 0:
+                        scaler.scale(backwards_every_loss / steps_since_backwards).backward()
+                        last_kv_set.detach_() if last_kv_set != None else None
+                        has_pending_gradients = True
+                        steps_since_backwards = 0
+                        backwards_every_loss = 0.0
+                    if is_last_chunk and has_pending_gradients and cur_loss_count > 0:
+                        loss_to_log = (cur_loss / cur_loss_count).item()
+                        print(f'loss: {loss_to_log}')
+
+                        backwards_pass(
+                            model = best_rq,
+                            clip_value = clip_value,
+                            optimizer = optimizer,
+                            scheduler = scheduler,
+                            scaler = scaler
+                        )
+                        has_pending_gradients = False
+                        learning_rate = scheduler.get_last_lr()[0]
+
+                        if wandb_config['use']:
+                            wandb.log({
+                                'loss': loss_to_log,
+                                'learning_rate': learning_rate,
+                                'sequence_length': chunk_size,
+                                'batch_size': batch_size,
+                                'num_masked_frames': out.get('num_masked_frames', 0),
+                                'epoch': epoch,
+                                'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
+                            })
+
+                        cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
+                        cur_loss_count = 0
+                    continue
+
                 # check for nan in loss
-                if torch.isnan(loss):
-                    print('OH NO! NAN IN LOSS, SKIPPING') 
+                if not torch.isfinite(loss):
+                    print('OH NO! NAN IN LOSS, SKIPPING')
                     wandb.log({'nan':True}) if wandb_config['use'] else None
                     optimizer.zero_grad() # clear gradients
                     nans_in_a_row += 1
@@ -237,37 +285,36 @@ def train(
                     nans_in_a_row = 0
 
 
-                cur_loss += loss
+                cur_loss += loss.detach()
+                cur_loss_count += 1
 
                 backwards_every_loss += loss
                 steps_since_backwards += 1
-                
-                # cur_tokens_in_loss += B * N
-                cur_tokens_in_loss += (sum(a_lengths)) # total number of acoustic frames in batch
 
-                if (ix+1) % backwards_every == 0 or (ix+1) == len(chunks):
-                    scaler.scale(((backwards_every_loss) / (chunk_size*batch_size*steps_since_backwards)) * 100).backward() # divide by chunk*batch_size constant to weight smaller batches less
+                if steps_since_backwards >= backwards_every or is_last_chunk:
+                    scaler.scale(backwards_every_loss / steps_since_backwards).backward()
                     last_kv_set.detach_() if last_kv_set != None else None
+                    has_pending_gradients = True
                     steps_since_backwards = 0
-                    backwards_every_loss = 0
+                    backwards_every_loss = 0.0
 
 
-                if (ix+1) % backprop_every == 0 or (ix+1) == len(chunks): 
-                    full_loss = cur_loss 
-                    full_loss /= cur_tokens_in_loss
-                    full_loss *= 100
-                    loss_to_log = full_loss.item()
-                    print(f'loss: {full_loss}')
-                    
+                if cur_loss_count >= backprop_every or is_last_chunk:
+                    if cur_loss_count == 0 or not has_pending_gradients:
+                        continue
+                    loss_to_log = (cur_loss / cur_loss_count).item()
+                    print(f'loss: {loss_to_log}')
+
                     backwards_pass(
-                        model = best_rq.model,
+                        model = best_rq,
                         clip_value = clip_value,
                         optimizer = optimizer,
                         scheduler = scheduler,
                         scaler = scaler
                     )
+                    has_pending_gradients = False
                     learning_rate = scheduler.get_last_lr()[0]
-                 
+
 
                     if wandb_config['use']:
                         wandb.log({
@@ -275,18 +322,20 @@ def train(
                             'learning_rate': learning_rate,
                             'sequence_length': chunk_size,
                             'batch_size': batch_size,
+                            'num_masked_frames': out.get('num_masked_frames', 0),
                             'epoch': epoch,
                             'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
                         })
-                    
-                    cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
-                    
-        except RuntimeError as e: 
-            if 'an illegal memory access was encountered' in str(e): 
+
+                    cur_loss = torch.tensor(0.0, dtype=model_dtype, device=device)
+                    cur_loss_count = 0
+
+        except RuntimeError as e:
+            if 'an illegal memory access was encountered' in str(e):
                 print(e,'\n --- skipping batch ---')
                 continue
             else:
-                print(traceback.format_exc()) 
+                print(traceback.format_exc())
                 raise e
 
         if not scheduler.is_warmup: # step every batch
@@ -306,23 +355,23 @@ def train(
                     best_rq.model.rotary_pos_emb.rotary_interpolation_factor = best_rq.model.rotary_pos_emb.rotary_interpolation_factor * sequence_scheduler.increase_by_multiplier
                 dataloader_iter = iter(dataloader)
                 pbar.total = len(dataloader) # update total of tqdm
-                
+
         del chunks
-        
+
     save_model( # save final model
-        model = best_rq.model, 
-        optimizer = optimizer, 
-        scheduler = scheduler, 
+        model = best_rq,
+        optimizer = optimizer,
+        scheduler = scheduler,
         podcast_step = cur_podcast,
         config = args.config,
         sequence_scheduler = sequence_scheduler,
         seen_ids = seen_ids,
         epoch = epoch,
-        other = {'best_rq_out_projection': best_rq.out_projection.state_dict()},
+        other = {'acoustic_model': best_rq.model.state_dict()},
     )
     return best_rq
-            
-            
+
+
 
 
 def main(args):
@@ -336,14 +385,16 @@ def main(args):
     # set random seed for initialization
     torch.manual_seed(12345), torch.cuda.manual_seed(12345)
     model = load_model(args.config, tokenizer.vocab_size(), get_model_class(config = args.config))
-    tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
 
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if args.anomaly:
         torch.autograd.set_detect_anomaly(True)
-    
+
+    best_rq = BestRQ(model=model, **args.config.get('best_rq', {}))
+    tparams = best_rq.print_total_params()
+
     wandb_config = args.config['wandb']
     if wandb_config['use']:
         project_name, w_id = wandb_config['project_name'], wandb_config['id']
@@ -351,13 +402,14 @@ def main(args):
         wandb_dir = args.config['wandb'].get('dir', './wandb')
         config = OmegaConf.to_container(args.config, resolve=True)
         wandb.init(project=project_name, config=config, name=run_name, dir=wandb_dir) if w_id == '' else wandb.init(project=project_name, id=w_id, resume="must", config=config, allow_val_change=True, dir=wandb_dir)
-        wandb.watch(model, log="all") # sometimes this causes a crash ):
+        if wandb_config.get('watch_model', True):
+            wandb.watch(best_rq, log=wandb_config.get('watch_log', "all")) # sometimes this causes a crash ):
         wandb.config.update({'total_params': tparams}, allow_val_change=True)
         print(f'\nLoggging with Wandb id: {wandb.run.id}\n')
         args.config['wandb']['id'] = wandb.run.id # add wandb config to args.config
         if wandb_config.get('update_config_with_wandb_id', False): OmegaConf.save(config=args.config, f=args.config_path)
 
-    best_rq = BestRQ(model=model).to(device)
+    best_rq = best_rq.to(device)
     optimizer, scheduler = load_optimizer(args.config, best_rq)
 
     sequence_scheduler = None
@@ -368,33 +420,27 @@ def main(args):
             **args.config['sequence_scheduler']
         )
 
-    seen_ids, step, epoch = load_checkpoint(
-        args = args, 
-        model = best_rq.model, 
-        optimizer = optimizer, 
-        scheduler = scheduler, 
-        sequence_scheduler = sequence_scheduler,
-        path = args.config['checkpointing']['dir'],
-        device = device
-    )
-    _, _, _ = load_checkpoint(
-        args = args, 
-        model = best_rq.out_projection, 
-        optimizer = None, 
-        scheduler = None, 
-        sequence_scheduler = None,
-        path = args.config['checkpointing']['dir'],
-        model_key= 'best_rq_out_projection',
-        device = device
-    )
+    if args.no_resume:
+        seen_ids, step, epoch = [], 0, 0
+        print('Starting with --no_resume; existing checkpoints will not be loaded')
+    else:
+        seen_ids, step, epoch = load_checkpoint(
+            args = args,
+            model = best_rq,
+            optimizer = optimizer,
+            scheduler = scheduler,
+            sequence_scheduler = sequence_scheduler,
+            path = args.config['checkpointing']['dir'],
+            device = device
+        )
 
     if args.reset_step:
-        seen_ids, step, epoch = [], 0, 0 
+        seen_ids, step, epoch = [], 0, 0
 
     print(f'Starting from podcast: {len(seen_ids)}')
     random_seed = args.config['training'].get('random_seed', 1234)
     if random_seed == 'random':  # generate using time
-        random_seed = int(time.time()) % 10000 
+        random_seed = int(time.time()) % 10000
         print(f'random seed: {random_seed}')
 
     random.seed(random_seed)
@@ -402,8 +448,8 @@ def main(args):
 
     # skip data up to step
     dataloader = VariableBatchSimpleDataloader(
-        pairs = paired_data, 
-        tokenizer = tokenizer, 
+        pairs = paired_data,
+        tokenizer = tokenizer,
         batch_size = args.config['training']['batch_size'],
         chunk_size = args.config.audio_chunking['size'],
         chunk_overlap = args.config.audio_chunking['overlap'],
@@ -414,27 +460,30 @@ def main(args):
         random_seed = random_seed,
     )
 
+    augmentation = SpecAugment(**args.config['spec_augment']) if 'spec_augment' in args.config else None
+    assert exists(augmentation) or start_spec_augment_after_n_epochs == -1, 'must have spec augment in config if start_spec_augment_after_n_epochs > 0'
 
     if args.debug_hooks:
         assert wandb_config['use'], 'must have wandb enabled when - arg.debug_hooks ==  True - to log debug hooks outputs'
         logger = partial(wandb.log, commit=False)
         add_debug_backwards_hooks(model = model, logger = logger)
-    
+
     if sequence_scheduler and dataloader.batch_size != sequence_scheduler.cur_batch_size:
         print('WARNING: dataloader batch size does not match sequence scheduler batch size, updating dataloader batch size')
         dataloader.update(batch_size = sequence_scheduler.cur_batch_size, seen_ids = seen_ids)
 
     train(
-        args = args, 
-        best_rq = best_rq, 
-        dataloader = dataloader, 
-        optimizer = optimizer, 
+        args = args,
+        best_rq = best_rq,
+        dataloader = dataloader,
+        optimizer = optimizer,
         scheduler = scheduler,
-        sequence_scheduler = sequence_scheduler, 
-        device = device, 
+        sequence_scheduler = sequence_scheduler,
+        device = device,
         seen_ids = seen_ids,
         step = step,
-        epoch = epoch
+        epoch = epoch,
+        augmentation = augmentation,
     )
 
 
@@ -449,6 +498,7 @@ if __name__ == '__main__':
     parser.add_argument('-num_workers', '--num_workers', type=int, default=0, help='number of workers for dataloader')
     parser.add_argument('-pin_memory', '--pin_memory', action='store_true', help='pin memory for dataloader')
     parser.add_argument('-prefetch', '--prefetch_factor', type=int, default=1, help='prefetch factor for dataloader')
+    parser.add_argument('--no_resume', action='store_true', help='start from fresh initialization without loading checkpointing.dir')
 
     parser.add_argument('-debug_hooks', '--debug_hooks', action='store_true', help='add hooks to log gradient/activation info')
 
@@ -456,4 +506,3 @@ if __name__ == '__main__':
 
 
     main(args)
-      
