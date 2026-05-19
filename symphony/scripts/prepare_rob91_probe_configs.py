@@ -126,7 +126,7 @@ def main():
     parser.add_argument("--disable-wandb", action="store_true")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--smoke-batch-size", type=int, default=1)
-    parser.add_argument("--max-epochs", type=int, default=3)
+    parser.add_argument("--max-epochs", type=int, default=10)
     parser.add_argument("--seq-len", type=int, default=2048)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--learning-rates")
@@ -169,6 +169,7 @@ def main():
                     "learning_rate": learning_rate,
                     "checkpoint_file": checkpoint_file,
                     "probe_head": args.probe_head,
+                    "max_epochs": config.training.max_epochs,
                     "source_checkpoint": f"{args.stanage_checkpoint_dir}/{checkpoint_file}",
                     "local_checkpoint": str(Path(args.checkpoint_cache) / checkpoint_file),
                     "train_config": str(config_path),
@@ -182,6 +183,7 @@ def main():
         "train_manifest": args.train_manifest,
         "checkpoint_cache": args.checkpoint_cache,
         "checkpoint_root": args.checkpoint_root,
+        "max_epochs": 1 if args.smoke else args.max_epochs,
         "runs": runs,
     }
     Path(args.manifest_out).write_text(json.dumps(manifest, indent=2), encoding="utf-8")

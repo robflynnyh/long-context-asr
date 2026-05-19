@@ -53,6 +53,7 @@ def main():
                 "base_label": run.get("base_label", run["label"]),
                 "learning_rate": run.get("learning_rate"),
                 "probe_head": run.get("probe_head", "linear"),
+                "max_epochs": run.get("max_epochs"),
                 "wer": float(row["wer"]),
                 "checkpoint": row["checkpoint"],
                 "source_ssl_checkpoint": run["local_checkpoint"],
@@ -61,10 +62,11 @@ def main():
 
     lines = ["# ROB-91 Frozen BEST-RQ CTC Probe", ""]
     if rows:
-        lines.extend(["| SSL checkpoint | Probe head | LR | TEDLIUM test WER | Trained CTC checkpoint |", "| --- | --- | ---: | ---: | --- |"])
+        lines.extend(["| SSL checkpoint | Probe head | Epochs | LR | TEDLIUM test WER | Trained CTC checkpoint |", "| --- | --- | ---: | ---: | ---: | --- |"])
         for row in sorted(rows, key=sort_key):
             lr = "" if row["learning_rate"] is None else f"{row['learning_rate']:.0e}"
-            lines.append(f"| {row['label']} | {row['probe_head']} | {lr} | {row['wer'] * 100:.2f}% | `{row['checkpoint']}` |")
+            epochs = "" if row["max_epochs"] is None else str(row["max_epochs"])
+            lines.append(f"| {row['label']} | {row['probe_head']} | {epochs} | {lr} | {row['wer'] * 100:.2f}% | `{row['checkpoint']}` |")
         lines.extend(["", f"Interpretation: {classify(rows)}."])
     else:
         lines.append("No aggregate TEDLIUM test WER rows were found.")

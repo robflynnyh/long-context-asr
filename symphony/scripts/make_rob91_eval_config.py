@@ -36,6 +36,7 @@ def main():
                 "base_label": run.get("base_label", run["label"]),
                 "learning_rate": run.get("learning_rate"),
                 "probe_head": run.get("probe_head", "linear"),
+                "max_epochs": run.get("max_epochs"),
                 "source_ssl_checkpoint": run["local_checkpoint"],
                 "path": str(ckpt),
                 "seq_len": args.seq_len,
