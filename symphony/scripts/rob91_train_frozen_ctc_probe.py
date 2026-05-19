@@ -6,14 +6,12 @@ import time
 from typing import Iterable
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import wandb
 from omegaconf import OmegaConf
 
 import lcasr
 from exp.train import train
-from lcasr.models.base import LayerNorm, RMSNorm
+from lcasr.models.ctc_probe import acoustic_model_from_probe
 from lcasr.optim import madgrad
 from lcasr.utils.augmentation import SpecAugment
 from lcasr.utils.dataloading import VariableBatchSimpleDataloader
@@ -25,118 +23,6 @@ try:
     from apex.optimizers import FusedAdam
 except Exception:
     FusedAdam = torch.optim.Adam
-
-
-class BiLSTMCTCProbeHead(nn.Module):
-    def __init__(
-            self,
-            d_model: int,
-            vocab_size: int,
-            norm: bool = False,
-            norm_fn=LayerNorm,
-            hidden_size: int = 1024,
-            num_layers: int = 2,
-            dropout: float = 0.2,
-        ):
-        super().__init__()
-        self.num_classes = vocab_size + 1
-        self.norm = norm_fn(d_model) if norm else nn.Identity()
-        dropout = dropout if num_layers > 1 else 0.0
-        self.bilstm = nn.LSTM(
-            input_size=d_model,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            dropout=dropout,
-            bidirectional=True,
-            batch_first=True,
-        )
-        self.ff = nn.Linear(hidden_size * 2, self.num_classes)
-        self.reprojection = nn.Linear(self.num_classes, d_model)
-
-    def forward(self, x, logits=False):
-        x_norm = self.norm(x)
-        with torch.cuda.amp.autocast(enabled=False):
-            x, _ = self.bilstm(x_norm.float())
-            x = self.ff(x)
-        return x if logits else F.log_softmax(x, dim=-1)
-
-    def project_back(self, x):
-        return self.reprojection(x)
-
-    def integrate_projections(self, x, proj1):
-        return x + proj1
-
-
-class FrozenBackboneCTCProbe(nn.Module):
-    def __init__(self, acoustic_model: nn.Module, decoder: nn.Module):
-        super().__init__()
-        self.acoustic_model = acoustic_model
-        self.decoder = decoder
-
-    @property
-    def subsampling(self):
-        return self.acoustic_model.subsampling
-
-    def print_total_params(self, only_trainable=False):
-        total = sum(p.numel() for p in self.parameters() if p.requires_grad) if only_trainable else sum(p.numel() for p in self.parameters())
-        pstr = "Total trainable params: " if only_trainable else "Total params: "
-        print(f"{pstr}: ", total / 1e6, "M")
-        return total
-
-    def forward(self, *args, **kwargs):
-        return_logits = kwargs.get("return_logits", False)
-        kwargs["skip_vocab_projection"] = True
-        output = self.acoustic_model(*args, **kwargs)
-        hidden_states = output["hidden_states"]
-        if self.acoustic_model.legasee_double_norm:
-            hidden_states = self.decoder.norm(hidden_states)
-        final_posts = self.decoder(x=hidden_states, logits=return_logits)
-        return {"final_posteriors": final_posts, "length": output["length"]}
-
-    def load_state_dict(self, state_dict, strict=True):
-        return super().load_state_dict(normalize_probe_state_dict(self, state_dict), strict=strict)
-
-
-def _norm_fn(config):
-    return RMSNorm if config.model.get("default_norm", "layer_norm") == "rms_norm" else LayerNorm
-
-
-def build_probe_model(config, vocab_size: int, model_class=None):
-    acoustic_model = load_model(config, vocab_size, model_class or get_model_class(config=config))
-    if config.get("probe", {}).get("head", "linear") != "bilstm":
-        return acoustic_model
-
-    head = BiLSTMCTCProbeHead(
-        d_model=config.model.d_model,
-        vocab_size=vocab_size,
-        norm=config.model.get("decoder_norm", False),
-        norm_fn=_norm_fn(config),
-        hidden_size=config.probe.get("bilstm_hidden_size", 1024),
-        num_layers=config.probe.get("bilstm_num_layers", 2),
-        dropout=config.probe.get("bilstm_dropout", 0.2),
-    )
-    return FrozenBackboneCTCProbe(acoustic_model=acoustic_model, decoder=head)
-
-
-def acoustic_model_from_probe(model: nn.Module):
-    return model.acoustic_model if isinstance(model, FrozenBackboneCTCProbe) else model
-
-
-def normalize_probe_state_dict(model: nn.Module, state_dict):
-    if not isinstance(model, FrozenBackboneCTCProbe):
-        return state_dict
-    if any(key.startswith("acoustic_model.") for key in state_dict):
-        return state_dict
-    if not any(key.startswith("final_decoder.") for key in state_dict):
-        return state_dict
-
-    converted = {}
-    for key, value in state_dict.items():
-        if key.startswith("final_decoder."):
-            converted[f"decoder.{key[len('final_decoder.'):]}"] = value
-        else:
-            converted[f"acoustic_model.{key}"] = value
-    return converted
 
 
 def subset_pairs(pairs, max_records):
@@ -264,7 +150,7 @@ def main(args):
     torch.manual_seed(12345)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(12345)
-    model = build_probe_model(config, tokenizer.vocab_size())
+    model = load_model(config, tokenizer.vocab_size(), get_model_class(config=config))
     load_frozen_backbone(
         model=acoustic_model_from_probe(model),
         checkpoint_path=config.probe.ssl_checkpoint,

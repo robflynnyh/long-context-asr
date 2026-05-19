@@ -79,6 +79,8 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 ## 2026-05-19
 
+- ROB-91 PR follow-up: moved the BiLSTM frozen-backbone CTC probe wrapper into `lcasr.models.ctc_probe` and routed it through normal `load_model()` config handling, so TEDLIUM eval no longer imports ROB-91-specific scripts for probe checkpoints.
+
 - ROB-91 10-epoch BiLSTM probe result: callback-backed Mimas run `rob91-full-bilstm-10epoch-constant-20260519T0911Z` completed 10-epoch frozen TEDLIUM probes for the ROB-70 25%, 50%, and 100% BEST-RQ checkpoints. Test WERs were 99.85%, 99.67%, and 99.73%; the result is inconclusive/negative, with artifacts under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-91/rob91-full-bilstm-10epoch-constant-20260519T0911Z/`.
 
 ## 2026-05-12
