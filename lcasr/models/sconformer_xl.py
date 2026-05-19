@@ -128,18 +128,6 @@ class SCConformerXL(BaseModel):
             norm_fn = default_norm,
             **kwargs
         )
-        # `decoder` is part of the self-conditioning path and is present in
-        # existing checkpoints. `final_decoder` is only set when a config asks
-        # for a separate final CTC probe head; the default keeps using
-        # `decoder` for the final projection and leaves the state dict unchanged.
-        self.final_decoder = decoder.build_final_ctc_decoder(
-            decoder_type = kwargs.get('final_decoder_type', 'linear'),
-            d_model = d_model,
-            vocab_size = vocab_size,
-            norm = decoder_norm,
-            norm_fn = default_norm,
-            **kwargs
-        )
 
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
         self.subsampling = \
@@ -188,7 +176,6 @@ class SCConformerXL(BaseModel):
         '''
 
         decoder = self.decoder
-        output_decoder = self.decoder if self.final_decoder is None else self.final_decoder
         max_audio_length: int = audio_signal.size(-1)
 
         if cached_kvs is not None:
@@ -260,8 +247,8 @@ class SCConformerXL(BaseModel):
         if skip_vocab_projection:
             output_dict = {'hidden_states': audio_signal, 'length': length,}
         else:
-            audio_signal = output_decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
-            final_posts = output_decoder(x = audio_signal, logits = return_logits)
+            audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
+            final_posts = decoder(x = audio_signal, logits = return_logits) 
             output_dict = {'final_posteriors': final_posts, 'length': length,}
 
         if self.training and self.rotary_pos_emb is not None:
@@ -407,3 +394,4 @@ if __name__ == '__main__':
     lengths = lengths.to(device)
     out = model(audio, length=lengths)
     print(out['final_posteriors'].shape)
+    

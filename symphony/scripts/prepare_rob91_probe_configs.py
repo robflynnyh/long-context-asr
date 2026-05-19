@@ -32,16 +32,14 @@ def base_config(args, label, checkpoint_file, learning_rate, run_label):
     trainable_prefixes = ["decoder."]
     load_decoder_from_ssl = False
     probe_description = "linear"
-    final_decoder_config = {}
+    probe_config = {}
     if args.probe_head == "bilstm":
-        trainable_prefixes = ["final_decoder."]
         load_decoder_from_ssl = True
         probe_description = f"{args.bilstm_num_layers}-layer BiLSTM({args.bilstm_hidden_size})+linear"
-        final_decoder_config = {
-            "final_decoder_type": "bilstm",
-            "final_decoder_bilstm_hidden_size": args.bilstm_hidden_size,
-            "final_decoder_bilstm_num_layers": args.bilstm_num_layers,
-            "final_decoder_bilstm_dropout": args.bilstm_dropout,
+        probe_config = {
+            "bilstm_hidden_size": args.bilstm_hidden_size,
+            "bilstm_num_layers": args.bilstm_num_layers,
+            "bilstm_dropout": args.bilstm_dropout,
         }
     return {
         "model_class": "SCConformerXL",
@@ -75,7 +73,6 @@ def base_config(args, label, checkpoint_file, learning_rate, run_label):
             "checkpoint_every_n_layers": 0,
             "rotary_base_freq": 1500000,
             "flash_attn": True,
-            **final_decoder_config,
         },
         "probe": {
             "ssl_checkpoint": str(Path(args.checkpoint_cache) / checkpoint_file),
@@ -83,6 +80,7 @@ def base_config(args, label, checkpoint_file, learning_rate, run_label):
             "head": args.probe_head,
             "load_decoder_from_ssl": load_decoder_from_ssl,
             "trainable_prefixes": trainable_prefixes,
+            **probe_config,
         },
         "optimizer": {"name": "madgrad", "args": {"lr": learning_rate}},
         "scheduler": {"name": args.scheduler, "warmup_steps": args.warmup_steps},

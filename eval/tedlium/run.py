@@ -21,6 +21,22 @@ else:
 from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
 
+
+def load_checkpoint_model(args, checkpoint, tokenizer):
+    if checkpoint["config"].get("probe", {}).get("head") == "bilstm":
+        from symphony.scripts.rob91_train_frozen_ctc_probe import build_probe_model, normalize_probe_state_dict
+
+        model = build_probe_model(
+            checkpoint["config"],
+            tokenizer.vocab_size(),
+            model_class=get_model_class(config=checkpoint["config"], args=args),
+        )
+        state_dict = normalize_probe_state_dict(model, checkpoint["model"])
+    else:
+        model = load_model(args.config, tokenizer.vocab_size(), model_class=get_model_class(config=args.config, args=args))
+        state_dict = checkpoint["model"]
+    return model, state_dict
+
 def open_stm(path:str) -> List[str]:
     with open(path, 'r') as f:
         lines = f.read().split('\n')
@@ -132,10 +148,10 @@ def main(args):
     
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
-    model = load_model(args.config, tokenizer.vocab_size(), model_class=get_model_class(config=args.config, args=args))
+    model, state_dict = load_checkpoint_model(args, checkpoint, tokenizer)
     print(f'Loaded model class: {model.__class__.__name__}')
     tparams = model.print_total_params()
-    model.load_state_dict(checkpoint['model'], strict=False)
+    model.load_state_dict(state_dict, strict=False)
     print(f'Loaded model from {args.checkpoint}')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.device = device
