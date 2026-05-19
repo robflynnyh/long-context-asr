@@ -89,6 +89,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-19
 
 - ROB-91 10-epoch follow-up: a newer Linear comment judged the 3-epoch BiLSTM probes likely undertrained, so the callback-backed ROB-91 Mimas wrapper and config generator now default to `ROB91_MAX_EPOCHS=10`. Generated run manifests and outcome summaries record the epoch count so the next 25/50/100 BEST-RQ checkpoint comparison is clearly distinguishable from the superseded 3-epoch result.
+- ROB-91 10-epoch BiLSTM probe result: full callback-backed Mimas run `rob91-full-bilstm-10epoch-constant-20260519T0911Z` completed 10-epoch frozen-backbone TEDLIUM CTC probes for the ROB-70 25%, 50%, and 100% BEST-RQ checkpoints. Aggregate TEDLIUM test WERs were 99.85%, 99.67%, and 99.73% respectively. The 50% checkpoint was best, the 100% checkpoint regressed slightly from 50%, and all results remained near 100% WER, so the result is inconclusive/negative rather than convincing evidence that the SSL representations are useful under this probe setup. Artifacts are under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-91/rob91-full-bilstm-10epoch-constant-20260519T0911Z/`.
 
 ## 2026-05-12
 
