@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from lcasr.components.decoder import ASRLinearSCDecoder
 from lcasr.models.base import LayerNorm, RMSNorm
 
 
@@ -80,18 +81,29 @@ def _norm_fn(config):
 
 
 def wrap_model_with_ctc_probe(config, acoustic_model: nn.Module, vocab_size: int):
-    if config.get("probe", {}).get("head", "linear") != "bilstm":
+    if not config.get("probe", {}):
         return acoustic_model
 
-    head = BiLSTMCTCProbeHead(
-        d_model=config.model.d_model,
-        vocab_size=vocab_size,
-        norm=config.model.get("decoder_norm", False),
-        norm_fn=_norm_fn(config),
-        hidden_size=config.probe.get("bilstm_hidden_size", 1024),
-        num_layers=config.probe.get("bilstm_num_layers", 2),
-        dropout=config.probe.get("bilstm_dropout", 0.2),
-    )
+    probe_head = config.probe.get("head", "linear")
+    if probe_head == "linear":
+        head = ASRLinearSCDecoder(
+            d_model=config.model.d_model,
+            vocab_size=vocab_size,
+            norm=config.model.get("decoder_norm", False),
+            norm_fn=_norm_fn(config),
+        )
+    elif probe_head == "bilstm":
+        head = BiLSTMCTCProbeHead(
+            d_model=config.model.d_model,
+            vocab_size=vocab_size,
+            norm=config.model.get("decoder_norm", False),
+            norm_fn=_norm_fn(config),
+            hidden_size=config.probe.get("bilstm_hidden_size", 1024),
+            num_layers=config.probe.get("bilstm_num_layers", 2),
+            dropout=config.probe.get("bilstm_dropout", 0.2),
+        )
+    else:
+        raise NotImplementedError(f"unknown CTC probe head: {probe_head}")
     return FrozenBackboneCTCProbe(acoustic_model=acoustic_model, decoder=head)
 
 
@@ -104,13 +116,21 @@ def normalize_probe_state_dict(model: nn.Module, state_dict):
         return state_dict
     if any(key.startswith("acoustic_model.") for key in state_dict):
         return state_dict
-    if not any(key.startswith("final_decoder.") for key in state_dict):
+    has_decoder = any(key.startswith("decoder.") for key in state_dict)
+    has_final_decoder = any(key.startswith("final_decoder.") for key in state_dict)
+    if not has_decoder and not has_final_decoder:
         return state_dict
 
     converted = {}
     for key, value in state_dict.items():
         if key.startswith("final_decoder."):
             converted[f"decoder.{key[len('final_decoder.'):]}"] = value
+        elif key.startswith("decoder."):
+            if has_final_decoder:
+                converted[f"acoustic_model.{key}"] = value
+            else:
+                converted[key] = value
+                converted[f"acoustic_model.{key}"] = value
         else:
             converted[f"acoustic_model.{key}"] = value
     return converted

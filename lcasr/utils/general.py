@@ -72,8 +72,7 @@ def get_model_class(config:Dict={}, args:argparse.Namespace={}):
 
 def load_model(config:Dict, vocab_size, model_class=SCConformerXL):
     model = model_class(**config.model, vocab_size=vocab_size)
-    probe = config.get("probe", {})
-    if probe.get("head", "linear") == "bilstm":
+    if config.get("probe", {}):
         from lcasr.models.ctc_probe import wrap_model_with_ctc_probe
 
         model = wrap_model_with_ctc_probe(config, model, vocab_size)
