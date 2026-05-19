@@ -128,21 +128,14 @@ class SCConformerXL(BaseModel):
             norm_fn = default_norm,
             **kwargs
         )
-        final_decoder_type = kwargs.get('final_decoder_type', 'linear')
-        if final_decoder_type == 'linear':
-            self.final_decoder = None
-        elif final_decoder_type == 'bilstm':
-            self.final_decoder = decoder.BiLSTMCTCDecoder(
-                d_model = d_model,
-                vocab_size = vocab_size,
-                norm = decoder_norm,
-                norm_fn = default_norm,
-                bilstm_hidden_size = kwargs.get('final_decoder_bilstm_hidden_size', 1024),
-                bilstm_num_layers = kwargs.get('final_decoder_bilstm_num_layers', 2),
-                bilstm_dropout = kwargs.get('final_decoder_bilstm_dropout', 0.2),
-            )
-        else:
-            raise ValueError(f'Unknown final_decoder_type {final_decoder_type}')
+        self.final_decoder = decoder.build_final_ctc_decoder(
+            decoder_type = kwargs.get('final_decoder_type', 'linear'),
+            d_model = d_model,
+            vocab_size = vocab_size,
+            norm = decoder_norm,
+            norm_fn = default_norm,
+            **kwargs
+        )
 
         subsampling_args = {'subsampling_factor': self.subsampling_factor, 'feat_in': self.feat_in, 'feat_out': self.d_model, 'norm_out': subsampling_norm_out,}
         self.subsampling = \

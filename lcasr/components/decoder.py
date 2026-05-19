@@ -72,3 +72,33 @@ class BiLSTMCTCDecoder(nn.Module):
 
     def integrate_projections(self, x, proj1):
         return x + proj1
+
+
+def _linear_final_decoder(**kwargs):
+    return None
+
+
+FINAL_CTC_DECODERS = {
+    'linear': _linear_final_decoder,
+    'bilstm': BiLSTMCTCDecoder,
+}
+
+FINAL_DECODER_ARG_ALIASES = {
+    'final_decoder_bilstm_hidden_size': 'bilstm_hidden_size',
+    'final_decoder_bilstm_num_layers': 'bilstm_num_layers',
+    'final_decoder_bilstm_dropout': 'bilstm_dropout',
+}
+
+
+def build_final_ctc_decoder(decoder_type='linear', **kwargs):
+    try:
+        decoder_cls = FINAL_CTC_DECODERS[decoder_type]
+    except KeyError as exc:
+        choices = ', '.join(sorted(FINAL_CTC_DECODERS))
+        raise ValueError(f'Unknown final_decoder_type {decoder_type}; expected one of {choices}') from exc
+
+    decoder_kwargs = dict(kwargs)
+    for source, target in FINAL_DECODER_ARG_ALIASES.items():
+        if source in decoder_kwargs:
+            decoder_kwargs[target] = decoder_kwargs[source]
+    return decoder_cls(**decoder_kwargs)
