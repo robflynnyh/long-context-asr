@@ -1,0 +1,842 @@
+import argparse
+import os
+import random
+import sys
+import time
+from contextlib import nullcontext
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+
+import lcasr
+import torch
+import wandb
+from einops import rearrange
+from omegaconf import OmegaConf
+from tqdm import tqdm
+
+from lcasr.eval.wer import word_error_rate_detail
+from lcasr.utils.audio_tools import total_frames
+from lcasr.utils.dataloading import VariableBatchSimpleDataloader, reset_seen_ids
+from lcasr.utils.general import get_model_class, load_checkpoint, load_model, load_optimizer
+from lcasr.utils.streaming_targets import (
+    filter_words_by_end_frame,
+    pad_audio_for_streaming_delay,
+    resolve_timed_words,
+)
+
+try:
+    from whisper.normalizers import EnglishTextNormalizer
+except ImportError:
+    EnglishTextNormalizer = None
+
+
+def get_dtype(dtype: str) -> torch.dtype:
+    if dtype == "bfloat16":
+        return torch.bfloat16
+    if dtype == "float16":
+        return torch.float16
+    if dtype == "float32":
+        return torch.float32
+    raise ValueError(f"invalid dtype: {dtype}")
+
+
+def normalize_text(text: str, normalizer: Any = None) -> str:
+    if normalizer is not None:
+        text = normalizer(text)
+    return " ".join(text.lower().strip().split())
+
+
+def word_surface(word: Dict[str, Any]) -> str:
+    if "word" in word:
+        return str(word["word"])
+    if "text" in word:
+        return str(word["text"])
+    return ""
+
+
+def reference_words(transcript: Sequence[Dict[str, Any]], normalizer: Any = None) -> str:
+    return normalize_text(" ".join(word_surface(word) for word in transcript), normalizer)
+
+
+def decode_prediction_ids(
+    tokenizer: Any,
+    prediction_ids: Iterable[int],
+    silence_id: int,
+    max_tokens: Optional[int] = None,
+    normalizer: Any = None,
+) -> str:
+    tokens = []
+    previous = None
+    for idx in prediction_ids:
+        idx = int(idx)
+        if idx == silence_id:
+            previous = idx
+            continue
+        if idx == previous:
+            continue
+        tokens.append(idx)
+        previous = idx
+        if max_tokens is not None and len(tokens) >= max_tokens:
+            break
+    text = "" if len(tokens) == 0 else tokenizer.decode(tokens)
+    return normalize_text(text, normalizer)
+
+
+def weighted_error_rewards(
+    hypotheses: List[str],
+    references: List[str],
+    wer_weight: float = 0.7,
+    cer_weight: float = 0.3,
+    reward_offset: float = 1.0,
+    reward_scale: float = 1.0,
+    reward_min: Optional[float] = 0.0,
+    reward_max: Optional[float] = None,
+    reward_positive_threshold: Optional[float] = None,
+) -> torch.Tensor:
+    weight_sum = wer_weight + cer_weight
+    if weight_sum <= 0:
+        raise ValueError("reward weights must sum to a positive value")
+    wer_weight = wer_weight / weight_sum
+    cer_weight = cer_weight / weight_sum
+
+    rewards = []
+    for hyp, ref in zip(hypotheses, references):
+        wer, *_ = word_error_rate_detail(hypotheses=[hyp], references=[ref], use_cer=False)
+        cer, *_ = word_error_rate_detail(hypotheses=[hyp], references=[ref], use_cer=True)
+        error = wer_weight * float(wer) + cer_weight * float(cer)
+        reward = reward_offset - reward_scale * error
+        if reward_min is not None:
+            reward = max(float(reward_min), reward)
+        if reward_max is not None:
+            reward = min(float(reward_max), reward)
+        if reward_positive_threshold is not None and reward <= reward_positive_threshold:
+            reward = 0.0
+        rewards.append(reward)
+    return torch.tensor(rewards, dtype=torch.float32)
+
+
+def _optional_float(config: Any, key: str, default: Optional[float]) -> Optional[float]:
+    value = config.get(key, default)
+    if value is None:
+        return None
+    return float(value)
+
+
+def compute_rewards(hypotheses: List[str], references: List[str], reward_config: Any) -> torch.Tensor:
+    reward_type = reward_config.get("reward_type", "weighted_error")
+    if reward_type != "weighted_error":
+        raise ValueError(f"unknown streaming RL reward_type {reward_type}")
+    return weighted_error_rewards(
+        hypotheses=hypotheses,
+        references=references,
+        wer_weight=float(reward_config.get("reward_wer_weight", 0.7)),
+        cer_weight=float(reward_config.get("reward_cer_weight", 0.3)),
+        reward_offset=float(reward_config.get("reward_offset", 1.0)),
+        reward_scale=float(reward_config.get("reward_scale", 1.0)),
+        reward_min=_optional_float(reward_config, "reward_min", 0.0),
+        reward_max=_optional_float(reward_config, "reward_max", None),
+        reward_positive_threshold=_optional_float(reward_config, "reward_positive_threshold", None),
+    )
+
+
+def compute_grpo_advantages(
+    rewards: torch.Tensor,
+    group_size: int,
+    eps: float,
+    min_group_std: float = 0.0,
+) -> torch.Tensor:
+    grouped = rearrange(rewards, "(b g) -> b g", g=group_size)
+    mean = grouped.mean(dim=1, keepdim=True)
+    std = grouped.std(dim=1, keepdim=True, unbiased=False)
+    active = std > max(eps, min_group_std)
+    advantages = (grouped - mean) / std.clamp_min(eps)
+    advantages = torch.where(active, advantages, torch.zeros_like(advantages))
+    return rearrange(advantages, "b g -> (b g)")
+
+
+def streaming_reference_for_reward(
+    transcript: Sequence[Dict[str, Any]],
+    chunk_start_frames: int,
+    output_length: int,
+    subsampling_factor: int,
+    delay_seconds: float,
+    normalizer: Any,
+) -> str:
+    delayed_frame_offset = total_frames(delay_seconds)
+    kept = []
+    for word in resolve_timed_words(transcript):
+        end_time = float(str(word["endTime"])[:-1]) if "endTime" in word else float(word["end"])
+        delayed_frame = total_frames(end_time) + delayed_frame_offset - int(chunk_start_frames)
+        if delayed_frame < 0:
+            continue
+        if delayed_frame // subsampling_factor < output_length:
+            kept.append(word)
+    return reference_words(kept, normalizer=normalizer)
+
+
+def make_streaming_rl_chunks(
+    audio: torch.Tensor,
+    audio_lengths: torch.Tensor,
+    transcripts: Sequence[Any],
+    chunk_size: int,
+    chunk_overlap: int,
+    delay_seconds: float,
+    buffer_seconds: float,
+    include_empty_references: bool,
+) -> List[Dict[str, Any]]:
+    stride = chunk_size - chunk_overlap
+    if stride <= 0:
+        raise ValueError("audio_chunking.size must be greater than overlap")
+
+    chunks = []
+    for chunk_start in range(0, int(audio_lengths.max().item()), stride):
+        active = audio_lengths > chunk_start
+        if active.sum().item() == 0:
+            continue
+
+        chunk = audio[active, :, chunk_start : chunk_start + chunk_size]
+        chunk_lengths = torch.clamp(audio_lengths[active] - chunk_start, min=0, max=chunk.size(-1))
+        chunk_transcripts = [
+            filter_words_by_end_frame(transcripts[i], chunk_start, chunk_start + chunk_size)
+            for i, keep in enumerate(active.tolist())
+            if keep
+        ]
+        if not include_empty_references:
+            non_empty = [idx for idx, transcript in enumerate(chunk_transcripts) if len(resolve_timed_words(transcript)) > 0]
+            if len(non_empty) == 0:
+                continue
+            non_empty_t = torch.tensor(non_empty, dtype=torch.long)
+            chunk = chunk.index_select(0, non_empty_t)
+            chunk_lengths = chunk_lengths.index_select(0, non_empty_t)
+            chunk_transcripts = [chunk_transcripts[idx] for idx in non_empty]
+
+        chunk, chunk_lengths = pad_audio_for_streaming_delay(
+            chunk,
+            chunk_lengths,
+            delay_seconds=delay_seconds,
+            buffer_seconds=buffer_seconds,
+        )
+        chunks.append(
+            {
+                "audio": chunk,
+                "audio_lengths": chunk_lengths,
+                "transcripts": chunk_transcripts,
+                "chunk_start_frames": torch.full((len(chunk_transcripts),), chunk_start, dtype=torch.long),
+            }
+        )
+    return chunks
+
+
+@torch.no_grad()
+def sample_streaming_rollouts(
+    model: torch.nn.Module,
+    audio: torch.Tensor,
+    audio_lengths: torch.Tensor,
+    num_rollouts: int,
+    temperature: float,
+    max_output_frames: Optional[int] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    was_training = model.training
+    model.eval()
+
+    x = audio.transpose(1, 2)
+    x, out_lengths = model.subsampling(x, lengths=audio_lengths)
+    if max_output_frames is not None and max_output_frames > 0 and x.size(1) > max_output_frames:
+        x = x[:, :max_output_frames]
+        out_lengths = out_lengths.clamp(max=max_output_frames)
+
+    x = x.repeat_interleave(num_rollouts, dim=0)
+    out_lengths = out_lengths.repeat_interleave(num_rollouts, dim=0)
+    key_padding_mask = torch.arange(x.size(1), device=x.device).expand(x.size(0), -1) >= out_lengths.unsqueeze(1)
+    key_padding_mask = key_padding_mask if key_padding_mask.any() else None
+
+    prev_ids = torch.full((x.size(0), x.size(1)), model.get_silence_id(), dtype=torch.long, device=x.device)
+    predictions = []
+    temperature = max(float(temperature), 1e-6)
+
+    for step in range(x.size(1)):
+        h = x + model.prev_token_embedding(prev_ids)
+        if key_padding_mask is not None:
+            h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
+        for layer in model.layers:
+            h = layer(h)
+        step_h = model.norm(h[:, step])
+        logits = model._combined_logits(model.silence_head(step_h), model.text_head(step_h))
+        pred = torch.multinomial((logits / temperature).softmax(dim=-1), num_samples=1).squeeze(-1)
+        valid = step < out_lengths
+        pred = torch.where(valid, pred, torch.full_like(pred, model.get_silence_id()))
+        predictions.append(pred)
+        if step + 1 < x.size(1):
+            prev_ids[:, step + 1] = pred
+
+    if was_training:
+        model.train()
+    return torch.stack(predictions, dim=1), out_lengths
+
+
+def streaming_sequence_logprobs(
+    model: torch.nn.Module,
+    audio: torch.Tensor,
+    audio_lengths: torch.Tensor,
+    actions: torch.Tensor,
+    action_lengths: torch.Tensor,
+    num_rollouts: int,
+) -> torch.Tensor:
+    repeated_audio = audio.repeat_interleave(num_rollouts, dim=0)
+    repeated_lengths = audio_lengths.repeat_interleave(num_rollouts, dim=0)
+    tensor_lengths = torch.full((audio.size(0),), audio.size(-1), dtype=audio_lengths.dtype, device=audio_lengths.device)
+    full_output_length = int(model.output_lengths(tensor_lengths).max().item())
+    if actions.size(1) < full_output_length:
+        pad = full_output_length - actions.size(1)
+        actions_for_forward = torch.nn.functional.pad(actions, (0, pad), value=model.get_silence_id())
+    else:
+        actions_for_forward = actions
+    out = model(audio_signal=repeated_audio, length=repeated_lengths, frame_targets=actions_for_forward, return_logits=True)
+    logits = out["logits"]
+    if logits.size(1) != actions.size(1):
+        common = min(logits.size(1), actions.size(1))
+        logits = logits[:, :common]
+        actions = actions[:, :common]
+        action_lengths = action_lengths.clamp(max=common)
+    log_probs = logits.log_softmax(dim=-1)
+    token_log_probs = log_probs.gather(dim=-1, index=actions.unsqueeze(-1)).squeeze(-1)
+    mask = torch.arange(actions.size(1), device=actions.device).expand(actions.size(0), -1) < action_lengths.unsqueeze(1)
+    return token_log_probs.masked_fill(~mask, 0.0).sum(dim=1)
+
+
+def rl_update(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    chunk: Dict[str, Any],
+    tokenizer: Any,
+    config: OmegaConf,
+    device: torch.device,
+    dtype: torch.dtype,
+    normalizer: Any,
+) -> Dict[str, Any]:
+    rl_config = config.rl
+    num_rollouts = int(rl_config.num_rollouts)
+    model_dtype = next(model.parameters()).dtype
+
+    audio = chunk["audio"].to(device=device, dtype=model_dtype)
+    audio_lengths = chunk["audio_lengths"].to(device)
+    chunk_start_frames = chunk["chunk_start_frames"]
+    transcripts = chunk["transcripts"]
+    max_output_frames = rl_config.get("max_output_frames", None)
+    max_output_frames = None if max_output_frames is None else int(max_output_frames)
+
+    with torch.autocast(device.type, dtype=dtype) if device.type == "cuda" and dtype != torch.float32 else nullcontext():
+        actions, action_lengths = sample_streaming_rollouts(
+            model=model,
+            audio=audio,
+            audio_lengths=audio_lengths,
+            num_rollouts=num_rollouts,
+            temperature=float(rl_config.temperature),
+            max_output_frames=max_output_frames,
+        )
+
+        hypotheses = [
+            decode_prediction_ids(
+                tokenizer=tokenizer,
+                prediction_ids=actions[row_idx, : int(action_lengths[row_idx].item())].detach().cpu().tolist(),
+                silence_id=model.get_silence_id(),
+                max_tokens=rl_config.get("max_decode_tokens", None),
+                normalizer=normalizer,
+            )
+            for row_idx in range(actions.size(0))
+        ]
+        base_lengths = action_lengths.view(-1, num_rollouts)[:, 0].detach().cpu()
+        references = []
+        for batch_idx, transcript in enumerate(transcripts):
+            reference = streaming_reference_for_reward(
+                transcript=transcript,
+                chunk_start_frames=int(chunk_start_frames[batch_idx].item()),
+                output_length=int(base_lengths[batch_idx].item()),
+                subsampling_factor=model.subsampling_factor,
+                delay_seconds=float(config.streaming.get("delay_seconds", 2.0)),
+                normalizer=normalizer,
+            )
+            references.extend([reference] * num_rollouts)
+
+        rewards = compute_rewards(hypotheses=hypotheses, references=references, reward_config=rl_config).to(device)
+        advantages = compute_grpo_advantages(
+            rewards=rewards,
+            group_size=num_rollouts,
+            eps=float(rl_config.get("advantage_eps", 1e-6)),
+            min_group_std=float(rl_config.get("reward_std_min", 0.0)),
+        ).to(device)
+
+        if advantages.abs().sum() == 0:
+            loss = torch.zeros((), device=device, requires_grad=True)
+            skipped_zero_advantage = True
+        else:
+            was_training = model.training
+            model.eval()
+            try:
+                logprobs = streaming_sequence_logprobs(
+                    model=model,
+                    audio=audio,
+                    audio_lengths=audio_lengths,
+                    actions=actions,
+                    action_lengths=action_lengths,
+                    num_rollouts=num_rollouts,
+                )
+            finally:
+                if was_training:
+                    model.train()
+            loss = -(advantages.detach() * logprobs).mean()
+            skipped_zero_advantage = False
+
+    optimizer.zero_grad()
+    if not skipped_zero_advantage:
+        loss.backward()
+        clip_value = float(config.training.get("clip_value", 0.8))
+        if clip_value > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
+        optimizer.step()
+
+    rewards_grouped = rearrange(rewards.detach().cpu(), "(b g) -> b g", g=num_rollouts)
+    reward_std_grouped = rewards_grouped.std(dim=1, unbiased=False)
+    reward_std_min = float(rl_config.get("reward_std_min", 0.0))
+    active_groups = reward_std_grouped > max(float(rl_config.get("advantage_eps", 1e-6)), reward_std_min)
+    return {
+        "loss": float(loss.detach().cpu()),
+        "reward_mean": float(rewards.mean().detach().cpu()),
+        "reward_max": float(rewards.max().detach().cpu()),
+        "reward_min": float(rewards.min().detach().cpu()),
+        "reward_group_std_mean": float(reward_std_grouped.mean().item()),
+        "active_reward_group_fraction": float(active_groups.float().mean().item()),
+        "skipped_low_reward_std": float((~active_groups).float().mean().item()),
+        "advantage_abs_mean": float(advantages.abs().mean().detach().cpu()),
+        "zero_advantage": skipped_zero_advantage,
+        "sample_hypothesis": hypotheses[0] if len(hypotheses) > 0 else "",
+        "sample_reference": references[0] if len(references) > 0 else "",
+        "output_frames": int(action_lengths.max().detach().cpu().item()),
+    }
+
+
+def init_wandb(config: OmegaConf, config_path: str):
+    if not config.wandb.get("use", False):
+        return None
+    wandb_dir = config.wandb.get("dir", "./wandb")
+    os.makedirs(wandb_dir, exist_ok=True)
+    run_id = config.wandb.get("id", "")
+    kwargs = {
+        "project": config.wandb.project_name,
+        "name": config.wandb.get("name", None),
+        "config": OmegaConf.to_container(config, resolve=True),
+        "dir": wandb_dir,
+    }
+    if run_id:
+        run = wandb.init(id=run_id, resume="must", allow_val_change=True, **kwargs)
+    else:
+        run = wandb.init(**kwargs)
+    config.wandb.id = wandb.run.id
+    if config.wandb.get("update_config_with_wandb_id", False):
+        OmegaConf.save(config=config, f=config_path)
+    print(f"\nLogging with WandB id: {wandb.run.id}\n")
+    return run
+
+
+def make_dataloader(config: OmegaConf, tokenizer: Any, args: argparse.Namespace, seen_ids: List[str], epoch: int):
+    paired_data = lcasr.utils.audio_tools.load_json(config.data.path)
+    max_records = config.data.get("max_records", None)
+    if max_records is not None:
+        paired_data = dict(list(paired_data.items())[: int(max_records)])
+    seed = int(config.training.get("random_seed", 1234))
+    return VariableBatchSimpleDataloader(
+        pairs=paired_data,
+        tokenizer=tokenizer,
+        batch_size=int(config.training.batch_size),
+        chunk_size=int(config.audio_chunking.size),
+        chunk_overlap=int(config.audio_chunking.get("overlap", 0)),
+        num_workers=int(config.training.get("num_workers", args.num_workers)),
+        pin_memory=bool(config.training.get("pin_memory", args.pin_memory)),
+        prefetch=config.training.get("prefetch_factor", args.prefetch_factor),
+        seen_ids=seen_ids,
+        random_seed=seed + epoch,
+    )
+
+
+def scheduler_step(scheduler: torch.optim.lr_scheduler._LRScheduler, step: int, max_steps: int) -> None:
+    if scheduler is None:
+        return
+    if hasattr(scheduler, "is_warmup"):
+        was_warmup = scheduler.is_warmup
+        if was_warmup:
+            scheduler.is_warmup = scheduler.is_warming_up()
+            if not scheduler.is_warmup and was_warmup:
+                scheduler.set_cosine_schedule(total_recordings=max_steps, cur_podcast=step)
+        if scheduler.is_warmup:
+            scheduler.step()
+        else:
+            scheduler.step(epoch=step)
+    else:
+        scheduler.step()
+
+
+def state_to_cpu(value: Any) -> Any:
+    if torch.is_tensor(value):
+        return value.detach().cpu()
+    if isinstance(value, dict):
+        return {key: state_to_cpu(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [state_to_cpu(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(state_to_cpu(item) for item in value)
+    return value
+
+
+def save_checkpoint(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: Any,
+    step: int,
+    config: OmegaConf,
+    seen_ids: List[str],
+    epoch: int,
+    other: Optional[Dict[str, Any]] = None,
+) -> None:
+    os.makedirs(config.checkpointing.dir, exist_ok=True)
+    save_path = os.path.join(config.checkpointing.dir, f"step_{step}.pt")
+    print(f"checkpoint_save_start step={step} path={save_path}", flush=True)
+    checkpoint = {
+        "model": state_to_cpu(model.state_dict()),
+        "optimizer": state_to_cpu(optimizer.state_dict()) if optimizer is not None else None,
+        "scheduler": state_to_cpu(scheduler.state_dict()) if scheduler is not None else None,
+        "podcast_step": step,
+        "config": config,
+        "seen_ids": seen_ids,
+        "epoch": epoch,
+    }
+    if other:
+        checkpoint.update(state_to_cpu(other))
+    print(f"checkpoint_torch_save_start step={step}", flush=True)
+    torch.save(checkpoint, save_path, _use_new_zipfile_serialization=False)
+    print(f"checkpoint_save_done step={step}", flush=True)
+
+
+def apply_cli_overrides(config: OmegaConf, args: argparse.Namespace) -> OmegaConf:
+    if args.checkpoint_dir is not None:
+        config.checkpointing.dir = args.checkpoint_dir
+    if args.batch_size is not None:
+        config.training.batch_size = args.batch_size
+    if args.data_path is not None:
+        config.data.path = args.data_path
+    if args.max_records is not None:
+        config.data.max_records = args.max_records
+    if args.max_steps is not None:
+        config.training.max_steps = args.max_steps
+    if args.disable_wandb:
+        config.wandb.use = False
+    return config
+
+
+def train(args: argparse.Namespace) -> None:
+    args.config_path = args.config
+    config = apply_cli_overrides(OmegaConf.load(args.config), args)
+    if config.rl.get("algorithm", "grpo") != "grpo":
+        raise ValueError("streaming decoder RL currently supports rl.algorithm: grpo")
+    os.makedirs(config.checkpointing.dir, exist_ok=True)
+
+    tokenizer_kwargs = {}
+    if "tokenizer_path" in config.training:
+        tokenizer_kwargs["tokenizer_path"] = config.training.tokenizer_path
+    tokenizer = lcasr.utils.audio_tools.load_tokenizer(**tokenizer_kwargs)
+
+    seed = config.training.get("random_seed", 1234)
+    if seed == "random":
+        seed = int(time.time()) % 10000
+    seed = int(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = load_model(config, tokenizer.vocab_size(), get_model_class(config=config))
+    total_params = model.print_total_params()
+    model = model.to(device)
+    optimizer, scheduler = load_optimizer(config, model)
+    seen_ids, step, epoch = load_checkpoint(
+        args=args,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        path=config.checkpointing.dir,
+        device=device,
+    )
+    if args.reset_step:
+        seen_ids, step, epoch = [], 0, 0
+    run = init_wandb(config, args.config_path)
+
+    dtype = get_dtype(config.training.get("dtype", "bfloat16"))
+    max_steps = int(config.training.max_steps)
+    chunk_size = int(config.audio_chunking.size)
+    chunk_overlap = int(config.audio_chunking.get("overlap", 0))
+    delay_seconds = float(config.streaming.get("delay_seconds", 2.0))
+    buffer_seconds = float(config.streaming.get("buffer_seconds", 0.25))
+    include_empty_references = bool(config.rl.get("include_empty_references", False))
+    normalizer = EnglishTextNormalizer() if EnglishTextNormalizer is not None else None
+    last_saved_step = None
+
+    print(f"Streaming decoder RL params: {total_params / 1e6:.2f}M")
+    print(f"Starting from step: {step}")
+    print(f"RL algorithm: {config.rl.algorithm}")
+    print(f"Rollouts per chunk: {config.rl.num_rollouts}")
+    print(f"Reward std minimum: {config.rl.get('reward_std_min', 0.0)}")
+    print(f"Max output frames: {config.rl.get('max_output_frames', None)}")
+
+    pbar = tqdm(total=max_steps, initial=step, desc="Streaming decoder RL updates")
+    while step < max_steps:
+        dataloader = make_dataloader(config=config, tokenizer=tokenizer, args=args, seen_ids=seen_ids, epoch=epoch)
+        for batch in dataloader:
+            audio, audio_lengths, transcripts, ids = batch
+            seen_ids.extend(ids)
+            chunks = make_streaming_rl_chunks(
+                audio=audio,
+                audio_lengths=audio_lengths,
+                transcripts=transcripts,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                delay_seconds=delay_seconds,
+                buffer_seconds=buffer_seconds,
+                include_empty_references=include_empty_references,
+            )
+            if bool(config.rl.get("shuffle_chunks", True)):
+                random.shuffle(chunks)
+
+            for chunk in chunks:
+                if step >= max_steps:
+                    break
+                metrics = rl_update(
+                    model=model,
+                    optimizer=optimizer,
+                    chunk=chunk,
+                    tokenizer=tokenizer,
+                    config=config,
+                    device=device,
+                    dtype=dtype,
+                    normalizer=normalizer,
+                )
+                step += 1
+                scheduler_step(scheduler, step=step, max_steps=max_steps)
+                metrics["learning_rate"] = scheduler.get_last_lr()[0] if scheduler is not None else config.optimizer.args.lr
+                metrics["step"] = step
+                metrics["epoch"] = epoch
+                pbar.update(1)
+                pbar.set_postfix(
+                    reward=f"{metrics['reward_mean']:.3f}",
+                    active=f"{metrics['active_reward_group_fraction']:.3f}",
+                    loss=f"{metrics['loss']:.3f}",
+                )
+                if run is not None:
+                    wandb.log(metrics, step=step)
+
+                if step % int(config.checkpointing.save_every_n_steps) == 0:
+                    save_checkpoint(
+                        model=model,
+                        optimizer=optimizer,
+                        scheduler=scheduler,
+                        step=step,
+                        config=config,
+                        seen_ids=seen_ids,
+                        epoch=epoch,
+                        other={"rl_metrics": metrics},
+                    )
+                    last_saved_step = step
+            if step >= max_steps:
+                break
+        epoch += 1
+        seen_ids = reset_seen_ids(seen_ids=seen_ids, epoch=epoch - 1)
+
+    if last_saved_step != step:
+        save_checkpoint(
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            step=step,
+            config=config,
+            seen_ids=seen_ids,
+            epoch=epoch,
+        )
+    if run is not None:
+        wandb.finish()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
+
+
+def validate_config(args: argparse.Namespace) -> None:
+    config = apply_cli_overrides(OmegaConf.load(args.config), args)
+    assert config.rl.algorithm == "grpo"
+    assert int(config.rl.num_rollouts) > 1
+    assert int(config.training.max_steps) > 0
+    assert os.path.exists(config.data.path), f"data path missing: {config.data.path}"
+    os.makedirs(config.checkpointing.dir, exist_ok=True)
+    if config.wandb.get("use", False):
+        os.makedirs(config.wandb.get("dir", "./wandb"), exist_ok=True)
+    if args.validate_load_model:
+        tokenizer_kwargs = {}
+        if "tokenizer_path" in config.training:
+            tokenizer_kwargs["tokenizer_path"] = config.training.tokenizer_path
+        tokenizer = lcasr.utils.audio_tools.load_tokenizer(**tokenizer_kwargs)
+        model = load_model(config, tokenizer.vocab_size(), get_model_class(config=config))
+        incompatible = load_checkpoint(
+            args=args,
+            model=model,
+            path=config.checkpointing.dir,
+            device="cpu",
+        )
+        print(f"Checkpoint load validation passed: {incompatible[1]} starting step")
+    print("Config validation passed")
+
+
+def smoke_rollout(args: argparse.Namespace) -> None:
+    config = apply_cli_overrides(OmegaConf.load(args.config), args)
+    config.wandb.use = False
+    config.rl.num_rollouts = int(args.smoke_num_rollouts)
+    config.rl.max_output_frames = int(args.smoke_max_output_frames)
+    config.training.max_steps = 1
+    config.data.max_records = int(args.smoke_max_records)
+
+    tokenizer_kwargs = {}
+    if "tokenizer_path" in config.training:
+        tokenizer_kwargs["tokenizer_path"] = config.training.tokenizer_path
+    tokenizer = lcasr.utils.audio_tools.load_tokenizer(**tokenizer_kwargs)
+    device = torch.device("cuda" if torch.cuda.is_available() and not args.smoke_cpu else "cpu")
+
+    model = load_model(config, tokenizer.vocab_size(), get_model_class(config=config))
+    model = model.to(device)
+    optimizer, _ = load_optimizer(config, model)
+    load_checkpoint(args=args, model=model, optimizer=None, path=config.checkpointing.dir, device=device)
+    normalizer = EnglishTextNormalizer() if EnglishTextNormalizer is not None else None
+    dataloader = make_dataloader(config=config, tokenizer=tokenizer, args=args, seen_ids=[], epoch=0)
+    audio, audio_lengths, transcripts, _ = next(iter(dataloader))
+    chunks = make_streaming_rl_chunks(
+        audio=audio,
+        audio_lengths=audio_lengths,
+        transcripts=transcripts,
+        chunk_size=int(config.audio_chunking.size),
+        chunk_overlap=int(config.audio_chunking.get("overlap", 0)),
+        delay_seconds=float(config.streaming.get("delay_seconds", 2.0)),
+        buffer_seconds=float(config.streaming.get("buffer_seconds", 0.25)),
+        include_empty_references=bool(config.rl.get("include_empty_references", False)),
+    )
+    if len(chunks) == 0:
+        raise RuntimeError("no non-empty streaming RL chunks produced for smoke batch")
+    metrics = rl_update(
+        model=model,
+        optimizer=optimizer,
+        chunk=chunks[0],
+        tokenizer=tokenizer,
+        config=config,
+        device=device,
+        dtype=get_dtype(config.training.get("dtype", "bfloat16")),
+        normalizer=normalizer,
+    )
+    print(
+        "Smoke rollout passed "
+        f"(device={device}, chunk_batch={chunks[0]['audio'].shape[0]}, rollouts={config.rl.num_rollouts}, "
+        f"output_frames={metrics['output_frames']}, reward_mean={metrics['reward_mean']:.4f}, "
+        f"active_groups={metrics['active_reward_group_fraction']:.4f}, loss={metrics['loss']:.4f})"
+    )
+
+
+def self_test() -> None:
+    rewards = torch.tensor([0.5, 0.5, 0.5, 0.9, 0.1, 0.5])
+    advantages = compute_grpo_advantages(rewards, group_size=3, eps=1e-6, min_group_std=0.02)
+    assert advantages[:3].abs().sum() == 0
+    assert advantages[3:].abs().sum() > 0
+    reward = weighted_error_rewards(["hello world", "hello"], ["hello world", "hello world"])
+    assert reward[0].item() == 1.0
+    assert reward[1].item() < 1.0
+
+    class ToyTokenizer:
+        def vocab_size(self):
+            return 4
+
+        def encode(self, text):
+            return [1 for token in text.split() if token]
+
+        def decode(self, tokens):
+            return " ".join("tok" for _ in tokens)
+
+    class ToyStreaming(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.silence_id = 4
+            self.subsampling_factor = 1
+            self.prev_token_embedding = torch.nn.Embedding(5, 3)
+            self.proj = torch.nn.Linear(3, 5)
+            self.layers = torch.nn.ModuleList([])
+            self.norm = torch.nn.Identity()
+
+        def get_silence_id(self):
+            return self.silence_id
+
+        def output_lengths(self, lengths):
+            return lengths
+
+        def subsampling(self, x, lengths):
+            return torch.zeros(x.size(0), x.size(1), 3), lengths
+
+        def _combined_logits(self, silence_logits, text_logits):
+            return self.proj(torch.zeros(text_logits.size(0), 3))
+
+        def silence_head(self, h):
+            return torch.zeros(h.size(0), 2)
+
+        def text_head(self, h):
+            return torch.zeros(h.size(0), 4)
+
+        def forward(self, audio_signal, length, frame_targets, return_logits=True):
+            h = self.prev_token_embedding(frame_targets.clamp_min(0))
+            return {"logits": self.proj(h), "length": length}
+
+    toy = ToyStreaming()
+    audio = torch.zeros(2, 80, 4)
+    lengths = torch.tensor([4, 3], dtype=torch.long)
+    actions, action_lengths = sample_streaming_rollouts(toy, audio, lengths, num_rollouts=2, temperature=1.0)
+    assert actions.shape == (4, 4)
+    logprobs = streaming_sequence_logprobs(toy, audio, lengths, actions, action_lengths, num_rollouts=2)
+    assert logprobs.shape == (4,)
+    (-logprobs.mean()).backward()
+    assert toy.proj.weight.grad is not None
+    print("Self-test passed")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-config", "--config", type=str, required=False)
+    parser.add_argument("-rm_sched", "--remove_scheduler", action="store_true")
+    parser.add_argument("-reset_step", "--reset_step", action="store_true")
+    parser.add_argument("-num_workers", "--num_workers", type=int, default=0)
+    parser.add_argument("-pin_memory", "--pin_memory", action="store_true")
+    parser.add_argument("-prefetch", "--prefetch_factor", type=int, default=1)
+    parser.add_argument("-checkpoint_dir", "--checkpoint_dir", type=str, default=None)
+    parser.add_argument("-batch_size", "--batch_size", type=int, default=None)
+    parser.add_argument("-data_path", "--data_path", type=str, default=None)
+    parser.add_argument("-max_records", "--max_records", type=int, default=None)
+    parser.add_argument("-max_steps", "--max_steps", type=int, default=None)
+    parser.add_argument("-disable_wandb", "--disable_wandb", action="store_true")
+    parser.add_argument("--validate_config_only", action="store_true")
+    parser.add_argument("--validate_load_model", action="store_true")
+    parser.add_argument("--smoke_rollout", action="store_true")
+    parser.add_argument("--smoke_cpu", action="store_true")
+    parser.add_argument("--smoke_num_rollouts", type=int, default=2)
+    parser.add_argument("--smoke_max_output_frames", type=int, default=8)
+    parser.add_argument("--smoke_max_records", type=int, default=2)
+    parser.add_argument("--self_test", action="store_true")
+    parsed = parser.parse_args()
+
+    if parsed.self_test:
+        self_test()
+    else:
+        if parsed.config is None:
+            raise ValueError("--config is required unless --self_test is set")
+        if parsed.validate_config_only:
+            validate_config(parsed)
+        elif parsed.smoke_rollout:
+            smoke_rollout(parsed)
+        else:
+            train(parsed)
