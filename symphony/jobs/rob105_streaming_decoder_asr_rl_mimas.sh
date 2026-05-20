@@ -24,6 +24,7 @@ MAX_STEPS="${ROB105_MAX_STEPS:-10000}"
 SAVE_EVERY="${ROB105_SAVE_EVERY:-500}"
 LEARNING_RATE="${ROB105_LEARNING_RATE:-1e-6}"
 NUM_ROLLOUTS="${ROB105_NUM_ROLLOUTS:-6}"
+MICROBATCH_SIZE="${ROB105_MICROBATCH_SIZE:-16}"
 TEMPERATURE="${ROB105_TEMPERATURE:-1.0}"
 MAX_OUTPUT_FRAMES="${ROB105_MAX_OUTPUT_FRAMES:-}"
 REWARD_STD_MIN="${ROB105_REWARD_STD_MIN:-0.01}"
@@ -78,6 +79,7 @@ on_exit() {
     echo "save_every=${SAVE_EVERY}"
     echo "learning_rate=${LEARNING_RATE}"
     echo "num_rollouts=${NUM_ROLLOUTS}"
+    echo "microbatch_size=${MICROBATCH_SIZE}"
     echo "temperature=${TEMPERATURE}"
     echo "max_output_frames=${MAX_OUTPUT_FRAMES:-uncapped}"
     echo "reward_std_min=${REWARD_STD_MIN}"
@@ -149,6 +151,7 @@ prepare_args=(
   --save-every "$SAVE_EVERY" \
   --learning-rate "$LEARNING_RATE" \
   --num-rollouts "$NUM_ROLLOUTS" \
+  --microbatch-size "$MICROBATCH_SIZE" \
   --temperature "$TEMPERATURE" \
   --reward-std-min "$REWARD_STD_MIN" \
   --sample-text-log-every "$SAMPLE_TEXT_LOG_EVERY" \

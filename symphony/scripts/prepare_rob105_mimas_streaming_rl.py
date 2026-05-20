@@ -97,6 +97,7 @@ def main():
     parser.add_argument("--save-every", type=int, default=100)
     parser.add_argument("--learning-rate", type=float, default=1e-6)
     parser.add_argument("--num-rollouts", type=int, default=6)
+    parser.add_argument("--microbatch-size", type=int, default=16)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--max-output-frames", type=int, default=None)
     parser.add_argument("--reward-std-min", type=float, default=0.01)
@@ -131,6 +132,7 @@ def main():
     config.rl = {
         "algorithm": "grpo",
         "num_rollouts": args.num_rollouts,
+        "microbatch_size": args.microbatch_size,
         "temperature": args.temperature,
         "max_output_frames": args.max_output_frames,
         "reward_type": "weighted_error",
@@ -169,6 +171,7 @@ def main():
     print(f"save_every={args.save_every}")
     print(f"learning_rate={args.learning_rate}")
     print(f"num_rollouts={args.num_rollouts}")
+    print(f"microbatch_size={args.microbatch_size}")
     print(f"temperature={args.temperature}")
     print(f"max_output_frames={args.max_output_frames if args.max_output_frames is not None else 'uncapped'}")
     print(f"reward_std_min={args.reward_std_min}")

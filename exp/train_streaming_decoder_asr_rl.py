@@ -444,16 +444,58 @@ def streaming_sequence_logprobs(
     return token_log_probs.masked_fill(~mask, 0.0).sum(dim=1)
 
 
-def rl_update(
+def slice_streaming_chunk(chunk: Dict[str, Any], start: int, end: int) -> Dict[str, Any]:
+    return {
+        "audio": chunk["audio"][start:end],
+        "audio_lengths": chunk["audio_lengths"][start:end],
+        "transcripts": chunk["transcripts"][start:end],
+        "chunk_start_frames": chunk["chunk_start_frames"][start:end],
+    }
+
+
+def aggregate_microbatch_metrics(metrics_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if len(metrics_list) == 1:
+        return metrics_list[0]
+
+    total_base = sum(int(metrics["chunk_batch"]) for metrics in metrics_list)
+
+    def weighted_mean(key: str) -> float:
+        return sum(float(metrics[key]) * int(metrics["chunk_batch"]) for metrics in metrics_list) / max(total_base, 1)
+
+    late_correct_words = sum(float(metrics["late_correct_words"]) for metrics in metrics_list)
+    matched_words = sum(float(metrics["matched_words"]) for metrics in metrics_list)
+    output = {
+        "loss": weighted_mean("loss"),
+        "reward_mean": weighted_mean("reward_mean"),
+        "reward_max": max(float(metrics["reward_max"]) for metrics in metrics_list),
+        "reward_min": min(float(metrics["reward_min"]) for metrics in metrics_list),
+        "reward_group_std_mean": weighted_mean("reward_group_std_mean"),
+        "active_reward_group_fraction": weighted_mean("active_reward_group_fraction"),
+        "skipped_low_reward_std": weighted_mean("skipped_low_reward_std"),
+        "advantage_abs_mean": weighted_mean("advantage_abs_mean"),
+        "zero_advantage": all(bool(metrics["zero_advantage"]) for metrics in metrics_list),
+        "sample_reward": metrics_list[0]["sample_reward"],
+        "sample_hypothesis": metrics_list[0]["sample_hypothesis"],
+        "sample_reference": metrics_list[0]["sample_reference"],
+        "late_correct_words": late_correct_words,
+        "matched_words": matched_words,
+        "late_correct_word_fraction": late_correct_words / max(matched_words, 1.0),
+        "output_frames": max(int(metrics["output_frames"]) for metrics in metrics_list),
+        "chunk_batch": total_base,
+        "microbatches": len(metrics_list),
+    }
+    return output
+
+
+def rl_loss_for_chunk(
     model: torch.nn.Module,
-    optimizer: torch.optim.Optimizer,
     chunk: Dict[str, Any],
     tokenizer: Any,
     config: OmegaConf,
     device: torch.device,
     dtype: torch.dtype,
     normalizer: Any,
-) -> Dict[str, Any]:
+) -> Tuple[torch.Tensor, bool, Dict[str, Any]]:
     rl_config = config.rl
     num_rollouts = int(rl_config.num_rollouts)
     model_dtype = next(model.parameters()).dtype
@@ -551,19 +593,11 @@ def rl_update(
             loss = -(advantages.detach() * logprobs).mean()
             skipped_zero_advantage = False
 
-    optimizer.zero_grad()
-    if not skipped_zero_advantage:
-        loss.backward()
-        clip_value = float(config.training.get("clip_value", 0.8))
-        if clip_value > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
-        optimizer.step()
-
     rewards_grouped = rearrange(rewards.detach().cpu(), "(b g) -> b g", g=num_rollouts)
     reward_std_grouped = rewards_grouped.std(dim=1, unbiased=False)
     reward_std_min = float(rl_config.get("reward_std_min", 0.0))
     active_groups = reward_std_grouped > max(float(rl_config.get("advantage_eps", 1e-6)), reward_std_min)
-    return {
+    metrics = {
         "loss": float(loss.detach().cpu()),
         "reward_mean": float(rewards.mean().detach().cpu()),
         "reward_max": float(rewards.max().detach().cpu()),
@@ -580,7 +614,60 @@ def rl_update(
         "matched_words": reward_stats["matched_words"],
         "late_correct_word_fraction": reward_stats["late_correct_word_fraction"],
         "output_frames": int(action_lengths.max().detach().cpu().item()),
+        "chunk_batch": len(transcripts),
+        "microbatches": 1,
     }
+    return loss, skipped_zero_advantage, metrics
+
+
+def rl_update(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    chunk: Dict[str, Any],
+    tokenizer: Any,
+    config: OmegaConf,
+    device: torch.device,
+    dtype: torch.dtype,
+    normalizer: Any,
+) -> Dict[str, Any]:
+    batch_size = len(chunk["transcripts"])
+    microbatch_size = int(config.rl.get("microbatch_size", 0) or 0)
+    if microbatch_size <= 0:
+        microbatch_size = batch_size
+    microbatch_size = max(1, min(microbatch_size, batch_size))
+
+    optimizer.zero_grad()
+    metrics_list = []
+    any_update = False
+    for start in range(0, batch_size, microbatch_size):
+        micro_chunk = slice_streaming_chunk(chunk, start, min(start + microbatch_size, batch_size))
+        loss, skipped_zero_advantage, metrics = rl_loss_for_chunk(
+            model=model,
+            chunk=micro_chunk,
+            tokenizer=tokenizer,
+            config=config,
+            device=device,
+            dtype=dtype,
+            normalizer=normalizer,
+        )
+        metrics_list.append(metrics)
+        if not skipped_zero_advantage:
+            loss_scale = float(metrics["chunk_batch"]) / float(batch_size)
+            (loss * loss_scale).backward()
+            any_update = True
+        del loss
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+
+    if any_update:
+        clip_value = float(config.training.get("clip_value", 0.8))
+        if clip_value > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
+        optimizer.step()
+
+    metrics = aggregate_microbatch_metrics(metrics_list)
+    metrics["microbatch_size"] = microbatch_size
+    return metrics
 
 
 def init_wandb(config: OmegaConf, config_path: str):
@@ -774,6 +861,7 @@ def train(args: argparse.Namespace) -> None:
     print(f"Starting from step: {step}")
     print(f"RL algorithm: {config.rl.algorithm}")
     print(f"Rollouts per chunk: {config.rl.num_rollouts}")
+    print(f"RL microbatch size: {config.rl.get('microbatch_size', 0)}")
     print(f"Reward std minimum: {config.rl.get('reward_std_min', 0.0)}")
     print(f"Max output frames: {config.rl.get('max_output_frames', None)}")
 
