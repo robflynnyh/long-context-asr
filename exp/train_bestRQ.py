@@ -33,6 +33,32 @@ import warnings
 import random
 random.seed(1234)
 
+BESTRQ_MASK_LOG_KEYS = (
+    'valid_stacked_frames',
+    'masked_stacked_frames',
+    'actual_mask_ratio',
+)
+
+
+def best_rq_mask_log_values(out: Dict, skipped_empty_mask_count: int) -> Dict:
+    values = {
+        f'bestrq_{key}': out.get(key, 0)
+        for key in BESTRQ_MASK_LOG_KEYS
+    }
+    values['bestrq_skipped_empty_mask_count'] = skipped_empty_mask_count
+    return values
+
+
+def print_best_rq_mask_diagnostics(out: Dict, skipped_empty_mask_count: int):
+    print(
+        'BEST-RQ mask diagnostics: '
+        f"mode={out.get('mask_mode', 'unknown')} "
+        f"valid_stacked_frames={out.get('valid_stacked_frames', 0)} "
+        f"masked_stacked_frames={out.get('masked_stacked_frames', 0)} "
+        f"actual_mask_ratio={out.get('actual_mask_ratio', 0.0):.6f} "
+        f"skipped_empty_mask_count={skipped_empty_mask_count}"
+    )
+
 
 def blank_p(logits, tokenizer):
     lset = logits.detach().cpu()
@@ -127,6 +153,7 @@ def train(
     pbar = tqdm(total = len(dataloader), desc = f'Training - Epoch {epoch}')
     start_spec_augment_after_n_epochs = args.config['training'].get('start_spec_augment_after_n_epochs', -1)
     max_chunks_per_recording = args.config['training'].get('max_chunks_per_recording', None)
+    skipped_empty_mask_count = 0
 
     while not finished:#################
         try:
@@ -234,9 +261,14 @@ def train(
 
                 is_last_chunk = (ix + 1) == len(chunks)
                 if loss is None:
+                    skipped_empty_mask_count += out.get('skipped_empty_mask', 1)
                     print(f"skipping chunk with no BEST-RQ loss; masked_frames={out.get('num_masked_frames', 0)}")
+                    print_best_rq_mask_diagnostics(out, skipped_empty_mask_count)
                     if wandb_config['use']:
-                        wandb.log({'skipped_empty_bestrq_mask': True}, commit=False)
+                        wandb.log({
+                            'skipped_empty_bestrq_mask': True,
+                            **best_rq_mask_log_values(out, skipped_empty_mask_count),
+                        }, commit=False)
                     if is_last_chunk and steps_since_backwards > 0:
                         scaler.scale(backwards_every_loss / steps_since_backwards).backward()
                         last_kv_set.detach_() if last_kv_set != None else None
@@ -264,6 +296,7 @@ def train(
                                 'sequence_length': chunk_size,
                                 'batch_size': batch_size,
                                 'num_masked_frames': out.get('num_masked_frames', 0),
+                                **best_rq_mask_log_values(out, skipped_empty_mask_count),
                                 'epoch': epoch,
                                 'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
                             })
@@ -315,6 +348,7 @@ def train(
                     has_pending_gradients = False
                     learning_rate = scheduler.get_last_lr()[0]
 
+                    print_best_rq_mask_diagnostics(out, skipped_empty_mask_count)
 
                     if wandb_config['use']:
                         wandb.log({
@@ -323,6 +357,7 @@ def train(
                             'sequence_length': chunk_size,
                             'batch_size': batch_size,
                             'num_masked_frames': out.get('num_masked_frames', 0),
+                            **best_rq_mask_log_values(out, skipped_empty_mask_count),
                             'epoch': epoch,
                             'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
                         })
