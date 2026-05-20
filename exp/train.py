@@ -14,7 +14,6 @@ from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager
 from lcasr.utils.helpers import exists
 from lcasr.utils.general import load_model, save_model, load_checkpoint, load_optimizer, get_model_class
 from lcasr.utils.augmentation import SpecAugment
-from lcasr.models.ctc_probe import freeze_except, load_frozen_backbone_from_ssl
 import resource
 import time
 
@@ -390,13 +389,6 @@ def main(args):
     torch.manual_seed(12345)
     torch.cuda.manual_seed(12345)
     model = load_model(args.config, tokenizer.vocab_size(), get_model_class(config = args.config))
-    if args.config.get('probe', {}).get('ssl_checkpoint', None) is not None:
-        load_frozen_backbone_from_ssl(
-            model=model,
-            checkpoint_path=args.config['probe']['ssl_checkpoint'],
-            load_decoder=bool(args.config['probe'].get('load_decoder_from_ssl', False)),
-        )
-        freeze_except(model, args.config['probe'].get('trainable_prefixes', ['decoder.']))
     tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
     paired_data = subset_pairs(paired_data, args.config['data'].get('max_records', None))
