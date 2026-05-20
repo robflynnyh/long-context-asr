@@ -722,7 +722,8 @@ def smoke_rollout(args: argparse.Namespace) -> None:
     config = apply_cli_overrides(OmegaConf.load(args.config), args)
     config.wandb.use = False
     config.rl.num_rollouts = int(args.smoke_num_rollouts)
-    config.rl.max_output_frames = int(args.smoke_max_output_frames)
+    if args.smoke_max_output_frames is not None:
+        config.rl.max_output_frames = int(args.smoke_max_output_frames)
     config.training.max_steps = 1
     config.data.max_records = int(args.smoke_max_records)
 
@@ -856,7 +857,7 @@ if __name__ == "__main__":
     parser.add_argument("--smoke_rollout", action="store_true")
     parser.add_argument("--smoke_cpu", action="store_true")
     parser.add_argument("--smoke_num_rollouts", type=int, default=2)
-    parser.add_argument("--smoke_max_output_frames", type=int, default=8)
+    parser.add_argument("--smoke_max_output_frames", type=int, default=None)
     parser.add_argument("--smoke_max_records", type=int, default=2)
     parser.add_argument("--self_test", action="store_true")
     parsed = parser.parse_args()

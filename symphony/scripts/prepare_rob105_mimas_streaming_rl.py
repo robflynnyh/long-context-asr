@@ -98,7 +98,7 @@ def main():
     parser.add_argument("--learning-rate", type=float, default=1e-5)
     parser.add_argument("--num-rollouts", type=int, default=4)
     parser.add_argument("--temperature", type=float, default=1.0)
-    parser.add_argument("--max-output-frames", type=int, default=96)
+    parser.add_argument("--max-output-frames", type=int, default=None)
     parser.add_argument("--reward-std-min", type=float, default=0.01)
     parser.add_argument("--sample-text-log-every", type=int, default=10)
     parser.add_argument("--reward-wer-weight", type=float, default=0.7)
@@ -169,7 +169,7 @@ def main():
     print(f"learning_rate={args.learning_rate}")
     print(f"num_rollouts={args.num_rollouts}")
     print(f"temperature={args.temperature}")
-    print(f"max_output_frames={args.max_output_frames}")
+    print(f"max_output_frames={args.max_output_frames if args.max_output_frames is not None else 'uncapped'}")
     print(f"reward_std_min={args.reward_std_min}")
     print(f"sample_text_log_every={args.sample_text_log_every}")
 

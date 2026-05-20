@@ -25,7 +25,7 @@ SAVE_EVERY="${ROB105_SAVE_EVERY:-500}"
 LEARNING_RATE="${ROB105_LEARNING_RATE:-1e-5}"
 NUM_ROLLOUTS="${ROB105_NUM_ROLLOUTS:-8}"
 TEMPERATURE="${ROB105_TEMPERATURE:-1.0}"
-MAX_OUTPUT_FRAMES="${ROB105_MAX_OUTPUT_FRAMES:-96}"
+MAX_OUTPUT_FRAMES="${ROB105_MAX_OUTPUT_FRAMES:-}"
 REWARD_STD_MIN="${ROB105_REWARD_STD_MIN:-0.01}"
 SAMPLE_TEXT_LOG_EVERY="${ROB105_SAMPLE_TEXT_LOG_EVERY:-10}"
 NUM_WORKERS="${ROB105_NUM_WORKERS:-0}"
@@ -78,7 +78,7 @@ on_exit() {
     echo "learning_rate=${LEARNING_RATE}"
     echo "num_rollouts=${NUM_ROLLOUTS}"
     echo "temperature=${TEMPERATURE}"
-    echo "max_output_frames=${MAX_OUTPUT_FRAMES}"
+    echo "max_output_frames=${MAX_OUTPUT_FRAMES:-uncapped}"
     echo "reward_std_min=${REWARD_STD_MIN}"
     echo "sample_text_log_every=${SAMPLE_TEXT_LOG_EVERY}"
     echo "max_records=${ROB105_MAX_RECORDS:-unset}"
@@ -132,7 +132,8 @@ fi
 cd "$REPO_DIR"
 export PYTHONPATH="$PWD"
 
-python symphony/scripts/prepare_rob105_mimas_streaming_rl.py \
+prepare_args=(
+  symphony/scripts/prepare_rob105_mimas_streaming_rl.py
   --base-config "$BASE_CONFIG" \
   --source-pairs "$SOURCE_PAIRS" \
   --manifest-out "$MANIFEST_PATH" \
@@ -147,9 +148,15 @@ python symphony/scripts/prepare_rob105_mimas_streaming_rl.py \
   --learning-rate "$LEARNING_RATE" \
   --num-rollouts "$NUM_ROLLOUTS" \
   --temperature "$TEMPERATURE" \
-  --max-output-frames "$MAX_OUTPUT_FRAMES" \
   --reward-std-min "$REWARD_STD_MIN" \
   --sample-text-log-every "$SAMPLE_TEXT_LOG_EVERY"
+)
+
+if [[ -n "$MAX_OUTPUT_FRAMES" ]]; then
+  prepare_args+=(--max-output-frames "$MAX_OUTPUT_FRAMES")
+fi
+
+python "${prepare_args[@]}"
 
 echo "runtime_config=${RUNTIME_CONFIG}"
 echo "seed_checkpoint=${SEED_CHECKPOINT}"
@@ -182,9 +189,11 @@ if [[ "${ROB105_SMOKE_ROLLOUT:-0}" == "1" ]]; then
   train_args+=(
     --smoke_rollout
     --smoke_num_rollouts "${ROB105_SMOKE_NUM_ROLLOUTS:-2}"
-    --smoke_max_output_frames "${ROB105_SMOKE_MAX_OUTPUT_FRAMES:-8}"
     --smoke_max_records "${ROB105_SMOKE_MAX_RECORDS:-2}"
   )
+  if [[ -n "${ROB105_SMOKE_MAX_OUTPUT_FRAMES:-}" ]]; then
+    train_args+=(--smoke_max_output_frames "$ROB105_SMOKE_MAX_OUTPUT_FRAMES")
+  fi
   if [[ "${ROB105_SMOKE_CPU:-0}" == "1" ]]; then
     train_args+=(--smoke_cpu)
   fi
