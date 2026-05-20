@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import lcasr
 import torch
 import argparse
@@ -30,6 +32,13 @@ from collections import defaultdict
 import warnings
 import random
 random.seed(1234)
+
+
+def subset_pairs(pairs, max_records):
+    if max_records is None:
+        return pairs
+    keys = sorted(pairs.keys())[:max_records]
+    return {key: pairs[key] for key in keys}
 
 
 def blank_p(logits, tokenizer):
@@ -101,7 +110,11 @@ def train(
     model.train()
 
     model_dtype = next(model.parameters()).dtype
-    ctc_loss_fn = torch.nn.CTCLoss(blank=model.decoder.num_classes-1, reduction='sum')
+    ctc_loss_fn = torch.nn.CTCLoss(
+        blank=model.decoder.num_classes-1,
+        reduction='sum',
+        zero_infinity=args.config['training'].get('ctc_zero_infinity', False),
+    )
 
     backprop_every, backwards_every = args.config['training']['backprop_every'], args.config['training'].get('backwards_every', 1)
     assert backprop_every >= backwards_every, f'backprop_every ({backprop_every}) must be >= backwards_every ({backwards_every})'
@@ -255,14 +268,15 @@ def train(
                     loss = ctc_loss_fn(cur_probs.transpose(0,1), txt, out['length'], t_lengths).sum()
                     
                 blank_prob = blank_p(cur_probs.detach(), dataloader.tokenizer)
-                # check for nan in loss
-                if torch.isnan(loss):
-                    print('OH NO! NAN IN LOSS, SKIPPING') 
-                    wandb.log({'nan':True}) if wandb_config['use'] else None
+                # check for non-finite loss before it can corrupt trainable weights
+                if not torch.isfinite(loss):
+                    loss_state = 'nan' if torch.isnan(loss) else 'inf'
+                    print(f'OH NO! {loss_state.upper()} IN LOSS, SKIPPING')
+                    wandb.log({'nan':True, 'nonfinite_loss': True}) if wandb_config['use'] else None
                     optimizer.zero_grad() # clear gradients
                     nans_in_a_row += 1
                     if nans_in_a_row > 100:
-                        raise ValueError('100 NANS in a row, exiting!')
+                        raise ValueError('100 non-finite losses in a row, exiting!')
                     continue
                 else:
                     nans_in_a_row = 0
@@ -360,6 +374,12 @@ def train(
 def main(args):
     args.config_path = args.config
     args.config = OmegaConf.load(args.config)
+    if args.disable_wandb:
+        args.config['wandb']['use'] = False
+    if args.max_records is not None:
+        args.config['data']['max_records'] = args.max_records
+    if args.max_steps is not None:
+        args.config['training']['max_steps'] = args.max_steps
 
     checkpoint_dir = args.config['checkpointing']['dir']
     if not os.path.exists(checkpoint_dir): os.makedirs(checkpoint_dir); print(f'created checkpoint dir: {checkpoint_dir}')
@@ -371,6 +391,7 @@ def main(args):
     model = load_model(args.config, tokenizer.vocab_size(), get_model_class(config = args.config))
     tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
+    paired_data = subset_pairs(paired_data, args.config['data'].get('max_records', None))
 
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -477,6 +498,9 @@ if __name__ == '__main__':
     parser.add_argument('-num_workers', '--num_workers', type=int, default=0, help='number of workers for dataloader')
     parser.add_argument('-pin_memory', '--pin_memory', action='store_true', help='pin memory for dataloader')
     parser.add_argument('-prefetch', '--prefetch_factor', type=int, default=1, help='prefetch factor for dataloader')
+    parser.add_argument('--disable_wandb', action='store_true', help='disable wandb even if enabled in config')
+    parser.add_argument('--max_records', type=int, help='limit training manifest to a deterministic prefix')
+    parser.add_argument('--max_steps', type=int, help='stop training after this many recordings')
 
     parser.add_argument('-debug_hooks', '--debug_hooks', action='store_true', help='add hooks to log gradient/activation info')
 
@@ -484,4 +508,3 @@ if __name__ == '__main__':
 
 
     main(args)
-      
