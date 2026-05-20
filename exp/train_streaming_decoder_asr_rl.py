@@ -408,6 +408,7 @@ def rl_update(
         "skipped_low_reward_std": float((~active_groups).float().mean().item()),
         "advantage_abs_mean": float(advantages.abs().mean().detach().cpu()),
         "zero_advantage": skipped_zero_advantage,
+        "sample_reward": float(rewards[0].detach().cpu()) if len(rewards) > 0 else 0.0,
         "sample_hypothesis": hypotheses[0] if len(hypotheses) > 0 else "",
         "sample_reference": references[0] if len(references) > 0 else "",
         "output_frames": int(action_lengths.max().detach().cpu().item()),
@@ -472,6 +473,28 @@ def scheduler_step(scheduler: torch.optim.lr_scheduler._LRScheduler, step: int, 
             scheduler.step(epoch=step)
     else:
         scheduler.step()
+
+
+def wandb_scalar_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: value
+        for key, value in metrics.items()
+        if isinstance(value, (int, float, bool)) and not isinstance(value, str)
+    }
+
+
+def wandb_rollout_sample_table(metrics: Dict[str, Any], step: int) -> wandb.Table:
+    return wandb.Table(
+        columns=["step", "reward", "hypothesis", "reference"],
+        data=[
+            [
+                step,
+                metrics.get("sample_reward", 0.0),
+                metrics.get("sample_hypothesis", ""),
+                metrics.get("sample_reference", ""),
+            ]
+        ],
+    )
 
 
 def state_to_cpu(value: Any) -> Any:
@@ -630,7 +653,11 @@ def train(args: argparse.Namespace) -> None:
                     loss=f"{metrics['loss']:.3f}",
                 )
                 if run is not None:
-                    wandb.log(metrics, step=step)
+                    wandb_payload = wandb_scalar_metrics(metrics)
+                    text_log_every = int(config.rl.get("sample_text_log_every", 0))
+                    if text_log_every > 0 and step % text_log_every == 0:
+                        wandb_payload["rollout_sample"] = wandb_rollout_sample_table(metrics, step=step)
+                    wandb.log(wandb_payload, step=step)
 
                 if step % int(config.checkpointing.save_every_n_steps) == 0:
                     save_checkpoint(
@@ -750,6 +777,11 @@ def self_test() -> None:
     reward = weighted_error_rewards(["hello world", "hello"], ["hello world", "hello world"])
     assert reward[0].item() == 1.0
     assert reward[1].item() < 1.0
+    table = wandb_rollout_sample_table(
+        {"sample_reward": 0.5, "sample_hypothesis": "hello", "sample_reference": "hello world"},
+        step=7,
+    )
+    assert len(table.data) == 1
 
     class ToyTokenizer:
         def vocab_size(self):

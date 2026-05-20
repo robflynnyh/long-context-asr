@@ -98,6 +98,8 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 ## 2026-05-20
 
+- ROB-105 follow-up after the 500-step Mimas RL retry: latest Linear feedback asked to scale from the completed `batch_size=2`, `num_rollouts=4`, 500-step run to `batch_size=8`, `num_rollouts=8`, and 10K updates, and to expose a rollout/reference text pair in W&B. The ROB-105 Mimas wrapper defaults now target the 10K setup with 500-step checkpoint cadence and `sample_text_log_every=10`; the trainer logs scalar metrics separately from an explicit W&B `rollout_sample` table containing step, sample reward, hypothesis, and reference.
+
 - ROB-91 PR follow-up: removed the issue-specific probe trainer. Frozen SSL backbone loading and probe freezing now live in reusable `lcasr.models.ctc_probe` helpers, and the ROB-91 wrapper trains generated probe configs through the normal `exp/train.py` entrypoint.
 
 ## 2026-05-12

@@ -100,6 +100,7 @@ def main():
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--max-output-frames", type=int, default=96)
     parser.add_argument("--reward-std-min", type=float, default=0.01)
+    parser.add_argument("--sample-text-log-every", type=int, default=10)
     parser.add_argument("--reward-wer-weight", type=float, default=0.7)
     parser.add_argument("--reward-cer-weight", type=float, default=0.3)
     parser.add_argument("--force-seed", action="store_true")
@@ -144,6 +145,7 @@ def main():
         "advantage_eps": 1e-6,
         "shuffle_chunks": True,
         "include_empty_references": False,
+        "sample_text_log_every": args.sample_text_log_every,
     }
 
     os.makedirs(os.path.dirname(args.config_out), exist_ok=True)
@@ -169,6 +171,7 @@ def main():
     print(f"temperature={args.temperature}")
     print(f"max_output_frames={args.max_output_frames}")
     print(f"reward_std_min={args.reward_std_min}")
+    print(f"sample_text_log_every={args.sample_text_log_every}")
 
 
 if __name__ == "__main__":
