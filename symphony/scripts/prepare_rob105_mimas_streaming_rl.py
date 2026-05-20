@@ -92,10 +92,10 @@ def main():
     )
     parser.add_argument("--wandb-dir", required=True)
     parser.add_argument("--wandb-name", default="rob105_streaming_decoder_asr_rl_grpo")
-    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--max-steps", type=int, default=1000)
     parser.add_argument("--save-every", type=int, default=100)
-    parser.add_argument("--learning-rate", type=float, default=1e-5)
+    parser.add_argument("--learning-rate", type=float, default=1e-6)
     parser.add_argument("--num-rollouts", type=int, default=4)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--max-output-frames", type=int, default=None)
@@ -103,6 +103,7 @@ def main():
     parser.add_argument("--sample-text-log-every", type=int, default=10)
     parser.add_argument("--reward-wer-weight", type=float, default=0.7)
     parser.add_argument("--reward-cer-weight", type=float, default=0.3)
+    parser.add_argument("--late-word-tolerance-seconds", type=float, default=2.0)
     parser.add_argument("--force-seed", action="store_true")
     parser.add_argument("--no-validate-paths", action="store_true")
     args = parser.parse_args()
@@ -132,10 +133,10 @@ def main():
         "num_rollouts": args.num_rollouts,
         "temperature": args.temperature,
         "max_output_frames": args.max_output_frames,
-        "max_decode_tokens": 256,
         "reward_type": "weighted_error",
         "reward_wer_weight": args.reward_wer_weight,
         "reward_cer_weight": args.reward_cer_weight,
+        "late_word_tolerance_seconds": args.late_word_tolerance_seconds,
         "reward_offset": 1.0,
         "reward_scale": 1.0,
         "reward_min": 0.0,
@@ -172,6 +173,7 @@ def main():
     print(f"max_output_frames={args.max_output_frames if args.max_output_frames is not None else 'uncapped'}")
     print(f"reward_std_min={args.reward_std_min}")
     print(f"sample_text_log_every={args.sample_text_log_every}")
+    print(f"late_word_tolerance_seconds={args.late_word_tolerance_seconds}")
 
 
 if __name__ == "__main__":

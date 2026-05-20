@@ -19,15 +19,16 @@ SEED_CHECKPOINT="${ROB105_SEED_CHECKPOINT:-/store/store5/data/acp21rjf/spotify/s
 CHECKPOINT_DIR="${ROB105_CHECKPOINT_DIR:-/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_rob105_rl_grpo_${RUN_ID}}"
 WANDB_DIR="${ROB105_WANDB_DIR:-$ARTIFACT_ROOT/wandb}"
 WANDB_NAME="${ROB105_WANDB_NAME:-rob105_streaming_decoder_asr_rl_grpo}"
-BATCH_SIZE="${ROB105_BATCH_SIZE:-8}"
+BATCH_SIZE="${ROB105_BATCH_SIZE:-16}"
 MAX_STEPS="${ROB105_MAX_STEPS:-10000}"
 SAVE_EVERY="${ROB105_SAVE_EVERY:-500}"
-LEARNING_RATE="${ROB105_LEARNING_RATE:-1e-5}"
-NUM_ROLLOUTS="${ROB105_NUM_ROLLOUTS:-8}"
+LEARNING_RATE="${ROB105_LEARNING_RATE:-1e-6}"
+NUM_ROLLOUTS="${ROB105_NUM_ROLLOUTS:-4}"
 TEMPERATURE="${ROB105_TEMPERATURE:-1.0}"
 MAX_OUTPUT_FRAMES="${ROB105_MAX_OUTPUT_FRAMES:-}"
 REWARD_STD_MIN="${ROB105_REWARD_STD_MIN:-0.01}"
 SAMPLE_TEXT_LOG_EVERY="${ROB105_SAMPLE_TEXT_LOG_EVERY:-10}"
+LATE_WORD_TOLERANCE_SECONDS="${ROB105_LATE_WORD_TOLERANCE_SECONDS:-2.0}"
 NUM_WORKERS="${ROB105_NUM_WORKERS:-0}"
 PREFETCH="${ROB105_PREFETCH:-1}"
 PIN_MEMORY="${ROB105_PIN_MEMORY:-0}"
@@ -81,6 +82,7 @@ on_exit() {
     echo "max_output_frames=${MAX_OUTPUT_FRAMES:-uncapped}"
     echo "reward_std_min=${REWARD_STD_MIN}"
     echo "sample_text_log_every=${SAMPLE_TEXT_LOG_EVERY}"
+    echo "late_word_tolerance_seconds=${LATE_WORD_TOLERANCE_SECONDS}"
     echo "max_records=${ROB105_MAX_RECORDS:-unset}"
     echo "train_max_steps_override=${ROB105_TRAIN_MAX_STEPS:-unset}"
   } >> "$SUMMARY_FILE"
@@ -149,7 +151,8 @@ prepare_args=(
   --num-rollouts "$NUM_ROLLOUTS" \
   --temperature "$TEMPERATURE" \
   --reward-std-min "$REWARD_STD_MIN" \
-  --sample-text-log-every "$SAMPLE_TEXT_LOG_EVERY"
+  --sample-text-log-every "$SAMPLE_TEXT_LOG_EVERY" \
+  --late-word-tolerance-seconds "$LATE_WORD_TOLERANCE_SECONDS"
 )
 
 if [[ -n "$MAX_OUTPUT_FRAMES" ]]; then

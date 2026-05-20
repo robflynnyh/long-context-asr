@@ -14,7 +14,6 @@ from omegaconf import OmegaConf
 from tqdm import tqdm
 
 from lcasr.eval.wer import word_error_rate_detail
-from lcasr.utils.audio_tools import total_frames
 from lcasr.utils.dataloading import VariableBatchSimpleDataloader, reset_seen_ids
 from lcasr.utils.general import get_model_class, load_checkpoint, load_model, load_optimizer
 from lcasr.utils.streaming_targets import (
@@ -57,6 +56,73 @@ def reference_words(transcript: Sequence[Dict[str, Any]], normalizer: Any = None
     return normalize_text(" ".join(word_surface(word) for word in transcript), normalizer)
 
 
+def timed_reference_words(transcript: Sequence[Dict[str, Any]], normalizer: Any = None) -> List[Dict[str, Any]]:
+    timed_words = []
+    for word in resolve_timed_words(transcript):
+        surface = normalize_text(word_surface(word), normalizer)
+        if not surface:
+            continue
+        end_time = float(str(word["endTime"])[:-1]) if "endTime" in word else float(word["end"])
+        for token in surface.split():
+            timed_words.append({"word": token, "time": end_time})
+    return timed_words
+
+
+def _decode_token_group(tokenizer: Any, token_ids: Sequence[int], normalizer: Any = None) -> List[str]:
+    if len(token_ids) == 0:
+        return []
+    text = tokenizer.decode([int(token_id) for token_id in token_ids])
+    return normalize_text(text, normalizer).split()
+
+
+def prediction_words_with_times(
+    model: torch.nn.Module,
+    tokenizer: Any,
+    prediction_ids: Sequence[int],
+    chunk_start_frames: int,
+    subsampling_factor: int,
+    normalizer: Any = None,
+) -> List[Dict[str, Any]]:
+    words = []
+    current_tokens = []
+    current_end_time = None
+    has_piece_api = hasattr(tokenizer, "id_to_piece")
+
+    for frame_idx, token_id in enumerate(prediction_ids):
+        token_id = int(token_id)
+        if token_id == model.get_silence_id():
+            continue
+
+        token_time = total_seconds_from_frames(chunk_start_frames + frame_idx * subsampling_factor)
+        starts_new_word = False
+        if has_piece_api:
+            piece = tokenizer.id_to_piece(token_id)
+            starts_new_word = piece.startswith("▁") and len(current_tokens) > 0
+
+        if starts_new_word:
+            for word in _decode_token_group(tokenizer, current_tokens, normalizer=normalizer):
+                words.append({"word": word, "time": current_end_time})
+            current_tokens = []
+
+        current_tokens.append(token_id)
+        current_end_time = token_time
+
+        if not has_piece_api:
+            for word in _decode_token_group(tokenizer, [token_id], normalizer=normalizer):
+                words.append({"word": word, "time": token_time})
+            current_tokens = []
+            current_end_time = None
+
+    if current_tokens:
+        for word in _decode_token_group(tokenizer, current_tokens, normalizer=normalizer):
+            words.append({"word": word, "time": current_end_time})
+    return words
+
+
+def total_seconds_from_frames(frames: int) -> float:
+    return float(frames) * 160.0 / 16000.0
+
+
 def decode_model_prediction_ids(
     model: torch.nn.Module,
     tokenizer: Any,
@@ -72,9 +138,59 @@ def decode_model_prediction_ids(
     return normalize_text(text, normalizer)
 
 
+def word_alignment(ref_words: Sequence[str], hyp_words: Sequence[str]) -> List[Tuple[str, Optional[int], Optional[int]]]:
+    rows = len(ref_words) + 1
+    cols = len(hyp_words) + 1
+    dp = [[0] * cols for _ in range(rows)]
+    back: List[List[Optional[Tuple[str, Optional[int], Optional[int]]]]] = [[None] * cols for _ in range(rows)]
+
+    for ref_idx in range(1, rows):
+        dp[ref_idx][0] = ref_idx
+        back[ref_idx][0] = ("delete", ref_idx - 1, None)
+    for hyp_idx in range(1, cols):
+        dp[0][hyp_idx] = hyp_idx
+        back[0][hyp_idx] = ("insert", None, hyp_idx - 1)
+
+    for ref_idx in range(1, rows):
+        for hyp_idx in range(1, cols):
+            same = ref_words[ref_idx - 1] == hyp_words[hyp_idx - 1]
+            diag_cost = dp[ref_idx - 1][hyp_idx - 1] + (0 if same else 1)
+            delete_cost = dp[ref_idx - 1][hyp_idx] + 1
+            insert_cost = dp[ref_idx][hyp_idx - 1] + 1
+            best = min(diag_cost, delete_cost, insert_cost)
+            dp[ref_idx][hyp_idx] = best
+            if diag_cost == best:
+                back[ref_idx][hyp_idx] = ("equal" if same else "substitute", ref_idx - 1, hyp_idx - 1)
+            elif delete_cost == best:
+                back[ref_idx][hyp_idx] = ("delete", ref_idx - 1, None)
+            else:
+                back[ref_idx][hyp_idx] = ("insert", None, hyp_idx - 1)
+
+    alignment = []
+    ref_idx = len(ref_words)
+    hyp_idx = len(hyp_words)
+    while ref_idx > 0 or hyp_idx > 0:
+        op = back[ref_idx][hyp_idx]
+        if op is None:
+            break
+        alignment.append(op)
+        if op[0] in {"equal", "substitute"}:
+            ref_idx -= 1
+            hyp_idx -= 1
+        elif op[0] == "delete":
+            ref_idx -= 1
+        else:
+            hyp_idx -= 1
+    alignment.reverse()
+    return alignment
+
+
 def weighted_error_rewards(
     hypotheses: List[str],
     references: List[str],
+    hypothesis_word_times: Optional[List[List[Dict[str, Any]]]] = None,
+    reference_word_times: Optional[List[List[Dict[str, Any]]]] = None,
+    late_word_tolerance_seconds: Optional[float] = None,
     wer_weight: float = 0.7,
     cer_weight: float = 0.3,
     reward_offset: float = 1.0,
@@ -82,7 +198,7 @@ def weighted_error_rewards(
     reward_min: Optional[float] = 0.0,
     reward_max: Optional[float] = None,
     reward_positive_threshold: Optional[float] = None,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, Dict[str, float]]:
     weight_sum = wer_weight + cer_weight
     if weight_sum <= 0:
         raise ValueError("reward weights must sum to a positive value")
@@ -90,8 +206,36 @@ def weighted_error_rewards(
     cer_weight = cer_weight / weight_sum
 
     rewards = []
-    for hyp, ref in zip(hypotheses, references):
+    late_correct_words = 0
+    matched_words = 0
+    for idx, (hyp, ref) in enumerate(zip(hypotheses, references)):
         wer, *_ = word_error_rate_detail(hypotheses=[hyp], references=[ref], use_cer=False)
+        if (
+            late_word_tolerance_seconds is not None
+            and hypothesis_word_times is not None
+            and reference_word_times is not None
+            and idx < len(hypothesis_word_times)
+            and idx < len(reference_word_times)
+        ):
+            ref_timed = reference_word_times[idx]
+            hyp_timed = hypothesis_word_times[idx]
+            alignment = word_alignment(
+                [str(word["word"]) for word in ref_timed],
+                [str(word["word"]) for word in hyp_timed],
+            )
+            ref_count = max(len(ref_timed), 1)
+            late_count = 0
+            for op, ref_idx, hyp_idx in alignment:
+                if op != "equal" or ref_idx is None or hyp_idx is None:
+                    continue
+                matched_words += 1
+                ref_time = float(ref_timed[ref_idx]["time"])
+                hyp_time = float(hyp_timed[hyp_idx]["time"])
+                if hyp_time - ref_time > float(late_word_tolerance_seconds):
+                    late_count += 1
+            if late_count > 0:
+                late_correct_words += late_count
+                wer += late_count / ref_count
         cer, *_ = word_error_rate_detail(hypotheses=[hyp], references=[ref], use_cer=True)
         error = wer_weight * float(wer) + cer_weight * float(cer)
         reward = reward_offset - reward_scale * error
@@ -102,7 +246,12 @@ def weighted_error_rewards(
         if reward_positive_threshold is not None and reward <= reward_positive_threshold:
             reward = 0.0
         rewards.append(reward)
-    return torch.tensor(rewards, dtype=torch.float32)
+    stats = {
+        "late_correct_words": float(late_correct_words),
+        "matched_words": float(matched_words),
+        "late_correct_word_fraction": float(late_correct_words) / max(float(matched_words), 1.0),
+    }
+    return torch.tensor(rewards, dtype=torch.float32), stats
 
 
 def _optional_float(config: Any, key: str, default: Optional[float]) -> Optional[float]:
@@ -112,13 +261,22 @@ def _optional_float(config: Any, key: str, default: Optional[float]) -> Optional
     return float(value)
 
 
-def compute_rewards(hypotheses: List[str], references: List[str], reward_config: Any) -> torch.Tensor:
+def compute_rewards(
+    hypotheses: List[str],
+    references: List[str],
+    reward_config: Any,
+    hypothesis_word_times: Optional[List[List[Dict[str, Any]]]] = None,
+    reference_word_times: Optional[List[List[Dict[str, Any]]]] = None,
+) -> Tuple[torch.Tensor, Dict[str, float]]:
     reward_type = reward_config.get("reward_type", "weighted_error")
     if reward_type != "weighted_error":
         raise ValueError(f"unknown streaming RL reward_type {reward_type}")
     return weighted_error_rewards(
         hypotheses=hypotheses,
         references=references,
+        hypothesis_word_times=hypothesis_word_times,
+        reference_word_times=reference_word_times,
+        late_word_tolerance_seconds=_optional_float(reward_config, "late_word_tolerance_seconds", None),
         wer_weight=float(reward_config.get("reward_wer_weight", 0.7)),
         cer_weight=float(reward_config.get("reward_cer_weight", 0.3)),
         reward_offset=float(reward_config.get("reward_offset", 1.0)),
@@ -152,16 +310,8 @@ def streaming_reference_for_reward(
     delay_seconds: float,
     normalizer: Any,
 ) -> str:
-    delayed_frame_offset = total_frames(delay_seconds)
-    kept = []
-    for word in resolve_timed_words(transcript):
-        end_time = float(str(word["endTime"])[:-1]) if "endTime" in word else float(word["end"])
-        delayed_frame = total_frames(end_time) + delayed_frame_offset - int(chunk_start_frames)
-        if delayed_frame < 0:
-            continue
-        if delayed_frame // subsampling_factor < output_length:
-            kept.append(word)
-    return reference_words(kept, normalizer=normalizer)
+    del chunk_start_frames, output_length, subsampling_factor, delay_seconds
+    return reference_words(resolve_timed_words(transcript), normalizer=normalizer)
 
 
 def make_streaming_rl_chunks(
@@ -325,18 +475,33 @@ def rl_update(
             max_output_frames=max_output_frames,
         )
 
-        hypotheses = [
-            decode_model_prediction_ids(
-                model=model,
-                tokenizer=tokenizer,
-                prediction_ids=actions[row_idx, : int(action_lengths[row_idx].item())].detach().cpu().tolist(),
-                max_tokens=rl_config.get("max_decode_tokens", None),
-                normalizer=normalizer,
+        hypotheses = []
+        hypothesis_word_times = []
+        for row_idx in range(actions.size(0)):
+            prediction_ids = actions[row_idx, : int(action_lengths[row_idx].item())].detach().cpu().tolist()
+            base_idx = row_idx // num_rollouts
+            hypotheses.append(
+                decode_model_prediction_ids(
+                    model=model,
+                    tokenizer=tokenizer,
+                    prediction_ids=prediction_ids,
+                    max_tokens=None,
+                    normalizer=normalizer,
+                )
             )
-            for row_idx in range(actions.size(0))
-        ]
+            hypothesis_word_times.append(
+                prediction_words_with_times(
+                    model=model,
+                    tokenizer=tokenizer,
+                    prediction_ids=prediction_ids,
+                    chunk_start_frames=int(chunk_start_frames[base_idx].item()),
+                    subsampling_factor=model.subsampling_factor,
+                    normalizer=normalizer,
+                )
+            )
         base_lengths = action_lengths.view(-1, num_rollouts)[:, 0].detach().cpu()
         references = []
+        reference_word_times = []
         for batch_idx, transcript in enumerate(transcripts):
             reference = streaming_reference_for_reward(
                 transcript=transcript,
@@ -347,8 +512,17 @@ def rl_update(
                 normalizer=normalizer,
             )
             references.extend([reference] * num_rollouts)
+            ref_timed = timed_reference_words(transcript, normalizer=normalizer)
+            reference_word_times.extend([ref_timed] * num_rollouts)
 
-        rewards = compute_rewards(hypotheses=hypotheses, references=references, reward_config=rl_config).to(device)
+        rewards, reward_stats = compute_rewards(
+            hypotheses=hypotheses,
+            references=references,
+            reward_config=rl_config,
+            hypothesis_word_times=hypothesis_word_times,
+            reference_word_times=reference_word_times,
+        )
+        rewards = rewards.to(device)
         advantages = compute_grpo_advantages(
             rewards=rewards,
             group_size=num_rollouts,
@@ -402,6 +576,9 @@ def rl_update(
         "sample_reward": float(rewards[0].detach().cpu()) if len(rewards) > 0 else 0.0,
         "sample_hypothesis": hypotheses[0] if len(hypotheses) > 0 else "",
         "sample_reference": references[0] if len(references) > 0 else "",
+        "late_correct_words": reward_stats["late_correct_words"],
+        "matched_words": reward_stats["matched_words"],
+        "late_correct_word_fraction": reward_stats["late_correct_word_fraction"],
         "output_frames": int(action_lengths.max().detach().cpu().item()),
     }
 
@@ -766,9 +943,19 @@ def self_test() -> None:
     advantages = compute_grpo_advantages(rewards, group_size=3, eps=1e-6, min_group_std=0.02)
     assert advantages[:3].abs().sum() == 0
     assert advantages[3:].abs().sum() > 0
-    reward = weighted_error_rewards(["hello world", "hello"], ["hello world", "hello world"])
+    reward, reward_stats = weighted_error_rewards(["hello world", "hello"], ["hello world", "hello world"])
     assert reward[0].item() == 1.0
     assert reward[1].item() < 1.0
+    assert reward_stats["late_correct_words"] == 0.0
+    late_reward, late_stats = weighted_error_rewards(
+        ["hello world"],
+        ["hello world"],
+        hypothesis_word_times=[[{"word": "hello", "time": 0.5}, {"word": "world", "time": 5.5}]],
+        reference_word_times=[[{"word": "hello", "time": 0.4}, {"word": "world", "time": 1.0}]],
+        late_word_tolerance_seconds=2.0,
+    )
+    assert late_stats["late_correct_words"] == 1.0
+    assert late_reward[0].item() < 1.0
     table = wandb_rollout_sample_table(
         {"sample_reward": 0.5, "sample_hypothesis": "hello", "sample_reference": "hello world"},
         step=7,
