@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=rob100-bestrq-paper
-#SBATCH --partition=gpu-h100-nvl
-#SBATCH --gres=gpu:h100:1
+#SBATCH --partition=gpu-h100
+#SBATCH --gres=gpu:1
 #SBATCH --qos=gpu
 #SBATCH --time=36:00:00
-#SBATCH --mem=180GB
+#SBATCH --mem=150GB
 #SBATCH --cpus-per-task=8
 #SBATCH --output=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-100/gpu-%j.out
 #SBATCH --error=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-100/gpu-%j.err
