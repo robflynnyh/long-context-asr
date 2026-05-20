@@ -129,21 +129,16 @@ class StreamingDecoderASR(BaseModel):
         self,
         tokenizer,
         prediction_ids: Iterable[int],
-        max_tokens: int = 256,
+        max_tokens: Optional[int] = None,
     ) -> str:
-        """Collapse repeated non-silence ids and decode them with the provided tokenizer."""
+        """Drop silence frame ids and decode the remaining text ids with the tokenizer."""
         tokens = []
-        previous = None
         for idx in prediction_ids:
             idx = int(idx)
             if idx == self.silence_id:
-                previous = idx
-                continue
-            if idx == previous:
                 continue
             tokens.append(idx)
-            previous = idx
-            if len(tokens) >= max_tokens:
+            if max_tokens is not None and len(tokens) >= max_tokens:
                 break
         return "" if not tokens else tokenizer.decode(tokens)
 
@@ -403,7 +398,7 @@ class StreamingDecoderASR(BaseModel):
         temperature: float = 1.0,
         max_sequence_length: Optional[int] = None,
         max_output_frames: Optional[int] = None,
-        max_tokens: int = 256,
+        max_tokens: Optional[int] = None,
         return_metadata: bool = False,
         **kwargs,
     ):

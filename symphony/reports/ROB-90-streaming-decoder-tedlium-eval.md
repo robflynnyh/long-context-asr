@@ -4,10 +4,12 @@ This is a bounded wiring sanity check for the ROB-76 decoder-only streaming ASR 
 
 Update on 2026-05-20: after the original ROB-90 handoff, a follow-up Linear comment asked for the same TEDLIUM sanity eval with the continued ROB-92 checkpoint. The ROB-92 result is recorded below using the same script, TEDLIUM recording, utterance cap, greedy decode path, and dtype.
 
+PR-review update on 2026-05-20: the decoder now drops only explicit silence frame ids before tokenizer decoding. It does not collapse repeated text token ids, and the optional `max_tokens` safety cap defaults to `None`. The bounded 8-utterance ROB-76 and ROB-92 evals were rerun after that change into the `repeatfix` artifact directories below; aggregate metrics on this slice were unchanged.
+
 ## Command
 
 ```bash
-/store/store5/software/simple-gpu-schedule/with-gpu any --num 1 --idle-seconds 0 -- bash -lc 'cd /exp/exp4/acp21rjf/symphony-workspaces-long-context-asr/ROB-90 && PYTHONPATH=. python symphony/scripts/rob90_streaming_tedlium_eval.py --checkpoint /store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_mimas_full_epoch_rob76-mimas-3epoch-b48-two-head-20260517T140145Z/step_82737.pt --tedlium-root /store/store4/data/TEDLIUM_release1/legacy --split test --max-utterances 8 --decode-mode greedy --eval-dtype bfloat16 --output-dir /store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/model-transcribe-8utt'
+/store/store5/software/simple-gpu-schedule/with-gpu any --num 1 --idle-seconds 0 -- bash -lc 'cd /exp/exp4/acp21rjf/symphony-workspaces-long-context-asr/ROB-90 && PYTHONPATH=. python symphony/scripts/rob90_streaming_tedlium_eval.py --checkpoint /store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_mimas_full_epoch_rob76-mimas-3epoch-b48-two-head-20260517T140145Z/step_82737.pt --tedlium-root /store/store4/data/TEDLIUM_release1/legacy --split test --max-utterances 8 --decode-mode greedy --eval-dtype bfloat16 --output-dir /store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/model-transcribe-8utt-repeatfix'
 ```
 
 ## Configuration
@@ -18,9 +20,9 @@ Update on 2026-05-20: after the original ROB-90 handoff, a follow-up Linear comm
 - utterance level: `True`
 - decode mode: `greedy`
 - utterances: `8`
-- output JSONL: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/model-transcribe-8utt/predictions.jsonl`
-- output summary: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/model-transcribe-8utt/summary.json`
-- device/dtype: Mimas `cuda` via `with-gpu` GPU 2 / `bfloat16`
+- output JSONL: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/model-transcribe-8utt-repeatfix/predictions.jsonl`
+- output summary: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/model-transcribe-8utt-repeatfix/summary.json`
+- device/dtype: Mimas `cuda` via `with-gpu` GPU 0 / `bfloat16`
 - shared eval files changed: none; `eval/run.py` and `eval/tedlium/run.py` are left unchanged from `dev`
 
 ## Summary
@@ -48,7 +50,7 @@ Update on 2026-05-20: after the original ROB-90 handoff, a follow-up Linear comm
 ### Command
 
 ```bash
-/store/store5/software/simple-gpu-schedule/with-gpu any --num 1 --idle-seconds 0 -- bash -lc 'cd /exp/exp4/acp21rjf/symphony-workspaces-long-context-asr/ROB-90 && PYTHONPATH=. python symphony/scripts/rob90_streaming_tedlium_eval.py --checkpoint /store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_rob92_mimas_5epoch_rob92-mimas-5epoch-continuation-20260518T221140Z/step_137895.pt --tedlium-root /store/store4/data/TEDLIUM_release1/legacy --split test --max-utterances 8 --decode-mode greedy --eval-dtype bfloat16 --output-dir /store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/rob92-model-transcribe-8utt'
+/store/store5/software/simple-gpu-schedule/with-gpu any --num 1 --idle-seconds 0 -- bash -lc 'cd /exp/exp4/acp21rjf/symphony-workspaces-long-context-asr/ROB-90 && PYTHONPATH=. python symphony/scripts/rob90_streaming_tedlium_eval.py --checkpoint /store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_rob92_mimas_5epoch_rob92-mimas-5epoch-continuation-20260518T221140Z/step_137895.pt --tedlium-root /store/store4/data/TEDLIUM_release1/legacy --split test --max-utterances 8 --decode-mode greedy --eval-dtype bfloat16 --output-dir /store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/rob92-model-transcribe-8utt-repeatfix'
 ```
 
 ### Configuration
@@ -60,18 +62,18 @@ Update on 2026-05-20: after the original ROB-90 handoff, a follow-up Linear comm
 - utterance level: `True`
 - decode mode: `greedy`
 - utterances: `8`
-- output JSONL: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/rob92-model-transcribe-8utt/predictions.jsonl`
-- output summary: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/rob92-model-transcribe-8utt/summary.json`
+- output JSONL: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/rob92-model-transcribe-8utt-repeatfix/predictions.jsonl`
+- output summary: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/rob92-model-transcribe-8utt-repeatfix/summary.json`
 - device/dtype: Mimas `cuda` via `with-gpu` GPU 0 / `bfloat16`
 - shared eval files changed: none; `eval/run.py` and `eval/tedlium/run.py` are left unchanged from `dev`
 
 ### Smoke Test
 
 ```bash
-/store/store5/software/simple-gpu-schedule/with-gpu any --num 1 --idle-seconds 0 -- bash -lc 'cd /exp/exp4/acp21rjf/symphony-workspaces-long-context-asr/ROB-90 && PYTHONPATH=. python symphony/scripts/rob90_streaming_tedlium_eval.py --checkpoint /store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_rob92_mimas_5epoch_rob92-mimas-5epoch-continuation-20260518T221140Z/step_137895.pt --tedlium-root /store/store4/data/TEDLIUM_release1/legacy --split test --max-utterances 1 --decode-mode greedy --eval-dtype bfloat16 --max-output-frames 2 --output-dir /store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/rob92-model-transcribe-smoke-1utt'
+/store/store5/software/simple-gpu-schedule/with-gpu any --num 1 --idle-seconds 0 -- bash -lc 'cd /exp/exp4/acp21rjf/symphony-workspaces-long-context-asr/ROB-90 && PYTHONPATH=. python symphony/scripts/rob90_streaming_tedlium_eval.py --checkpoint /store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_rob92_mimas_5epoch_rob92-mimas-5epoch-continuation-20260518T221140Z/step_137895.pt --tedlium-root /store/store4/data/TEDLIUM_release1/legacy --split test --max-utterances 1 --decode-mode greedy --eval-dtype bfloat16 --max-output-frames 2 --output-dir /store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/repeatfix-rob92-smoke-1utt'
 ```
 
-The one-utterance smoke loaded the ROB-92 checkpoint, TEDLIUM audio, and `StreamingDecoderASR.transcribe(...)` path successfully. It intentionally capped generation to 2 output frames and wrote `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/rob92-model-transcribe-smoke-1utt/`.
+The one-utterance smoke loaded the ROB-92 checkpoint, TEDLIUM audio, and `StreamingDecoderASR.transcribe(...)` path successfully. It intentionally capped generation to 2 output frames and wrote `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/repeatfix-rob92-smoke-1utt/`.
 
 ### Summary
 

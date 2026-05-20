@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument("--decode-mode", default="greedy", choices=["greedy", "sample"])
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--max-output-frames", type=int, default=None)
-    parser.add_argument("--max-tokens", type=int, default=256)
+    parser.add_argument("--max-tokens", type=int, default=None)
     parser.add_argument("--eval-dtype", default="bfloat16", choices=["float32", "bfloat16", "float16"])
     return parser.parse_args()
 

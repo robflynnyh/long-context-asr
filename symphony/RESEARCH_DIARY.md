@@ -12,6 +12,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-20
 
 - ROB-92 Mimas continuation completed successfully on branch `symphony/rob-92-continue-streaming-decoder`: run `rob92-mimas-5epoch-continuation-20260518T221140Z` exited `0` on GPU 3 after five Spotify 10 percent epochs from ROB-76 seed checkpoint `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_mimas_full_epoch_rob76-mimas-3epoch-b48-two-head-20260517T140145Z/step_82737.pt`. Runtime artifacts are under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-92/rob92-mimas-5epoch-continuation-20260518T221140Z`, final checkpoints are under `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_rob92_mimas_5epoch_rob92-mimas-5epoch-continuation-20260518T221140Z` through `step_137895.pt`, and W&B run `u1hhaacp` synced at `https://wandb.ai/wobrob101/spotify_long_context/runs/u1hhaacp`.
+- ROB-90 PR review follow-up: fixed `StreamingDecoderASR` decoding so tokenizer input drops only explicit silence frame ids and preserves repeated text token ids. `max_tokens` now defaults to `None` in both `StreamingDecoderASR.transcribe(...)` and the issue-local TEDLIUM helper. Validation passed with `py_compile`, a focused repeat-preserving decode assertion, `git diff --check`, a one-utterance ROB-92 Mimas smoke, and repeat-fix 8-utterance reruns for both ROB-76 and ROB-92 checkpoints under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-90/*repeatfix/`.
 
 ## 2026-05-18
 
