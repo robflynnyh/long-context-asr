@@ -9,6 +9,7 @@ from lcasr.models.sconformer_meta import SCConformerMeta
 from lcasr.models.sconformer_test import SCConformerTest
 from lcasr.models.augmentation_model import SoftMaskNN
 from lcasr.models.streaming_decoder_asr import StreamingDecoderASR
+from lcasr.models.ctc_probe import wrap_model_with_ctc_probe
 # from lcasr.models.metaconformer import MetaConformer
 # from lcasr.models.stconformer import STConformer
 from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler, ConstantLRScheduler
@@ -73,8 +74,6 @@ def get_model_class(config:Dict={}, args:argparse.Namespace={}):
 def load_model(config:Dict, vocab_size, model_class=SCConformerXL):
     model = model_class(**config.model, vocab_size=vocab_size)
     if config.get("probe", {}):
-        from lcasr.models.ctc_probe import wrap_model_with_ctc_probe
-
         model = wrap_model_with_ctc_probe(config, model, vocab_size)
     return model
 

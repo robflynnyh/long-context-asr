@@ -233,7 +233,7 @@ while read -r config_path; do
       train_args+=(--disable_wandb)
     fi
   fi
-  python symphony/scripts/rob91_train_frozen_ctc_probe.py "${train_args[@]}"
+  python exp/train.py "${train_args[@]}"
 done < <(python - <<'PY'
 import json, os
 manifest = json.load(open(os.environ["ROB91_RUN_MANIFEST"]))

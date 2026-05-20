@@ -14,6 +14,7 @@ from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager
 from lcasr.utils.helpers import exists
 from lcasr.utils.general import load_model, save_model, load_checkpoint, load_optimizer, get_model_class
 from lcasr.utils.augmentation import SpecAugment
+from lcasr.models.ctc_probe import freeze_except, load_frozen_backbone_from_ssl
 import resource
 import time
 
@@ -32,6 +33,13 @@ from collections import defaultdict
 import warnings
 import random
 random.seed(1234)
+
+
+def subset_pairs(pairs, max_records):
+    if max_records is None:
+        return pairs
+    keys = sorted(pairs.keys())[:max_records]
+    return {key: pairs[key] for key in keys}
 
 
 def blank_p(logits, tokenizer):
@@ -367,6 +375,12 @@ def train(
 def main(args):
     args.config_path = args.config
     args.config = OmegaConf.load(args.config)
+    if args.disable_wandb:
+        args.config['wandb']['use'] = False
+    if args.max_records is not None:
+        args.config['data']['max_records'] = args.max_records
+    if args.max_steps is not None:
+        args.config['training']['max_steps'] = args.max_steps
 
     checkpoint_dir = args.config['checkpointing']['dir']
     if not os.path.exists(checkpoint_dir): os.makedirs(checkpoint_dir); print(f'created checkpoint dir: {checkpoint_dir}')
@@ -376,8 +390,16 @@ def main(args):
     torch.manual_seed(12345)
     torch.cuda.manual_seed(12345)
     model = load_model(args.config, tokenizer.vocab_size(), get_model_class(config = args.config))
+    if args.config.get('probe', {}).get('ssl_checkpoint', None) is not None:
+        load_frozen_backbone_from_ssl(
+            model=model,
+            checkpoint_path=args.config['probe']['ssl_checkpoint'],
+            load_decoder=bool(args.config['probe'].get('load_decoder_from_ssl', False)),
+        )
+        freeze_except(model, args.config['probe'].get('trainable_prefixes', ['decoder.']))
     tparams = model.print_total_params()
     paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
+    paired_data = subset_pairs(paired_data, args.config['data'].get('max_records', None))
 
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -484,6 +506,9 @@ if __name__ == '__main__':
     parser.add_argument('-num_workers', '--num_workers', type=int, default=0, help='number of workers for dataloader')
     parser.add_argument('-pin_memory', '--pin_memory', action='store_true', help='pin memory for dataloader')
     parser.add_argument('-prefetch', '--prefetch_factor', type=int, default=1, help='prefetch factor for dataloader')
+    parser.add_argument('--disable_wandb', action='store_true', help='disable wandb even if enabled in config')
+    parser.add_argument('--max_records', type=int, help='limit training manifest to a deterministic prefix')
+    parser.add_argument('--max_steps', type=int, help='stop training after this many recordings')
 
     parser.add_argument('-debug_hooks', '--debug_hooks', action='store_true', help='add hooks to log gradient/activation info')
 

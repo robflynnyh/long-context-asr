@@ -83,6 +83,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-91 10-epoch BiLSTM probe result: callback-backed Mimas run `rob91-full-bilstm-10epoch-constant-20260519T0911Z` completed 10-epoch frozen TEDLIUM probes for the ROB-70 25%, 50%, and 100% BEST-RQ checkpoints. Test WERs were 99.85%, 99.67%, and 99.73%; the result is inconclusive/negative, with artifacts under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-91/rob91-full-bilstm-10epoch-constant-20260519T0911Z/`.
 
+## 2026-05-20
+
+- ROB-91 PR follow-up: removed the issue-specific probe trainer. Frozen SSL backbone loading and probe freezing now live in reusable `lcasr.models.ctc_probe` helpers, and the ROB-91 wrapper trains generated probe configs through the normal `exp/train.py` entrypoint.
+
 ## 2026-05-12
 
 - ROB-69 eval job `10156464` completed successfully, but finalizer job `10156465` failed because appended finetuned CSV rows included an extra pandas index field. Normalized the completed remote result into `eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`, made ROB-69 summarization tolerate and normalize that output shape, and fixed eval manager CSV appends to write `index=False`. Mean WER was slightly worse for the long-only finetuned checkpoints on most dataset/window pairs, with small improvements only on `rev16` window 128, `tedlium` window 8192, and `this_american_life` windows 128 and 22500.

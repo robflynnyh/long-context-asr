@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Iterable
 
 from lcasr.components.decoder import ASRLinearSCDecoder
 from lcasr.models.base import LayerNorm, RMSNorm
@@ -62,6 +63,9 @@ class FrozenBackboneCTCProbe(nn.Module):
         print(f"{pstr}: ", total / 1e6, "M")
         return total
 
+    def get_param_groups(self, optim_args=None):
+        return [param for param in self.parameters() if param.requires_grad]
+
     def forward(self, *args, **kwargs):
         return_logits = kwargs.get("return_logits", False)
         kwargs["skip_vocab_projection"] = True
@@ -109,6 +113,55 @@ def wrap_model_with_ctc_probe(config, acoustic_model: nn.Module, vocab_size: int
 
 def acoustic_model_from_probe(model: nn.Module):
     return model.acoustic_model if isinstance(model, FrozenBackboneCTCProbe) else model
+
+
+def acoustic_state_from_ssl_checkpoint(path: str):
+    checkpoint = torch.load(path, map_location="cpu")
+    if "acoustic_model" in checkpoint:
+        return checkpoint["acoustic_model"], "acoustic_model"
+    if "model" not in checkpoint:
+        raise KeyError(f"{path} has neither 'acoustic_model' nor 'model'")
+    state = checkpoint["model"]
+    stripped = {}
+    for key, value in state.items():
+        if key.startswith("model."):
+            stripped[key[len("model.") :]] = value
+    if stripped:
+        return stripped, "model.* stripped from BEST-RQ wrapper"
+    return state, "model"
+
+
+def load_frozen_backbone_from_ssl(model: nn.Module, checkpoint_path: str, load_decoder: bool = False):
+    acoustic_model = acoustic_model_from_probe(model)
+    state, source_key = acoustic_state_from_ssl_checkpoint(checkpoint_path)
+    if not load_decoder:
+        state = {key: value for key, value in state.items() if not key.startswith("decoder.")}
+    loaded_names = set(state.keys()) & set(acoustic_model.state_dict().keys())
+    if not loaded_names:
+        raise RuntimeError(f"no matching model keys loaded from {checkpoint_path}")
+    missing, unexpected = acoustic_model.load_state_dict(state, strict=False)
+    print(f"loaded {len(loaded_names)} tensors from {checkpoint_path} ({source_key})")
+    if missing:
+        print(f"missing keys after SSL load: {len(missing)}")
+        print("\n".join(f"  {key}" for key in missing[:20]))
+    if unexpected:
+        print(f"unexpected keys after SSL load: {len(unexpected)}")
+        print("\n".join(f"  {key}" for key in unexpected[:20]))
+
+
+def freeze_except(model: nn.Module, trainable_prefixes: Iterable[str]):
+    prefixes = tuple(trainable_prefixes)
+    trainable, frozen = 0, 0
+    for name, param in model.named_parameters():
+        param.requires_grad = name.startswith(prefixes)
+        if param.requires_grad:
+            trainable += param.numel()
+        else:
+            frozen += param.numel()
+    if trainable == 0:
+        raise RuntimeError(f"no trainable parameters matched prefixes: {prefixes}")
+    print(f"trainable parameters: {trainable}")
+    print(f"frozen parameters: {frozen}")
 
 
 def normalize_probe_state_dict(model: nn.Module, state_dict):
