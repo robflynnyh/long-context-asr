@@ -956,6 +956,37 @@ def self_test() -> None:
     )
     assert late_stats["late_correct_words"] == 1.0
     assert late_reward[0].item() < 1.0
+    on_time_reward, on_time_stats = weighted_error_rewards(
+        ["hello world"],
+        ["hello world"],
+        hypothesis_word_times=[[{"word": "hello", "time": 0.5}, {"word": "world", "time": 2.9}]],
+        reference_word_times=[[{"word": "hello", "time": 0.4}, {"word": "world", "time": 1.0}]],
+        late_word_tolerance_seconds=2.0,
+    )
+    assert on_time_stats["late_correct_words"] == 0.0
+    assert on_time_reward[0].item() == 1.0
+    repeated_late_reward, repeated_late_stats = weighted_error_rewards(
+        ["go go now"],
+        ["go go now"],
+        hypothesis_word_times=[
+            [{"word": "go", "time": 0.3}, {"word": "go", "time": 4.2}, {"word": "now", "time": 4.4}]
+        ],
+        reference_word_times=[
+            [{"word": "go", "time": 0.2}, {"word": "go", "time": 1.0}, {"word": "now", "time": 4.0}]
+        ],
+        late_word_tolerance_seconds=2.0,
+    )
+    assert repeated_late_stats["late_correct_words"] == 1.0
+    assert repeated_late_reward[0].item() < 1.0
+    substitution_late_reward, substitution_late_stats = weighted_error_rewards(
+        ["hello wurld"],
+        ["hello world"],
+        hypothesis_word_times=[[{"word": "hello", "time": 0.5}, {"word": "wurld", "time": 6.0}]],
+        reference_word_times=[[{"word": "hello", "time": 0.4}, {"word": "world", "time": 1.0}]],
+        late_word_tolerance_seconds=2.0,
+    )
+    assert substitution_late_stats["late_correct_words"] == 0.0
+    assert substitution_late_reward[0].item() < 1.0
     table = wandb_rollout_sample_table(
         {"sample_reward": 0.5, "sample_hypothesis": "hello", "sample_reference": "hello world"},
         step=7,
