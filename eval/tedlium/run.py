@@ -10,11 +10,17 @@ from pyctcdecode import build_ctcdecoder
 import time
 from functools import partial
 
-TEST_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/test/'
-DEV_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/dev/'
+TEDLIUM_ROOT = os.environ.get("LCASR_TEDLIUM_ROOT")
+if TEDLIUM_ROOT:
+    TEST_PATH = os.path.join(TEDLIUM_ROOT, "test")
+    DEV_PATH = os.path.join(TEDLIUM_ROOT, "dev")
+else:
+    TEST_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/test/'
+    DEV_PATH = '/mnt/parscratch/users/acp21rjf/TEDLIUM_release1/dev/'
 
 from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
+
 
 def open_stm(path:str) -> List[str]:
     with open(path, 'r') as f:
@@ -128,9 +134,10 @@ def main(args):
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
     model = load_model(args.config, tokenizer.vocab_size(), model_class=get_model_class(config=args.config, args=args))
+    state_dict = checkpoint["model"]
     print(f'Loaded model class: {model.__class__.__name__}')
     tparams = model.print_total_params()
-    model.load_state_dict(checkpoint['model'], strict=False)
+    model.load_state_dict(state_dict, strict=False)
     print(f'Loaded model from {args.checkpoint}')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.device = device

@@ -9,6 +9,7 @@ from lcasr.models.sconformer_meta import SCConformerMeta
 from lcasr.models.sconformer_test import SCConformerTest
 from lcasr.models.augmentation_model import SoftMaskNN
 from lcasr.models.streaming_decoder_asr import StreamingDecoderASR
+from lcasr.models.ctc_probe import freeze_except, load_frozen_backbone_from_ssl, wrap_model_with_ctc_probe
 # from lcasr.models.metaconformer import MetaConformer
 # from lcasr.models.stconformer import STConformer
 from lcasr.utils.scheduling import SequenceWarmupManager, CosineLRScheduler, ConstantLRScheduler
@@ -72,6 +73,15 @@ def get_model_class(config:Dict={}, args:argparse.Namespace={}):
 
 def load_model(config:Dict, vocab_size, model_class=SCConformerXL):
     model = model_class(**config.model, vocab_size=vocab_size)
+    if config.get("probe", {}):
+        model = wrap_model_with_ctc_probe(config, model, vocab_size)
+        if config.probe.get("ssl_checkpoint", None) is not None:
+            load_frozen_backbone_from_ssl(
+                model=model,
+                checkpoint_path=config.probe.ssl_checkpoint,
+                load_decoder=bool(config.probe.get("load_decoder_from_ssl", False)),
+            )
+            freeze_except(model, config.probe.get("trainable_prefixes", ["decoder."]))
     return model
 
 def load_optimizer(config:Dict, model:torch.nn.Module, and_scheduler=True):

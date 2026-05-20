@@ -12,9 +12,11 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-20
 
 - ROB-92 Mimas continuation completed successfully on branch `symphony/rob-92-continue-streaming-decoder`: run `rob92-mimas-5epoch-continuation-20260518T221140Z` exited `0` on GPU 3 after five Spotify 10 percent epochs from ROB-76 seed checkpoint `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_mimas_full_epoch_rob76-mimas-3epoch-b48-two-head-20260517T140145Z/step_82737.pt`. Runtime artifacts are under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-92/rob92-mimas-5epoch-continuation-20260518T221140Z`, final checkpoints are under `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_rob92_mimas_5epoch_rob92-mimas-5epoch-continuation-20260518T221140Z` through `step_137895.pt`, and W&B run `u1hhaacp` synced at `https://wandb.ai/wobrob101/spotify_long_context/runs/u1hhaacp`.
+- ROB-91 PR follow-up: merged current `origin/dev`, resolved the diary conflict with ROB-92, and folded frozen SSL checkpoint loading/freezing into the normal `load_model()` probe path so `exp/train.py` no longer owns probe-specific setup.
 
 ## 2026-05-18
 
+- ROB-91 on branch `symphony/rob-91-probe-bestrq-ctc-heads`: added the Mimas frozen BEST-RQ TEDLIUM CTC-probe workflow, W&B/callback handling, non-finite CTC-loss guards, constant-LR/LR-grid support, self-conditioning preservation, and the BiLSTM probe head used by the final comparison. Detailed commands, smoke evidence, and intermediate superseded runs are recorded in Linear/PR #18.
 - ROB-92 setup: added a Mimas continuation wrapper for the ROB-76 two-head streaming decoder checkpoint. The wrapper seeds a fresh checkpoint directory from `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_mimas_full_epoch_rob76-mimas-3epoch-b48-two-head-20260517T140145Z/step_82737.pt`, trains for 5 new Spotify 10 percent epochs with a fresh scheduler at LR `5e-5`, writes artifacts under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-92` and `/store/store5/data/acp21rjf/spotify/`, and calls back to ROB-92 on exit.
 - ROB-92 validation: `bash -n`, `py_compile`, `git diff --check`, a wrapper callback-only dry run, and a GPU 3 one-step Mimas smoke passed. The smoke run `rob92-mimas-smoke-20260518T220839Z` used batch `48`, `ROB92_MAX_RECORDS=48`, `ROB92_MAX_STEPS=1`, W&B disabled, and wrote `step_1.pt` under `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_rob92_mimas_5epoch_rob92-mimas-smoke-20260518T220839Z`.
 - ROB-70 BEST-RQ lower-LR one-epoch Spotify run completed successfully on branch `symphony/rob-70-setup-ssl-bestrq`: Stanage job `10226550` finished `COMPLETED 0:0` in `12:22:57` with batch MaxRSS `157290060K`. The run used command `python exp/train_bestRQ.py -config exp/configs/ssl/bestrq_6l_2048_spotify.yaml --remove_scheduler --reset_step --no_resume --num_workers 0 --prefetch_factor 1`, logs `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/gpu-10226550.{out,err}` and `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-70/train-10226550.log`, checkpoints under `/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch_lr3e4_20260516` through `step_105360.pt`, and W&B run `rob70_bestrq_6l_2048_1epoch_lr3e4_20260516` at `https://wandb.ai/wobrob101/spotify_long_context_ssl/runs/ybonr8wv`. A bounded log scan found no tracebacks, Slurm failure states, NaNs/Infs, or optimizer-step assertions.
@@ -81,6 +83,16 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-16
 
 - ROB-76 Mimas/debug path: added the Mimas Spotify-10% manifest helper, W&B/callback wrapper, debug generation, checkpoint interval handling, and batch-48 wrapper defaults. Also fixed the cosine schedule horizon and causal-subsampling chunking after the Stanage `conv2d` indexing failure; bounded Mimas smokes validated these paths.
+
+## 2026-05-19
+
+- ROB-91 PR follow-up: moved reusable frozen-backbone CTC probe wrapping into `lcasr.models.ctc_probe` and routed probe configs through normal `load_model()` handling, including generic linear/BiLSTM probe selection and legacy checkpoint compatibility.
+
+- ROB-91 10-epoch BiLSTM probe result: callback-backed Mimas run `rob91-full-bilstm-10epoch-constant-20260519T0911Z` completed 10-epoch frozen TEDLIUM probes for the ROB-70 25%, 50%, and 100% BEST-RQ checkpoints. Test WERs were 99.85%, 99.67%, and 99.73%; the result is inconclusive/negative, with artifacts under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-91/rob91-full-bilstm-10epoch-constant-20260519T0911Z/`.
+
+## 2026-05-20
+
+- ROB-91 PR follow-up: removed the issue-specific probe trainer. Frozen SSL backbone loading and probe freezing now live in reusable `lcasr.models.ctc_probe` helpers, and the ROB-91 wrapper trains generated probe configs through the normal `exp/train.py` entrypoint.
 
 ## 2026-05-12
 
