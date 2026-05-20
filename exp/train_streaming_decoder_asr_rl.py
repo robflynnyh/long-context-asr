@@ -57,27 +57,18 @@ def reference_words(transcript: Sequence[Dict[str, Any]], normalizer: Any = None
     return normalize_text(" ".join(word_surface(word) for word in transcript), normalizer)
 
 
-def decode_prediction_ids(
+def decode_model_prediction_ids(
+    model: torch.nn.Module,
     tokenizer: Any,
     prediction_ids: Iterable[int],
-    silence_id: int,
     max_tokens: Optional[int] = None,
     normalizer: Any = None,
 ) -> str:
-    tokens = []
-    previous = None
-    for idx in prediction_ids:
-        idx = int(idx)
-        if idx == silence_id:
-            previous = idx
-            continue
-        if idx == previous:
-            continue
-        tokens.append(idx)
-        previous = idx
-        if max_tokens is not None and len(tokens) >= max_tokens:
-            break
-    text = "" if len(tokens) == 0 else tokenizer.decode(tokens)
+    text = model._decode_prediction_ids(
+        tokenizer,
+        prediction_ids,
+        max_tokens=max_tokens,
+    )
     return normalize_text(text, normalizer)
 
 
@@ -335,10 +326,10 @@ def rl_update(
         )
 
         hypotheses = [
-            decode_prediction_ids(
+            decode_model_prediction_ids(
+                model=model,
                 tokenizer=tokenizer,
                 prediction_ids=actions[row_idx, : int(action_lengths[row_idx].item())].detach().cpu().tolist(),
-                silence_id=model.get_silence_id(),
                 max_tokens=rl_config.get("max_decode_tokens", None),
                 normalizer=normalizer,
             )
@@ -792,7 +783,7 @@ def self_test() -> None:
             return [1 for token in text.split() if token]
 
         def decode(self, tokens):
-            return " ".join("tok" for _ in tokens)
+            return " ".join(f"tok{int(token)}" for token in tokens)
 
     class ToyStreaming(torch.nn.Module):
         def __init__(self):
@@ -806,6 +797,17 @@ def self_test() -> None:
 
         def get_silence_id(self):
             return self.silence_id
+
+        def _decode_prediction_ids(self, tokenizer, prediction_ids, max_tokens=None):
+            tokens = []
+            for idx in prediction_ids:
+                idx = int(idx)
+                if idx == self.silence_id:
+                    continue
+                tokens.append(idx)
+                if max_tokens is not None and len(tokens) >= max_tokens:
+                    break
+            return "" if not tokens else tokenizer.decode(tokens)
 
         def output_lengths(self, lengths):
             return lengths
@@ -827,6 +829,14 @@ def self_test() -> None:
             return {"logits": self.proj(h), "length": length}
 
     toy = ToyStreaming()
+    repeated_text = decode_model_prediction_ids(
+        model=toy,
+        tokenizer=ToyTokenizer(),
+        prediction_ids=[1, 1, toy.get_silence_id(), toy.get_silence_id(), 2, 2],
+        max_tokens=None,
+        normalizer=None,
+    )
+    assert repeated_text == "tok1 tok1 tok2 tok2"
     audio = torch.zeros(2, 80, 4)
     lengths = torch.tensor([4, 3], dtype=torch.long)
     actions, action_lengths = sample_streaming_rollouts(toy, audio, lengths, num_rollouts=2, temperature=1.0)
