@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-21
+
+- ROB-105 final run evidence: the b32/r6 microbatch-16 Mimas run `rob105-streaming-rl-grpo-b32-r6-micro16-10k-20260520T224055Z` was manually killed by the user to save GPUs after they said the implementation looked working. The wrapper callback reported `exit_code=130`, but the progress log shows the run reached update `759/10000` with active reward groups, finite losses, W&B sync `y687qlnx`, and saved checkpoint `step_500.pt` under `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_rob105_rl_grpo_rob105-streaming-rl-grpo-b32-r6-micro16-10k-20260520T224055Z/`.
+
 ## 2026-05-20
 
 - ROB-105 setup on branch `symphony/rob-105-streaming-rl-grpo`: added streaming-decoder GRPO post-training code, a ROB-105 Mimas config/seed preparer, and an immutable run-dir wrapper with Linear callback. The RL reward is chunk-local and streaming-aligned: sampled frame-id rollouts are decoded only over the capped streaming output frames and rewarded against words whose delayed streaming positions fall inside that same chunk/window, with low reward-std rollout groups zeroed like the encoder-decoder GRPO path. Validation passed with `py_compile`, `bash -n`, `PYTHONPATH=. python3 exp/train_streaming_decoder_asr_rl.py --self_test`, wrapper callback-only dry run, wrapper config/checkpoint-load validation, and a real Mimas GPU smoke from the ROB-92 checkpoint using 4 rollouts and 96 output frames (`reward_mean=0.5016`, active groups `1.0`, finite loss).
