@@ -1,0 +1,72 @@
+import unittest
+
+import torch
+
+from lcasr.models.streaming_decoder_asr import StreamingDecoderASR
+
+
+def tiny_streaming_config():
+    return {
+        "vocab_size": 16,
+        "feat_in": 8,
+        "n_layers": 2,
+        "d_model": 32,
+        "n_heads": 4,
+        "expansion_factor": 2,
+        "dropout_ff": 0.0,
+        "dropout_attn": 0.0,
+        "subsampling_factor": 4,
+        "subsampling": "dw_striding",
+        "subsampling_act": "silu",
+        "subsampling_conv_channels": 16,
+        "subsampling_norm_out": True,
+        "decoder_norm": True,
+        "previous_token_dropout": 0.0,
+    }
+
+
+class StreamingDecoderASRRoPETest(unittest.TestCase):
+    def test_default_rope_forward_backward(self):
+        torch.manual_seed(0)
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        self.assertTrue(model.use_rotary)
+        self.assertEqual(model.rotary_base_freq, 1_500_000)
+        self.assertIsNotNone(model.rotary_pos_emb)
+
+        audio = torch.randn(2, 8, 64)
+        lengths = torch.full((2,), 64, dtype=torch.long)
+        output_lengths = model.output_lengths(lengths)
+        frame_targets = torch.full(
+            (2, int(output_lengths.max().item())),
+            model.get_silence_id(),
+            dtype=torch.long,
+        )
+        frame_targets[0, 1] = 3
+        frame_targets[1, 2] = 7
+
+        out = model.calc_loss(audio_signal=audio, length=lengths, frame_targets=frame_targets)
+        self.assertEqual(out["logits"].shape[:2], frame_targets.shape)
+        self.assertEqual(out["logits"].shape[-1], model.num_classes)
+        out["loss"].backward()
+        self.assertIsNotNone(model.text_head.weight.grad)
+
+    def test_no_rope_state_loads_strictly_into_default_rope_model(self):
+        old_config = tiny_streaming_config()
+        old_model = StreamingDecoderASR(**old_config, use_rotary=False)
+        old_state = old_model.state_dict()
+        self.assertFalse(any(key.startswith("rotary_pos_emb.") for key in old_state))
+
+        model_from_old_config = StreamingDecoderASR(**old_config)
+        self.assertTrue(model_from_old_config.use_rotary)
+        incompatible = model_from_old_config.load_state_dict(old_state, strict=True)
+        self.assertEqual(incompatible.missing_keys, [])
+        self.assertEqual(incompatible.unexpected_keys, [])
+
+    def test_rope_can_be_disabled_for_ablations(self):
+        model = StreamingDecoderASR(**tiny_streaming_config(), use_rotary=False)
+        self.assertFalse(model.use_rotary)
+        self.assertIsNone(model.rotary_pos_emb)
+
+
+if __name__ == "__main__":
+    unittest.main()

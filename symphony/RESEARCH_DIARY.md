@@ -12,6 +12,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-21
 
 - ROB-105 final run evidence: the b32/r6 microbatch-16 Mimas run `rob105-streaming-rl-grpo-b32-r6-micro16-10k-20260520T224055Z` was manually killed by the user to save GPUs after they said the implementation looked working. The wrapper callback reported `exit_code=130`, but the progress log shows the run reached update `759/10000` with active reward groups, finite losses, W&B sync `y687qlnx`, and saved checkpoint `step_500.pt` under `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_rob105_rl_grpo_rob105-streaming-rl-grpo-b32-r6-micro16-10k-20260520T224055Z/`.
+- ROB-113 on branch `symphony/ROB-113-default-rope-streaming-decoder`: added default RoPE to `StreamingDecoderASR` using the shared rotary attention path with theta `1_500_000`, exposed config overrides for disable/base/interpolation, and kept deterministic RoPE buffers out of the streaming state dict so ROB-76/ROB-92 no-RoPE checkpoints strict-load unchanged. Validation passed with unit forward/backward/compat tests, the synthetic CPU training smoke, and strict CPU loads of ROB-76 `step_82737.pt` and ROB-92 `step_137895.pt`.
 
 ## 2026-05-20
 
