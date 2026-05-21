@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-21
+
+- ROB-113 on branch `symphony/ROB-113-default-rope-streaming-decoder`: added default RoPE to `StreamingDecoderASR` using the shared rotary attention path with theta `1_500_000`, exposed config overrides for disable/base/interpolation, and kept deterministic RoPE buffers out of the streaming state dict so ROB-76/ROB-92 no-RoPE checkpoints strict-load unchanged. Validation passed with unit forward/backward/compat tests, the synthetic CPU training smoke, and strict CPU loads of ROB-76 `step_82737.pt` and ROB-92 `step_137895.pt`.
+
 ## 2026-05-20
 
 - ROB-92 Mimas continuation completed successfully on branch `symphony/rob-92-continue-streaming-decoder`: run `rob92-mimas-5epoch-continuation-20260518T221140Z` exited `0` on GPU 3 after five Spotify 10 percent epochs from ROB-76 seed checkpoint `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_mimas_full_epoch_rob76-mimas-3epoch-b48-two-head-20260517T140145Z/step_82737.pt`. Runtime artifacts are under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-92/rob92-mimas-5epoch-continuation-20260518T221140Z`, final checkpoints are under `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_rob92_mimas_5epoch_rob92-mimas-5epoch-continuation-20260518T221140Z` through `step_137895.pt`, and W&B run `u1hhaacp` synced at `https://wandb.ai/wobrob101/spotify_long_context/runs/u1hhaacp`.
