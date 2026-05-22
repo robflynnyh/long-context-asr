@@ -1,4 +1,5 @@
 import torch, argparse, lcasr
+import importlib
 from lcasr.eval.utils import fetch_logits as moving_average_eval
 from lcasr.eval.buffered_transcription import fetch_logits as buffered_eval
 from lcasr.utils.general import load_model, get_model_class
@@ -9,23 +10,21 @@ from whisper.normalizers import EnglishTextNormalizer
 normalize = EnglishTextNormalizer()
 from tqdm import tqdm
 
-from earnings22_full.run import get_text_and_audio as get_text_and_audio_earnings22_full
-from earnings22.run import get_text_and_audio as get_text_and_audio_earnings22
-from tedlium.run import get_text_and_audio as get_text_and_audio_tedlium
-from rev16.run import get_text_and_audio as get_text_and_audio_rev16
-from this_american_life.run import get_text_and_audio as get_text_and_audio_this_american_life
-from spotify.run import get_text_and_audio as get_text_and_audio_spotify
-from floras50.run import get_text_and_audio as get_text_and_audio_floras50
-
-datasets_functions = {
-    'earnings22_full': get_text_and_audio_earnings22_full,
-    'earnings22': get_text_and_audio_earnings22,
-    'tedlium': get_text_and_audio_tedlium,
-    'rev16': get_text_and_audio_rev16,
-    'this_american_life': get_text_and_audio_this_american_life,
-    'spotify': get_text_and_audio_spotify,
-    'floras50': get_text_and_audio_floras50,
+DATASET_MODULES = {
+    'earnings22_full': ('earnings22_full.run', 'get_text_and_audio'),
+    'earnings22': ('earnings22.run', 'get_text_and_audio'),
+    'tedlium': ('tedlium.run', 'get_text_and_audio'),
+    'rev16': ('rev16.run', 'get_text_and_audio'),
+    'this_american_life': ('this_american_life.run', 'get_text_and_audio'),
+    'spotify': ('spotify.run', 'get_text_and_audio'),
+    'floras50': ('floras50.run', 'get_text_and_audio'),
 }
+
+
+def get_dataset_function(dataset):
+    module_name, function_name = DATASET_MODULES[dataset]
+    module = importlib.import_module(module_name)
+    return getattr(module, function_name)
 
 
 def get_transcribe_kwargs(args, verbose):
@@ -50,7 +49,7 @@ def length_diagnostics(hypotheses, references):
 
 
 def main(args):
-    checkpoint = torch.load(args.checkpoint, map_location='cpu')
+    checkpoint = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
     model_config = checkpoint['config']
     args.config = model_config
 
@@ -94,7 +93,7 @@ def main(args):
 
     if not hasattr(model, 'transcribe'): decoder = GreedyCTCDecoder(tokenizer = tokenizer, blank_id = model.decoder.num_classes-1)
 
-    data = datasets_functions[args.dataset](args.split)
+    data = get_dataset_function(args.dataset)(args.split)
 
     # for idx, module in enumerate([el.attend.fn for el in model.layers]):
     #     module.return_attention_weights = True
@@ -189,7 +188,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', '-d', type=str, default='earnings22', choices=datasets_functions.keys())
+    parser.add_argument('--dataset', '-d', type=str, default='earnings22', choices=DATASET_MODULES.keys())
 
     parser.add_argument('-c', '--checkpoint', type=str, default='../../exp/model.pt', help='path to checkpoint')
     parser.add_argument('-split', '--split', type=str, default='test', help='test or dev split')

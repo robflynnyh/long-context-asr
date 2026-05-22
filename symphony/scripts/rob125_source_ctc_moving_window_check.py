@@ -114,7 +114,7 @@ def main():
     csv_path = output_dir / "source_ctc_moving_window_results.csv"
     jsonl_path = output_dir / "source_ctc_moving_window_predictions.jsonl"
 
-    checkpoint = torch.load(args.checkpoint, map_location="cpu")
+    checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     config = checkpoint["config"]
     if args.disable_flash_attention:
         config.model.flash_attn = False

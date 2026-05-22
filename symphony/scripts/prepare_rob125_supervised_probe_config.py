@@ -18,7 +18,7 @@ def lr_token(value):
 
 
 def load_checkpoint_config(path):
-    checkpoint = torch.load(path, map_location="cpu")
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
     if "config" not in checkpoint:
         raise SystemExit(f"{path} has no config")
     config = OmegaConf.to_container(checkpoint["config"], resolve=True)
