@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-22
+
+- ROB-116 W&B media-temp failure: the live Mimas 5-epoch RoPE streaming-decoder run failed at epoch 3 step `102335` while logging the debug-generation W&B table because W&B tried to write media under `/tmp/tmp...wandb-media`. The wrapper had not reached its `EXIT` trap because the Python process remained stuck in W&B shutdown/sync, so the Linear callback did not fire. Hardened the ROB-116 wrapper to use a run-local `TMPDIR` and made debug-generation W&B table logging nonfatal so telemetry failures do not kill training.
+
 ## 2026-05-21
 
 - ROB-116 on branch `symphony/ROB-116-rope-spotify10-mimas-5epoch`: added a Mimas Spotify-10% 5-epoch wrapper for fresh RoPE-enabled `StreamingDecoderASR` training. The wrapper materializes the Spotify 10 percent Mimas manifest, forces `use_rotary: true` with `rotary_base_freq: 1500000`, writes immutable run-dir copies plus Linear callback metadata, and returns ROB-116 to `Todo` on exit. Validation passed with `py_compile`, `bash -n`, callback-only dry run, and a one-record/one-step Mimas smoke via `with-gpu` that wrote `step_1.pt` under `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob116_mimas_5epoch_smoke-rob116-20260521T153455Z/`.

@@ -17,6 +17,7 @@ MANIFEST_PATH="${ROB116_MANIFEST_PATH:-$RUN_DIR/spotify_10percent_mimas_manifest
 RUNTIME_CONFIG="${ROB116_RUNTIME_CONFIG:-$RUN_DIR/streaming_decoder_asr_100m_rope_mimas_5epoch.yaml}"
 CHECKPOINT_DIR="${ROB116_CHECKPOINT_DIR:-/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob116_mimas_5epoch_${RUN_ID}}"
 WANDB_DIR="${ROB116_WANDB_DIR:-$ARTIFACT_ROOT/wandb}"
+TMPDIR="${ROB116_TMPDIR:-$RUN_DIR/tmp}"
 WANDB_NAME="${ROB116_WANDB_NAME:-rob116_rope_streaming_decoder_asr_5epoch}"
 BATCH_SIZE="${ROB116_BATCH_SIZE:-48}"
 MAX_EPOCHS="${ROB116_MAX_EPOCHS:-5}"
@@ -48,7 +49,8 @@ if [[ "${ROB116_RUN_DIR_EXEC:-0}" != "1" ]]; then
   exec bash "$EXECUTED_SCRIPT" "$@"
 fi
 
-mkdir -p "$RUN_DIR" "$CHECKPOINT_DIR" "$WANDB_DIR"
+mkdir -p "$RUN_DIR" "$CHECKPOINT_DIR" "$WANDB_DIR" "$TMPDIR"
+export TMPDIR
 exec > >(tee -a "$OUT_LOG") 2> >(tee -a "$ERR_LOG" >&2)
 
 on_exit() {
@@ -67,6 +69,7 @@ on_exit() {
     echo "manifest=${MANIFEST_PATH}"
     echo "checkpoint_dir=${CHECKPOINT_DIR}"
     echo "wandb_dir=${WANDB_DIR}"
+    echo "tmpdir=${TMPDIR}"
     echo "wandb_name=${WANDB_NAME}"
     echo "batch_size=${BATCH_SIZE}"
     echo "max_epochs=${MAX_EPOCHS}"
@@ -117,6 +120,7 @@ trap 'trap - INT TERM; exit 130' INT
   echo "executed_script=${EXECUTED_SCRIPT}"
   echo "callback_script=${CALLBACK_SCRIPT}"
   echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-unset}"
+  echo "tmpdir=${TMPDIR}"
 } > "$SUMMARY_FILE"
 
 if [[ "${ROB116_CALLBACK_ONLY:-0}" == "1" ]]; then
