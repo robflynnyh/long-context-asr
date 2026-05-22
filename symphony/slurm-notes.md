@@ -74,3 +74,46 @@ Keep Slurm inspection output bounded. Use `tail`, `rg`, or narrow `sed -n` slice
 - Keep issue-specific job logs under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts`.
 - Keep short-lived temp files under `/mnt/parscratch/users/acp21rjf/symphony-tmp` and remove them before handoff unless they are explicitly needed as validation evidence.
 - Record job ID, script path, log path, command purpose, and outcome in the Linear workpad. Add only concise outcome summaries to `symphony/RESEARCH_DIARY.md`.
+
+## Reusable Linear Callbacks
+
+Use the reusable callback helpers instead of copying an issue-specific Linear
+script for each new job. The shared core is
+`symphony/scripts/linear_job_callback.py`; the preferred target-specific entry
+points are:
+
+- Stanage Slurm jobs and finalizers:
+  `symphony/scripts/linear_stanage_callback.py`
+- Mimas detached `screen` jobs:
+  `symphony/scripts/linear_mimas_callback.py`
+
+Issue-specific launch scripts should stay thin. Pass the issue id, target state,
+Slurm job id or screen session, exit status, stdout/stderr or train log paths,
+artifact/checkpoint paths, and any short summary text or summary template. The
+callback posts a bounded Linear comment and moves the issue to the requested
+state, usually `Todo` after a queued job exits.
+
+Stanage wrapper example:
+
+```bash
+python "$REPO_DIR/symphony/scripts/linear_stanage_callback.py" \
+  --issue-id ROB-123 \
+  --state-name Todo \
+  --slurm-job-id "${SLURM_JOB_ID:-manual}" \
+  --exit-code "$status" \
+  --log-out "$STDOUT_LOG" \
+  --log-err "$STDERR_LOG" \
+  --artifact-path "$ARTIFACT_DIR" \
+  --checkpoint-path "$CHECKPOINT_DIR" \
+  --summary-file "$SUMMARY_FILE" \
+  --metadata "branch=$BRANCH" \
+  --metadata "commit=$COMMIT"
+```
+
+Validate the actual wrapper or finalizer before queueing a long job:
+
+```bash
+python symphony/scripts/linear_stanage_callback.py \
+  --issue-id ROB-123 --slurm-job-id callback-only --exit-code 0 \
+  --log-out /path/to/smoke.out --artifact-path /path/to/artifacts --dry-run
+```
