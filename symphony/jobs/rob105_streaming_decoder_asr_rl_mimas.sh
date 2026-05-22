@@ -30,6 +30,8 @@ MAX_OUTPUT_FRAMES="${ROB105_MAX_OUTPUT_FRAMES:-}"
 REWARD_STD_MIN="${ROB105_REWARD_STD_MIN:-0.01}"
 SAMPLE_TEXT_LOG_EVERY="${ROB105_SAMPLE_TEXT_LOG_EVERY:-10}"
 LATE_WORD_TOLERANCE_SECONDS="${ROB105_LATE_WORD_TOLERANCE_SECONDS:-2.0}"
+LATE_WORD_PENALTY_PER_SECOND="${ROB105_LATE_WORD_PENALTY_PER_SECOND:-0.25}"
+LATE_WORD_PENALTY_MAX="${ROB105_LATE_WORD_PENALTY_MAX:-1.0}"
 NUM_WORKERS="${ROB105_NUM_WORKERS:-0}"
 PREFETCH="${ROB105_PREFETCH:-1}"
 PIN_MEMORY="${ROB105_PIN_MEMORY:-0}"
@@ -85,6 +87,8 @@ on_exit() {
     echo "reward_std_min=${REWARD_STD_MIN}"
     echo "sample_text_log_every=${SAMPLE_TEXT_LOG_EVERY}"
     echo "late_word_tolerance_seconds=${LATE_WORD_TOLERANCE_SECONDS}"
+    echo "late_word_penalty_per_second=${LATE_WORD_PENALTY_PER_SECOND}"
+    echo "late_word_penalty_max=${LATE_WORD_PENALTY_MAX}"
     echo "max_records=${ROB105_MAX_RECORDS:-unset}"
     echo "train_max_steps_override=${ROB105_TRAIN_MAX_STEPS:-unset}"
   } >> "$SUMMARY_FILE"
@@ -155,7 +159,9 @@ prepare_args=(
   --temperature "$TEMPERATURE" \
   --reward-std-min "$REWARD_STD_MIN" \
   --sample-text-log-every "$SAMPLE_TEXT_LOG_EVERY" \
-  --late-word-tolerance-seconds "$LATE_WORD_TOLERANCE_SECONDS"
+  --late-word-tolerance-seconds "$LATE_WORD_TOLERANCE_SECONDS" \
+  --late-word-penalty-per-second "$LATE_WORD_PENALTY_PER_SECOND" \
+  --late-word-penalty-max "$LATE_WORD_PENALTY_MAX"
 )
 
 if [[ -n "$MAX_OUTPUT_FRAMES" ]]; then

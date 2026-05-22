@@ -44,6 +44,17 @@ def filter_words_by_end_frame(text: Any, start_frame: int, end_frame: int) -> Li
     return filtered
 
 
+def filter_words_by_frame_overlap(text: Any, start_frame: int, end_frame: int) -> List[Dict[str, Any]]:
+    filtered = []
+    for word in resolve_timed_words(text):
+        start_time, end_time, _ = _word_fields(word)
+        word_start_frame = total_frames(start_time)
+        word_end_frame = total_frames(end_time)
+        if word_start_frame < end_frame and word_end_frame > start_frame:
+            filtered.append(word)
+    return filtered
+
+
 def streaming_padding_frames(delay_seconds: float, buffer_seconds: float = 0.25) -> int:
     return max(0, total_frames(delay_seconds + buffer_seconds))
 

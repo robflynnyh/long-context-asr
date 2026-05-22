@@ -140,6 +140,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-91 PR follow-up: removed the issue-specific probe trainer. Frozen SSL backbone loading and probe freezing now live in reusable `lcasr.models.ctc_probe` helpers, and the ROB-91 wrapper trains generated probe configs through the normal `exp/train.py` entrypoint.
 
+## 2026-05-22
+
+- ROB-105 follow-up after the merged PR clarification: answered the latest Linear questions, then changed the RL chunk reference filter from end-frame-only to half-open frame overlap so words that start inside the current chunk but end just after the boundary remain in the chunk-local reward target. Replaced the binary late-correct-word extra WER count with a configurable ramp using `late_word_penalty_per_second` and `late_word_penalty_max`, defaulting to 0.25 penalty per excess second after `late_word_tolerance_seconds` and capped at 1.0 per word.
+
 ## 2026-05-12
 
 - ROB-69 eval job `10156464` completed successfully, but finalizer job `10156465` failed because appended finetuned CSV rows included an extra pandas index field. Normalized the completed remote result into `eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`, made ROB-69 summarization tolerate and normalize that output shape, and fixed eval manager CSV appends to write `index=False`. Mean WER was slightly worse for the long-only finetuned checkpoints on most dataset/window pairs, with small improvements only on `rev16` window 128, `tedlium` window 8192, and `this_american_life` windows 128 and 22500.
