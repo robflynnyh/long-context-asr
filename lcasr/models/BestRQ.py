@@ -1,6 +1,7 @@
 import torch, torch.nn as nn, torch.nn.functional as F
 
 from einops import rearrange, repeat
+from typing import Optional
 
 from lcasr.utils.helpers import exists
 
@@ -62,6 +63,9 @@ class BestRQ(BaseModel):
         model: SCConformerXL,
         mask_percentage: float = 0.1,
         frames_to_mask: int = 5,
+        mask_mode: str = "legacy_groups",
+        mask_prob: Optional[float] = None,
+        mask_length: Optional[int] = None,
         downsampling_factor: int = 8,
         codebook_size: int = 8192,
         codebook_dim: int = 16,
@@ -71,6 +75,9 @@ class BestRQ(BaseModel):
         self.downsampling_factor = downsampling_factor
         self.mask_percentage = mask_percentage
         self.frames_to_mask = frames_to_mask
+        self.mask_mode = mask_mode
+        self.mask_prob = mask_percentage if mask_prob is None else mask_prob
+        self.mask_length = frames_to_mask if mask_length is None else mask_length
 
 
         self.out_projection = nn.Sequential(
@@ -88,17 +95,75 @@ class BestRQ(BaseModel):
         )
         self.model = model
 
-    def select_mask(self, B:int, T:int) -> torch.Tensor:
+    def _select_legacy_group_mask(self, B:int, T:int, device=None) -> torch.Tensor:
         frames_to_mask = self.frames_to_mask
         masking_percentage = self.mask_percentage
         n_masks = T // frames_to_mask
         has_remainder = int((T % frames_to_mask) != 0)
         n_masks += has_remainder
 
-        probs = torch.rand(B, n_masks)
+        device_kwargs = {} if device is None else {'device': device}
+        probs = torch.rand(B, n_masks, **device_kwargs)
         mask = probs < masking_percentage
         mask = repeat(mask, 'b t -> b (t f)', f=frames_to_mask)[:, :T]
         return mask
+
+    def _select_speechbrain_mask(
+            self,
+            B:int,
+            T:int,
+            valid_stacked: Optional[torch.Tensor] = None,
+            device = None,
+        ) -> torch.Tensor:
+        device_kwargs = {} if device is None else {'device': device}
+        mask = torch.zeros(B, T, dtype=torch.bool, **device_kwargs)
+        if B == 0 or T == 0:
+            return mask
+
+        if valid_stacked is None:
+            sample_lens = torch.full((B,), T, dtype=torch.long, **device_kwargs)
+        else:
+            sample_lens = (valid_stacked.to(device) if device is not None else valid_stacked).long().sum(dim=1)
+
+        min_sample_len = int(sample_lens.min().item()) if sample_lens.numel() > 0 else 0
+        if min_sample_len <= 0:
+            return mask
+
+        mask_length = int(self.mask_length)
+        if mask_length <= 0:
+            raise ValueError(f"mask_length must be positive, got {mask_length}")
+
+        num_blocks = min_sample_len // mask_length
+        if num_blocks <= 0:
+            return mask
+
+        num_mask = int(float(self.mask_prob) * min_sample_len + torch.rand((), **device_kwargs).item())
+        num_mask = max(1, min(num_mask, num_blocks))
+
+        selected_blocks = torch.randperm(num_blocks, **device_kwargs)[:num_mask] * mask_length
+        selected_offsets = torch.arange(mask_length, **device_kwargs)
+        selected_indices = (selected_blocks[:, None] + selected_offsets[None, :]).reshape(-1)
+        selected_indices = selected_indices[selected_indices < T]
+        mask[:, selected_indices] = True
+        return mask
+
+    def select_mask(
+            self,
+            B:int,
+            T:int,
+            valid_stacked: Optional[torch.Tensor] = None,
+            device = None,
+        ) -> torch.Tensor:
+        if self.mask_mode in {"legacy", "legacy_groups", "group", "groups"}:
+            return self._select_legacy_group_mask(B=B, T=T, device=device)
+        if self.mask_mode in {"speechbrain", "paper", "paper_start", "paper_style"}:
+            return self._select_speechbrain_mask(
+                B=B,
+                T=T,
+                valid_stacked=valid_stacked,
+                device=device,
+            )
+        raise ValueError(f"Unknown BEST-RQ mask_mode: {self.mask_mode}")
 
 
     def calc_loss(self, x, targets) -> torch.Tensor:
@@ -137,21 +202,42 @@ class BestRQ(BaseModel):
         valid_stacked = torch.arange(T_stacked, device=device)[None, :] < stacked_lengths[:, None]
 
 
-        stacked_mask = self.select_mask(B, T // self.downsampling_factor).to(device)
+        stacked_mask = self.select_mask(
+            B,
+            T // self.downsampling_factor,
+            valid_stacked=valid_stacked,
+            device=device,
+        ).to(device)
         stacked_mask = stacked_mask & valid_stacked
+
+        num_valid_stacked_frames = int(valid_stacked.sum().item())
+        num_masked_stacked_frames = int(stacked_mask.sum().item())
+        mask_diagnostics = {
+            'mask_mode': self.mask_mode,
+            'valid_stacked_frames': num_valid_stacked_frames,
+            'masked_stacked_frames': num_masked_stacked_frames,
+            'actual_mask_ratio': (
+                num_masked_stacked_frames / num_valid_stacked_frames
+                if num_valid_stacked_frames > 0 else 0.0
+            ),
+            'skipped_empty_mask': 0,
+        }
 
         if not valid_stacked.any():
             logging.warning("no valid stacked BEST-RQ frames, skipping loss")
-            return {'loss': None, 'num_masked_frames': 0}
+            mask_diagnostics['skipped_empty_mask'] = 1
+            return {'loss': None, 'num_masked_frames': 0, **mask_diagnostics}
 
         if not stacked_mask.any():
             logging.warning("no masked BEST-RQ frames selected, skipping loss")
-            return {'loss': None, 'num_masked_frames': 0}
+            mask_diagnostics['skipped_empty_mask'] = 1
+            return {'loss': None, 'num_masked_frames': 0, **mask_diagnostics}
 
         target_frames = stacked_signal[stacked_mask]  # (num_masked_frames, C * downsampling_factor)
         if target_frames.shape[0] == 0:
             logging.warning("no masked BEST-RQ frames selected, skipping loss")
-            return {'loss': None, 'num_masked_frames': 0}
+            mask_diagnostics['skipped_empty_mask'] = 1
+            return {'loss': None, 'num_masked_frames': 0, **mask_diagnostics}
 
         targets = self.quantizer(target_frames[None]).reshape(-1).long() # (num_masked_frames,)
 
@@ -182,7 +268,7 @@ class BestRQ(BaseModel):
         loss = self.calc_loss(x_tgt, targets)
 
 
-        return {'loss': loss, 'num_masked_frames': int(targets.numel())}
+        return {'loss': loss, 'num_masked_frames': int(targets.numel()), **mask_diagnostics}
 
 
 
