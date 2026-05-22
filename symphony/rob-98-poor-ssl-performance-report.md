@@ -4,6 +4,8 @@ Date: 2026-05-20
 
 Post-ROB-119 addendum: 2026-05-22
 
+Post-ROB-125 addendum: 2026-05-22
+
 ## Scope
 
 This report investigates why the ROB-91 frozen probes over the ROB-70 BEST-RQ SSL checkpoints performed poorly. It compares the repository implementation against the open BEST-RQ implementation described in arXiv:2405.04296 and the current SpeechBrain BEST-RQ recipe.
@@ -43,6 +45,14 @@ Repository evidence:
   - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/rob119-full-weighted-bilstm-20260522T110547Z/run_manifest.json`
   - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/rob119-full-weighted-bilstm-20260522T110547Z/diagnostics/primary.jsonl`
 - ROB-119 implementation branch inspected at `origin/symphony/rob-119-paper-matched-bestrq-probe`
+- ROB-125 PR: https://github.com/robflynnyh/long-context-asr/pull/28
+- ROB-125 known-good supervised probe summary:
+  - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-125/rob125-full-supervised-4epoch-20260522T165541Z/OUTCOME.md`
+  - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-125/rob125-full-supervised-4epoch-20260522T165541Z/tedlium_test_results.csv`
+  - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-125/rob125-full-supervised-4epoch-20260522T165541Z/run_manifest.json`
+- ROB-125 source CTC moving-window smoke:
+  - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-125/rob125-source-ctc-moving-window-smoke-20260522T2050Z/source_ctc_moving_window_results.csv`
+  - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-125/rob125-source-ctc-moving-window-smoke-20260522T2050Z/source_ctc_moving_window_predictions.jsonl`
 
 ## Bottom Line
 
@@ -54,6 +64,8 @@ The strongest current explanation is not that random-codebook BEST-RQ cannot wor
 4. Probe limitations: the final ROB-91 BiLSTM probe fixed the most obvious "linear head is too weak" problem, but it still does not match the paper's hidden-state weighted-sum probing setup and it evaluates on TEDLIUM without LM support.
 
 There is no obvious evidence that the quantizer target path is fundamentally broken after the ROB-70 fixes. The implementation uses a fixed random projection quantizer, predicts codebook classes with cross entropy on masked positions, skips empty-mask chunks, and saves the acoustic-model state for downstream loading. The main concern is that the task being learned is easier and less representation-forcing than the SpeechBrain/paper task.
+
+Update after ROB-125: the highest-confidence new finding is that the moving-window eval and greedy CTC decoding path is not generically broken. A known-good supervised ROB-81 CTC head routed through the ROB-119-style moving-window path produced normal nonblank output on a one-record TEDLIUM smoke. However, a freshly initialized weighted-BiLSTM CTC probe trained on the frozen supervised ROB-81 encoder still collapsed badly. That means the frozen ROB-119/ROB-125 probe results are not yet a clean measure of SSL representation quality; they are confounded by a fresh random CTC-probe optimization/setup problem that must be debugged with supervised controls.
 
 ## Detailed Comparison
 
@@ -259,8 +271,59 @@ Do not start with another blind full SSL rerun. The next checks should separate 
    - A useful repeat should target update count and recipe match, not just raw audio hours. Concretely: more optimizer updates, AdamW/Noam-style settings, explicit checkpoint labels by optimizer update, and possibly a 12-layer architecture if resources allow.
    - Continue logging actual mask ratio, skipped-empty-mask count, SSL CE, and downstream probe diagnostics.
 
+## Post-ROB-125 Addendum
+
+ROB-125 ran the first recommended discriminator from the ROB-119 addendum: replace the frozen SSL encoder with a known-good supervised ASR encoder and ask whether the same general TEDLIUM CTC probe/eval route can emit words.
+
+The known-good checkpoint was the ROB-81 supervised Floras finetune:
+
+- `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_nw0/step_323484.pt`
+- Prior ROB-81 TEDLIUM evidence: `8.258%` WER over `28215` test words.
+
+ROB-125 produced two different controls with different implications:
+
+| Control | Setup | Result | Interpretation |
+| --- | --- | --- | --- |
+| Fresh probe on frozen supervised encoder | Frozen ROB-81 supervised backbone, trainable weighted hidden-state sum over 3 hidden states, fresh 2-layer BiLSTM CTC probe, 4 TEDLIUM epochs, LR `1e-3` constant | `99.53%` WER, `95.79%` CER, `89.87%` deletions, `0.00%` insertions, `2859` hyp words / `28215` ref words | A fresh random weighted-BiLSTM CTC probe can still collapse even when the frozen encoder is known to contain supervised ASR information. |
+| Source supervised CTC head through moving-window eval | ROB-81 checkpoint's native supervised CTC decoder wrapped into the ROB-119-style moving-window logits path plus greedy CTC scoring | One-record smoke `8.06%` WER, `4.34%` CER, `2.92%` deletions, `0.54%` insertions, `2906` hyp words / `2977` ref words | The moving-window logits path and greedy CTC decoder can emit normal words when supplied with a known-good CTC head. |
+
+This changes the diagnosis again. ROB-125 mostly rules out a generic evaluation or greedy-decoding collapse. It does not prove that ROB-100's frozen SSL representation is useful, but it shows that the negative frozen-probe evidence is now confounded by the fresh CTC probe training path itself. The same style of random probe failed on frozen supervised features where a source-trained CTC head works.
+
+### What ROB-125 Rules Out
+
+1. **"The moving-window evaluator cannot produce words."** The ROB-81 source CTC head produced a normal one-record transcript through the same moving-window logits path.
+2. **"Greedy CTC decoding is inherently blanking these TEDLIUM records."** The source CTC head used greedy CTC and still produced `2906` hypothesis words against `2977` reference words on the smoke record.
+3. **"A known-good encoder alone guarantees the fresh weighted-BiLSTM probe will work."** It does not. Frozen supervised features plus a random weighted-BiLSTM head still yielded `99.53%` WER.
+
+### What ROB-125 Does Not Rule Out
+
+1. **Fresh probe optimization/setup bug or mismatch.** This is now the most direct blocker. The probe may need a different LR schedule, longer training, smaller head, source-head initialization, an overfit check, or a correction in how the weighted hidden states are exposed and normalized.
+2. **Frozen SSL representation weakness.** ROB-100 may still be weak, but ROB-119 is no longer clean evidence for that by itself because the same fresh-probe family also failed on supervised features.
+3. **TEDLIUM transfer and no-LM limitations.** These remain caveats, but the source CTC smoke shows they do not force near-empty output when the CTC head is already trained.
+4. **ROB-126 top-layer adaptation.** ROB-126 was still running at the time of this addendum, so small supervised adaptation from ROB-100 is not yet answered here.
+
+### Revised Current Diagnosis
+
+The investigation now has two layers:
+
+1. The original SSL setup did have real mismatches relative to the open BEST-RQ implementation: especially low actual mask density, self-conditioning differences, architecture/optimizer differences, and a much shorter training horizon.
+2. The current downstream probe evidence is not clean enough to rank SSL representation quality ahead of probe training quality. ROB-125 narrowed a concrete problem to fresh CTC probe training on frozen features: source-trained CTC decoding works, but a newly trained weighted-BiLSTM probe does not.
+
+The highest-value next discriminator is therefore not another full SSL rerun. It is a supervised-feature probe-debug ladder:
+
+1. **One-record overfit check.** Use the ROB-81 supervised encoder features and train the random probe on one TEDLIUM recording until it can overfit. If it cannot overfit one recording, debug labels, CTC lengths, hidden-state selection, normalization, trainable parameter filtering, and eval checkpoint loading before interpreting any SSL probe.
+2. **Head ablation on the same supervised features.** Compare the source CTC head, source CTC head initialized then trainable, random linear CTC head, and random BiLSTM head. This separates "random CTC training works" from "this large BiLSTM probe is hard to optimize."
+3. **Initialization control.** Initialize the probe decoder from the ROB-81 source CTC decoder where shape-compatible, then train only the weighted sum or a small adapter. If this works while random heads fail, the issue is optimization/initialization, not moving-window decoding.
+4. **Only then return to SSL probes.** Once supervised controls pass, rerun the same probe ladder on ROB-100 or wait for ROB-126. If supervised controls pass but ROB-100 still fails, the SSL representation/recipe hypothesis becomes much stronger.
+
+This supervised-feature probe-debug ladder is tracked as child issue ROB-128: https://linear.app/robflynn/issue/ROB-128/debug-fresh-ctc-probe-training-on-known-good-supervised-features
+
+### Current Working Answer
+
+The best current answer is: the original BEST-RQ SSL setup was under-masked and not paper-like, ROB-100 fixed the largest masking mismatch, but the probe evidence after ROB-119 and ROB-125 is now dominated by a fresh CTC probe training failure. The eval/decoding path can produce words from a trained CTC head; the failure appears when training a new weighted-BiLSTM CTC head on frozen features. Until that supervised-control probe can overfit or otherwise produce normal output, the SSL checkpoint cannot be fairly judged from frozen-probe WER alone.
+
 ### Updated Conclusion
 
 The initial ROB-98 conclusion should be revised, not discarded. Low actual mask density was the highest-confidence mismatch in ROB-70 and it was worth fixing. ROB-100 fixed that mismatch, but ROB-119 shows that the corrected one-epoch checkpoint still does not yield useful frozen TEDLIUM CTC representations under a substantially more paper-matched probe.
 
-The most actionable next move is a probe-path sanity check with known-good supervised features plus a small top-layer-unfrozen ROB-100 probe. Those two results would say whether to spend effort on probe/training-path debugging or on a longer, more paper-like SSL rerun.
+ROB-125 now says the generic moving-window eval/greedy CTC path is viable, but the fresh random weighted-BiLSTM probe can fail even on frozen supervised features. The most actionable next move is therefore a focused probe-training debug ladder on supervised features, beginning with a one-record overfit check and head/initialization ablations. ROB-126 should still be read when it completes, because top-layer unfreezing may show whether ROB-100 contains useful information after small supervised adaptation, but it should not replace the supervised probe-training control.
