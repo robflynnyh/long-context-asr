@@ -19,6 +19,10 @@ def parse_csv(value, cast=str):
     return [cast(item.strip()) for item in value.split(",") if item.strip()]
 
 
+def lr_token(value):
+    return f"{value:.0e}".replace("e-0", "e-").replace("e+0", "e").replace("+", "")
+
+
 def base_config(args, label, checkpoint_file, learning_rate, run_label):
     batch_size = args.smoke_batch_size if args.smoke else args.batch_size
     max_epochs = 1 if args.smoke else args.max_epochs
@@ -122,6 +126,7 @@ def main():
     parser.add_argument("--max-epochs", type=int, default=10)
     parser.add_argument("--seq-len", type=int, default=2048)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
+    parser.add_argument("--learning-rates")
     parser.add_argument("--checkpoint-labels", default="primary")
     parser.add_argument("--scheduler", choices=["cosine", "constant"], default="constant")
     parser.add_argument("--warmup-steps", type=int, default=0)
@@ -141,34 +146,39 @@ def main():
     labels = [(label, CHECKPOINT_MAP[label]) for label in selected_labels]
     if args.smoke:
         labels = labels[:1]
+    learning_rates = parse_csv(args.learning_rates, float) or [args.learning_rate]
 
     config_dir = Path(args.run_dir) / "configs"
     config_dir.mkdir(parents=True, exist_ok=True)
     Path(args.checkpoint_root).mkdir(parents=True, exist_ok=True)
 
     runs = []
+    single_lr = len(learning_rates) == 1
     for label, checkpoint_file in labels:
-        run_label = label
-        config = OmegaConf.create(base_config(args, label, checkpoint_file, args.learning_rate, run_label))
-        config_path = config_dir / f"rob119_{run_label}_weighted_bilstm_ctc_probe.yaml"
-        OmegaConf.save(config=config, f=config_path)
-        runs.append(
-            {
-                "label": run_label,
-                "base_label": label,
-                "learning_rate": args.learning_rate,
-                "checkpoint_file": checkpoint_file,
-                "probe_head": "bilstm",
-                "hidden_state_weighted_sum": True,
-                "num_hidden_states": args.num_hidden_states,
-                "max_epochs": config.training.max_epochs,
-                "source_checkpoint": f"{args.source_checkpoint_dir}/{checkpoint_file}",
-                "local_checkpoint": str(Path(args.checkpoint_cache) / checkpoint_file),
-                "train_config": str(config_path),
-                "checkpoint_dir": str(Path(args.checkpoint_root) / run_label),
-                "diagnostics_path": config.training.diagnostics_path,
-            }
-        )
+        for learning_rate in learning_rates:
+            run_label = label if single_lr else f"{label}_lr{lr_token(learning_rate)}"
+            config = OmegaConf.create(base_config(args, label, checkpoint_file, learning_rate, run_label))
+            config_path = config_dir / f"rob119_{run_label}_weighted_bilstm_ctc_probe.yaml"
+            OmegaConf.save(config=config, f=config_path)
+            runs.append(
+                {
+                    "label": run_label,
+                    "base_label": label,
+                    "learning_rate": learning_rate,
+                    "scheduler": args.scheduler,
+                    "warmup_steps": args.warmup_steps,
+                    "checkpoint_file": checkpoint_file,
+                    "probe_head": "bilstm",
+                    "hidden_state_weighted_sum": True,
+                    "num_hidden_states": args.num_hidden_states,
+                    "max_epochs": config.training.max_epochs,
+                    "source_checkpoint": f"{args.source_checkpoint_dir}/{checkpoint_file}",
+                    "local_checkpoint": str(Path(args.checkpoint_cache) / checkpoint_file),
+                    "train_config": str(config_path),
+                    "checkpoint_dir": str(Path(args.checkpoint_root) / run_label),
+                    "diagnostics_path": config.training.diagnostics_path,
+                }
+            )
 
     manifest = {
         "issue": "ROB-119",
@@ -178,6 +188,8 @@ def main():
         "checkpoint_cache": args.checkpoint_cache,
         "checkpoint_root": args.checkpoint_root,
         "max_epochs": 1 if args.smoke else args.max_epochs,
+        "scheduler": args.scheduler,
+        "warmup_steps": args.warmup_steps,
         "comparison_note": "TEDLIUM transfer probe; not a direct LibriSpeech paper comparison.",
         "runs": runs,
     }

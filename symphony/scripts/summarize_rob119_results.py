@@ -49,6 +49,8 @@ def main():
         "Evidence type: TEDLIUM transfer probe, per latest Linear correction. This is not direct LibriSpeech paper-comparison evidence.",
         "",
         "Probe setup: frozen ROB-100 SSL backbone, trainable weighted sum over 6 encoder layer hidden states, 2-layer BiLSTM CTC head with hidden size 1024 and dropout 0.2.",
+        f"Optimization: {manifest.get('max_epochs')} epochs, scheduler `{manifest.get('scheduler', 'constant')}`, warmup steps `{manifest.get('warmup_steps', 0)}`.",
+        "Checkpoint retention: each trained probe directory is pruned to the latest `step_*.pt` before evaluation.",
         "",
     ]
     if rows:

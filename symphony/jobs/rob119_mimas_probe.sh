@@ -32,8 +32,11 @@ NUM_WORKERS="${ROB119_NUM_WORKERS:-0}"
 PREFETCH="${ROB119_PREFETCH:-1}"
 PIN_MEMORY="${ROB119_PIN_MEMORY:-0}"
 BATCH_SIZE="${ROB119_BATCH_SIZE:-16}"
-MAX_EPOCHS="${ROB119_MAX_EPOCHS:-10}"
+MAX_EPOCHS="${ROB119_MAX_EPOCHS:-4}"
 LEARNING_RATE="${ROB119_LEARNING_RATE:-1e-3}"
+LEARNING_RATES="${ROB119_LEARNING_RATES:-}"
+SCHEDULER="${ROB119_SCHEDULER:-constant}"
+WARMUP_STEPS="${ROB119_WARMUP_STEPS:-0}"
 CHECKPOINT_LABELS="${ROB119_CHECKPOINT_LABELS:-primary}"
 SMOKE_MAX_RECORDS="${ROB119_SMOKE_MAX_RECORDS:-2}"
 SMOKE_BATCH_SIZE="${ROB119_SMOKE_BATCH_SIZE:-2}"
@@ -83,6 +86,9 @@ on_exit() {
     echo "result_summary=${RESULT_SUMMARY}"
     echo "checkpoint_root=${CHECKPOINT_ROOT}"
     echo "learning_rate=${LEARNING_RATE}"
+    echo "learning_rates=${LEARNING_RATES:-unset}"
+    echo "scheduler=${SCHEDULER}"
+    echo "warmup_steps=${WARMUP_STEPS}"
     echo "max_epochs=${MAX_EPOCHS}"
     echo "checkpoint_labels=${CHECKPOINT_LABELS}"
   } >> "$SUMMARY_FILE"
@@ -126,6 +132,9 @@ trap 'trap - INT; exit 130' INT
   echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-unset}"
   echo "source_checkpoint_dir=${SOURCE_CHECKPOINT_DIR}"
   echo "learning_rate=${LEARNING_RATE}"
+  echo "learning_rates=${LEARNING_RATES:-unset}"
+  echo "scheduler=${SCHEDULER}"
+  echo "warmup_steps=${WARMUP_STEPS}"
   echo "max_epochs=${MAX_EPOCHS}"
   echo "checkpoint_labels=${CHECKPOINT_LABELS}"
 } > "$SUMMARY_FILE"
@@ -171,8 +180,13 @@ prepare_args=(
   --smoke-batch-size "$SMOKE_BATCH_SIZE"
   --max-epochs "$MAX_EPOCHS"
   --learning-rate "$LEARNING_RATE"
+  --scheduler "$SCHEDULER"
+  --warmup-steps "$WARMUP_STEPS"
   --checkpoint-labels "$CHECKPOINT_LABELS"
 )
+if [[ -n "$LEARNING_RATES" ]]; then
+  prepare_args+=(--learning-rates "$LEARNING_RATES")
+fi
 if [[ "$MODE" == "smoke" ]]; then
   prepare_args+=(--smoke)
   if [[ "$SMOKE_ENABLE_WANDB" == "1" ]]; then
@@ -194,7 +208,7 @@ for run in manifest["runs"]:
 print("checkpoint path check ok")
 PY
 
-while read -r config_path; do
+while IFS=$'\t' read -r config_path checkpoint_dir; do
   train_args=(-config "$config_path" -num_workers "$NUM_WORKERS" -prefetch "$PREFETCH" -reset_step)
   if [[ "$PIN_MEMORY" == "1" ]]; then
     train_args+=(-pin_memory)
@@ -206,11 +220,29 @@ while read -r config_path; do
     fi
   fi
   python exp/train.py "${train_args[@]}"
+  python - "$checkpoint_dir" <<'PY'
+import sys
+from pathlib import Path
+
+checkpoint_dir = Path(sys.argv[1])
+checkpoints = sorted(
+    checkpoint_dir.glob("step_*.pt"),
+    key=lambda path: int(path.stem.split("_")[1]),
+)
+if not checkpoints:
+    raise SystemExit(f"no checkpoints found after training: {checkpoint_dir}")
+latest = checkpoints[-1]
+removed = 0
+for path in checkpoints[:-1]:
+    path.unlink()
+    removed += 1
+print(f"checkpoint cleanup: kept {latest}, removed {removed} older checkpoint(s)")
+PY
 done < <(python - <<'PY'
 import json, os
 manifest = json.load(open(os.environ["ROB119_RUN_MANIFEST"]))
 for run in manifest["runs"]:
-    print(run["train_config"])
+    print(f"{run['train_config']}\t{run['checkpoint_dir']}")
 PY
 )
 
