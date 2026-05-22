@@ -1,0 +1,25 @@
+models:
+  - name: rob81_supervised_floras50_12ep_lr1e4_nw0_smoke
+    repeat: 1
+    seq_len: 2048
+    overlap_ratio: 0.0
+    path: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_nw0/step_323484.pt
+    description: one-recording smoke for ROB-81 Floras-finetuned encoder-decoder checkpoint.
+    decoding: direct
+    args:
+      transcribe_kwargs:
+        masked_conditioning: false
+
+args:
+  verbose: false
+  model_class: EncDecSconformerV2
+  save_dataframe_path: /mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/eval/tedlium_floras_finetune_smoke.csv
+  include_per_recording_evaluations: true
+  evaluation_mode: averaged_moving_window
+  break_eval: true
+
+datasets:
+  - name: tedlium
+    splits: [test]
+    args:
+      single_utterance: false

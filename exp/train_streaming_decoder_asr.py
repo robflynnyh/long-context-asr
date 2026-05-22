@@ -2,6 +2,7 @@ import argparse
 import math
 import os
 import random
+import sys
 import time
 from typing import Any, List, Union
 
@@ -193,36 +194,43 @@ def maybe_log_debug_generation(
     target_non_silence_fraction = float(
         target_non_silence.sum().float().div(valid_targets.sum().clamp_min(1).float()).detach().cpu()
     )
-    table = wandb.Table(
-        columns=[
-            "step",
-            "records_seen",
-            "id",
-            "prediction",
-            "reference",
-            "pred_non_silence_fraction",
-            "target_non_silence_fraction",
-        ],
-        data=[
-            [
-                global_step,
-                records_seen,
-                ids[sample_idx],
-                prediction,
-                reference,
-                pred_non_silence_fraction,
-                target_non_silence_fraction,
-            ]
-        ],
-    )
-    wandb.log(
-        {
-            "debug_generation/autoregressive_sample": table,
-            "debug_generation/records_seen": records_seen,
-            "debug_generation/pred_non_silence_fraction": pred_non_silence_fraction,
-            "debug_generation/target_non_silence_fraction": target_non_silence_fraction,
-        }
-    )
+    try:
+        table = wandb.Table(
+            columns=[
+                "step",
+                "records_seen",
+                "id",
+                "prediction",
+                "reference",
+                "pred_non_silence_fraction",
+                "target_non_silence_fraction",
+            ],
+            data=[
+                [
+                    global_step,
+                    records_seen,
+                    ids[sample_idx],
+                    prediction,
+                    reference,
+                    pred_non_silence_fraction,
+                    target_non_silence_fraction,
+                ]
+            ],
+        )
+        wandb.log(
+            {
+                "debug_generation/autoregressive_sample": table,
+                "debug_generation/records_seen": records_seen,
+                "debug_generation/pred_non_silence_fraction": pred_non_silence_fraction,
+                "debug_generation/target_non_silence_fraction": target_non_silence_fraction,
+            }
+        )
+    except Exception as exc:
+        print(
+            f"warning: failed to log debug_generation/autoregressive_sample to W&B; continuing: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
 
 
 def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_ids=None, epoch=0):
