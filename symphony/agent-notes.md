@@ -69,4 +69,9 @@ workflow. Repo-specific reminders:
 - Keep command output bounded with targeted `rg`, `head`, `tail`, `sed -n`, filtered Slurm fields, and `git diff --stat`. Summarize large artifacts and reference paths instead of loading raw output into context.
 - Use `symphony/RESEARCH_DIARY.md` for concise outcome summaries only. Put routine queue checks, repeated resume observations, and detailed troubleshooting trails in the Linear workpad when needed.
 - After launching long-running GPU training or evaluation, hand off with job IDs, log paths, expected outputs, and follow-up commands, then stop.
+- Do not create a fresh issue-specific Linear callback script by default. Use
+  `symphony/scripts/linear_stanage_callback.py` for Stanage Slurm jobs or
+  `symphony/scripts/linear_mimas_callback.py` for Mimas detached `screen`
+  jobs, passing issue id, target state, job/session id, exit status, bounded log
+  paths, artifacts, checkpoints, and a short summary or template.
 - For docs-only edits, lightweight validation such as `git diff --check` is usually enough.

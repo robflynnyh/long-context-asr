@@ -11,6 +11,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 ## 2026-05-22
 
+- ROB-118 on branch `symphony/rob-118-reusable-linear-callback`: expanded `symphony/scripts/linear_job_callback.py` into a reusable stdlib-only Linear callback core with bounded summary/log excerpts, artifact/checkpoint metadata, generic key-value metadata, target state transitions, and dry-run mode. Added thin Stanage and Mimas entry points so future Slurm finalizers and detached `screen` wrappers can pass issue id, job/session id, status, log paths, artifact paths, target state, and short summary/template text instead of creating issue-specific callback scripts.
 - ROB-100 final run evidence: Stanage job `10241033` completed `0:0` in `14:37:13` using `exp/configs/ssl/bestrq_6l_2048_spotify.yaml` with `mask_prob=0.12`, `mask_length=4`, `mask_mode=speechbrain`, and SSL self-conditioning disabled. The train log `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-100/train-10241033.log` contains `65523` loss updates: first-100 mean `8.2474`, last-100 mean `5.7960`, and final logged loss `4.8904`. Full 28672-frame chunks averaged actual mask ratio `0.47996`; the final cumulative skipped-empty-mask count was `1259`, concentrated in short tail chunks with zero selected masks. Checkpoints were written through `/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/rob100_papermask_p012_l4_sc_off_20260520/step_105360.pt`, W&B run `rob100_bestrq_6l_2048_papermask_p012_l4_sc_off_20260520` / `sgbmoey6`.
 
 ## 2026-05-21
