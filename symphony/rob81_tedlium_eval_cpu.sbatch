@@ -13,6 +13,9 @@ REPO_DIR="${REPO_DIR:-/users/acp21rjf/long-context-asr}"
 CONFIG="${CONFIG:-eval_configs/rob81_floras_finetune_tedlium.yaml}"
 ARTIFACT_DIR=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/eval
 
+# To override the config at submit time, use:
+# sbatch --export=ALL,CONFIG=eval_configs/rob81_floras_finetune_tedlium_smoke.yaml symphony/rob81_tedlium_eval_cpu.sbatch
+
 mkdir -p "${ARTIFACT_DIR}"
 
 cd "${REPO_DIR}/eval"

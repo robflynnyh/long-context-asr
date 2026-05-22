@@ -12,6 +12,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-22
 
 - ROB-81 completion check after the latest Linear question: Stanage queue had no matching `rob81` jobs, GPU finetune job `10234385` completed `0:0` in `1-19:24:08` with `MaxRSS=136320700K`, and the latest checkpoint is `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_nw0/step_323484.pt`. Finalizer job `10234386` failed before posting because `set -u` treated the empty `DRY_RUN_ARGS[@]` expansion as unbound; fixed the finalizer to use explicit dry-run and normal callback branches.
+- ROB-81 follow-up TEDLIUM comparison after the latest Linear comment: Mimas GPU staging loaded the checkpoint but the local torch environment failed `scaled_dot_product_attention(..., scale=...)`, so the user-approved Stanage CPU route was used. Job `10253671` completed `0:0` in `00:11:17` and wrote `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/eval/tedlium_floras_finetune.csv`; aggregate TEDLIUM test WER is `0.08258018784334574` over `28215` words versus ROB-25 source checkpoint WER `0.09803296119085593`, a `0.01545277334751019` absolute improvement.
 
 ## 2026-05-21
 
