@@ -1,6 +1,6 @@
 import torch, numpy as np
 from tqdm import tqdm
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 from lcasr.utils.helpers import load_json, exists, load_pairs
 from lcasr.utils.audio_tools import total_seconds
 from lcasr.utils.augmentation import SpecAugment
@@ -180,6 +180,7 @@ class Utterance_Dataset(torch.utils.data.Dataset):
             self, 
             utterance_folder:str,
             seen_ids:List[str] = [], # remove ids from dataset (i.e already trained on)
+            max_records:Optional[int] = None,
     ):
         super().__init__()
         self.utterance_folder = utterance_folder
@@ -188,6 +189,8 @@ class Utterance_Dataset(torch.utils.data.Dataset):
         seen_ids_set = set([el + '.pt' for el in seen_ids])
         files = list(files_set - seen_ids_set) # remove seen_ids
         self.files = sorted([os.path.join(utterance_folder, el) for el in files])
+        if max_records is not None:
+            self.files = self.files[:max_records]
 
     def __len__(self):
         return len(self.files)
@@ -343,6 +346,7 @@ class Utterance_Dataloader(torch.utils.data.DataLoader):
     def __init__(
             self,
             utterance_folder:str,
+            tokenizer:Optional[spm.SentencePieceProcessor] = None,
             batch_size:int = 176,
             num_workers:int = 4,
             prefetch:int = 4,
@@ -351,16 +355,18 @@ class Utterance_Dataloader(torch.utils.data.DataLoader):
             seen_ids:List[str] = [],
             random_seed:int = 1234,
             dataset = Utterance_Dataset,
+            max_records:Optional[int] = None,
         ):
         torch.manual_seed(random_seed)
-        self.dataset = dataset(utterance_folder, seen_ids = seen_ids)
+        self.tokenizer = tokenizer
+        self.dataset = dataset(utterance_folder, seen_ids = seen_ids, max_records = max_records)
         super().__init__(
             dataset = self.dataset,
             batch_size = batch_size,
             shuffle = shuffle,
             num_workers = num_workers,
             pin_memory = pin_memory,
-            prefetch_factor = prefetch,
+            prefetch_factor = prefetch if num_workers > 0 else None,
             collate_fn = self.dataset.collate_fn,
         )
 
@@ -555,8 +561,6 @@ class VariableBatchSimpleDataloader():
 
     def __len__(self):
         return len(self.dataloader) 
-
-
 
 
 

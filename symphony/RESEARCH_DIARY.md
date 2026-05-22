@@ -140,6 +140,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-22
 
 - ROB-105 follow-up after the merged PR clarification: answered the latest Linear questions, then changed the RL chunk reference filter from end-frame-only to half-open frame overlap so words that start inside the current chunk but end just after the boundary remain in the chunk-local reward target. Replaced the binary late-correct-word extra WER count with a configurable ramp using `late_word_penalty_per_second` and `late_word_penalty_max`, defaulting to 0.25 penalty per excess second after `late_word_tolerance_seconds` and capped at 1.0 per word.
+- ROB-128 supervised-probe debug setup: replaced the canceled full-recording/chunk-label probe plan with TEDLIUM STM utterance-boundary training examples for the known-good ROB-81 supervised checkpoint. Added a Mimas wrapper that first runs a one-record random-BiLSTM overfit check with CTC loss, blank rate, greedy transcript, WER/CER, length diagnostics, and exact artifact paths, then runs source-initialized/random linear/BiLSTM head ablations only if that overfit passes.
 
 ## 2026-05-12
 

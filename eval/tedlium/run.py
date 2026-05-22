@@ -6,7 +6,10 @@ from lcasr.utils.audio_tools import processing_chain, total_seconds, total_frame
 from lcasr.utils.general import load_model, get_model_class
 from lcasr.eval.utils import zero_out_spectogram, fetch_logits, decode_beams_lm
 from lcasr.eval.wer import word_error_rate_detail 
-from pyctcdecode import build_ctcdecoder
+try:
+    from pyctcdecode import build_ctcdecoder
+except ModuleNotFoundError:
+    build_ctcdecoder = None
 import time
 from functools import partial
 
@@ -127,7 +130,7 @@ def main(args):
     data_path = TEST_PATH if args.split == 'test' else DEV_PATH
 
     
-    checkpoint = torch.load(args.checkpoint, map_location='cpu')
+    checkpoint = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
     model_config = checkpoint['config']
     args.config = model_config
     
@@ -145,8 +148,14 @@ def main(args):
     model.eval()
 
 
-    vocab = [tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""]
-    decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
+    decoder = None
+    if not hasattr(model, 'transcribe'):
+        if build_ctcdecoder is None:
+            raise ModuleNotFoundError(
+                "pyctcdecode is required for TEDLIUM CTC decoding but is not installed"
+            )
+        vocab = [tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""]
+        decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
 
 
     audio_files, text_files = fetch_data(path=data_path)
