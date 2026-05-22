@@ -79,7 +79,7 @@ class SCConformerXL(BaseModel):
         self.sandwich_norm = sandwich_norm
         self.bias_in_ff = bias_in_ff
         self.transformer = transformer
-    
+
         self.legasee_double_norm = legasee_double_norm
 
         self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
@@ -168,6 +168,7 @@ class SCConformerXL(BaseModel):
             cached_kv_lengths = None, 
             return_logits = False,
             skip_vocab_projection = False, # for pretraining
+            return_all_hidden_states = False,
         ):
         '''
         audio_signal: (batch_size, time, feat)
@@ -191,7 +192,7 @@ class SCConformerXL(BaseModel):
         ## create masks
         
         mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
-    
+
         rotary_emb_fn = None
    
         full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
@@ -215,6 +216,7 @@ class SCConformerXL(BaseModel):
                 att_mask = att_mask.to(audio_signal.dtype) * -torch.finfo(audio_signal.dtype).max
 
         pad_mask = mask 
+        all_hidden_states = []
     
         audio_signal = self.fourier_pos_enc(audio_signal)
         
@@ -243,6 +245,8 @@ class SCConformerXL(BaseModel):
             if lth != len(self.layers) - 1 and self.self_conditioning:
                 iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
                 audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))        
+            if return_all_hidden_states:
+                all_hidden_states.append(audio_signal)
 
         if skip_vocab_projection:
             output_dict = {'hidden_states': audio_signal, 'length': length,}
@@ -250,6 +254,8 @@ class SCConformerXL(BaseModel):
             audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
             final_posts = decoder(x = audio_signal, logits = return_logits) 
             output_dict = {'final_posteriors': final_posts, 'length': length,}
+        if return_all_hidden_states:
+            output_dict['all_hidden_states'] = all_hidden_states
 
         if self.training and self.rotary_pos_emb is not None:
             self.rotary_pos_emb.reset_if_needed()
@@ -394,4 +400,3 @@ if __name__ == '__main__':
     lengths = lengths.to(device)
     out = model(audio, length=lengths)
     print(out['final_posteriors'].shape)
-    

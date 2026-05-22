@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Iterable
+from typing import Iterable, Optional
 
 from lcasr.components.decoder import ASRLinearSCDecoder
 from lcasr.models.base import LayerNorm, RMSNorm
@@ -47,11 +47,38 @@ class BiLSTMCTCProbeHead(nn.Module):
         return x + proj1
 
 
+class HiddenStateWeightedSum(nn.Module):
+    def __init__(self, num_hidden_states: int):
+        super().__init__()
+        self.num_hidden_states = num_hidden_states
+        self.weights = nn.Parameter(torch.zeros(num_hidden_states))
+
+    def forward(self, hidden_states):
+        if len(hidden_states) != self.num_hidden_states:
+            raise RuntimeError(
+                f"expected {self.num_hidden_states} hidden states, got {len(hidden_states)}"
+            )
+        weights = torch.softmax(self.weights, dim=0)
+        mixed = None
+        for weight, hidden_state in zip(weights, hidden_states):
+            contribution = hidden_state * weight.to(device=hidden_state.device, dtype=hidden_state.dtype)
+            mixed = contribution if mixed is None else mixed + contribution
+        return mixed
+
+
 class FrozenBackboneCTCProbe(nn.Module):
-    def __init__(self, acoustic_model: nn.Module, decoder: nn.Module):
+    def __init__(
+        self,
+        acoustic_model: nn.Module,
+        decoder: nn.Module,
+        weighted_sum: Optional[nn.Module] = None,
+        encoder_lr_scale: float = 1.0,
+    ):
         super().__init__()
         self.acoustic_model = acoustic_model
         self.decoder = decoder
+        self.weighted_sum = weighted_sum
+        self.encoder_lr_scale = encoder_lr_scale
 
     @property
     def subsampling(self):
@@ -64,13 +91,38 @@ class FrozenBackboneCTCProbe(nn.Module):
         return total
 
     def get_param_groups(self, optim_args=None):
-        return [param for param in self.parameters() if param.requires_grad]
+        optim_args = optim_args or {}
+        base_lr = optim_args.get("lr")
+        if base_lr is None or self.encoder_lr_scale == 1.0:
+            return [param for param in self.parameters() if param.requires_grad]
+        encoder_params = [
+            param for param in self.acoustic_model.parameters() if param.requires_grad
+        ]
+        probe_params = [
+            param
+            for module in (self.decoder, self.weighted_sum)
+            if module is not None
+            for param in module.parameters()
+            if param.requires_grad
+        ]
+        groups = []
+        if probe_params:
+            groups.append({"params": probe_params, "lr": base_lr})
+        if encoder_params:
+            groups.append({"params": encoder_params, "lr": base_lr * self.encoder_lr_scale})
+        return groups
 
     def forward(self, *args, **kwargs):
         return_logits = kwargs.get("return_logits", False)
         kwargs["skip_vocab_projection"] = True
+        if self.weighted_sum is not None:
+            kwargs["return_all_hidden_states"] = True
         output = self.acoustic_model(*args, **kwargs)
-        hidden_states = output["hidden_states"]
+        hidden_states = (
+            self.weighted_sum(output["all_hidden_states"])
+            if self.weighted_sum is not None
+            else output["hidden_states"]
+        )
         if getattr(self.acoustic_model, "legasee_double_norm", False):
             hidden_states = self.decoder.norm(hidden_states)
         final_posts = self.decoder(x=hidden_states, logits=return_logits)
@@ -108,7 +160,17 @@ def wrap_model_with_ctc_probe(config, acoustic_model: nn.Module, vocab_size: int
         )
     else:
         raise NotImplementedError(f"unknown CTC probe head: {probe_head}")
-    return FrozenBackboneCTCProbe(acoustic_model=acoustic_model, decoder=head)
+    weighted_sum = None
+    if config.probe.get("hidden_state_weighted_sum", False):
+        weighted_sum = HiddenStateWeightedSum(
+            num_hidden_states=config.probe.get("num_hidden_states", config.model.get("n_layers", 0))
+        )
+    return FrozenBackboneCTCProbe(
+        acoustic_model=acoustic_model,
+        decoder=head,
+        weighted_sum=weighted_sum,
+        encoder_lr_scale=float(config.probe.get("encoder_lr_scale", 1.0)),
+    )
 
 
 def acoustic_model_from_probe(model: nn.Module):
@@ -149,7 +211,46 @@ def load_frozen_backbone_from_ssl(model: nn.Module, checkpoint_path: str, load_d
         print("\n".join(f"  {key}" for key in unexpected[:20]))
 
 
-def freeze_except(model: nn.Module, trainable_prefixes: Iterable[str]):
+def encoder_layer_trainable_prefixes(config) -> list[str]:
+    top_n = int(config.probe.get("unfreeze_top_n_layers", 0) or 0)
+    if top_n < 0:
+        raise ValueError(f"probe.unfreeze_top_n_layers must be non-negative, got {top_n}")
+    if top_n == 0:
+        return []
+    n_layers = int(config.model.n_layers)
+    if top_n > n_layers:
+        raise ValueError(f"cannot unfreeze top {top_n} layers from {n_layers}-layer encoder")
+    return [f"acoustic_model.layers.{idx}." for idx in range(n_layers - top_n, n_layers)]
+
+
+def probe_trainable_prefixes(config) -> list[str]:
+    prefixes = list(config.probe.get("trainable_prefixes", ["decoder."]))
+    prefixes.extend(encoder_layer_trainable_prefixes(config))
+    return prefixes
+
+
+def print_encoder_layer_audit(model: nn.Module, n_layers: int):
+    rows = []
+    for idx in range(n_layers):
+        prefix = f"acoustic_model.layers.{idx}."
+        params = [
+            param
+            for name, param in model.named_parameters()
+            if name.startswith(prefix)
+        ]
+        if not params:
+            continue
+        trainable = sum(param.numel() for param in params if param.requires_grad)
+        frozen = sum(param.numel() for param in params if not param.requires_grad)
+        state = "trainable" if trainable and not frozen else "frozen" if frozen and not trainable else "mixed"
+        rows.append((idx, state, trainable, frozen))
+    if rows:
+        print("encoder layer trainability audit:")
+        for idx, state, trainable, frozen in rows:
+            print(f"  layer {idx}: {state} trainable={trainable} frozen={frozen}")
+
+
+def freeze_except(model: nn.Module, trainable_prefixes: Iterable[str], n_layers: Optional[int] = None):
     prefixes = tuple(trainable_prefixes)
     trainable, frozen = 0, 0
     for name, param in model.named_parameters():
@@ -160,8 +261,11 @@ def freeze_except(model: nn.Module, trainable_prefixes: Iterable[str]):
             frozen += param.numel()
     if trainable == 0:
         raise RuntimeError(f"no trainable parameters matched prefixes: {prefixes}")
+    print(f"trainable prefixes: {prefixes}")
     print(f"trainable parameters: {trainable}")
     print(f"frozen parameters: {frozen}")
+    if n_layers is not None:
+        print_encoder_layer_audit(model, n_layers)
 
 
 def normalize_probe_state_dict(model: nn.Module, state_dict):
