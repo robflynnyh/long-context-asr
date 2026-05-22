@@ -76,7 +76,9 @@ def main(args):
     transcribe_kwargs = get_transcribe_kwargs(args, verbose)
 
     tokenizer = {}
-    if args.get("tokenizer_path", None) is not None:
+    tokenizer_path = args.__dict__.get("tokenizer_path", None)
+    if tokenizer_path is not None:
+        args.tokenizer_path = tokenizer_path
         tokenizer = {"tokenizer_path": args.tokenizer_path}
         print("Using tokenizer path from args:", args.tokenizer_path)
 

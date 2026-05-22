@@ -98,8 +98,8 @@ def main():
                 comparison = f"did not beat the ROB-119 frozen SSL probe; WER is {delta * 100:.2f} points higher"
             else:
                 comparison = "matched the ROB-119 frozen SSL probe"
-            harness = "harness can produce nonblank words with a known-good frozen supervised encoder" if best["metrics"].get("hyp_words", 0) > 5000 else "harness remains deletion-heavy even with a known-good frozen supervised encoder"
-            lines.extend(["", f"Comparison to ROB-119: {comparison} (ROB-119 reference WER 99.61%).", f"Harness conclusion: {harness}."])
+            harness = "trained weighted-BiLSTM probe produced nonblank words from the known-good frozen supervised encoder" if best["metrics"].get("hyp_words", 0) > 5000 else "trained weighted-BiLSTM probe remains deletion-heavy even with a known-good frozen supervised encoder"
+            lines.extend(["", f"Comparison to ROB-119: {comparison} (ROB-119 reference WER 99.61%).", f"Probe conclusion: {harness}."])
     else:
         lines.append("No aggregate TEDLIUM test rows were found.")
 
