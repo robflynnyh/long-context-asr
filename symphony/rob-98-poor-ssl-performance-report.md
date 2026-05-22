@@ -239,12 +239,14 @@ ROB-119 still leaves several important possibilities open:
 Do not start with another blind full SSL rerun. The next checks should separate probe viability from frozen SSL representation quality:
 
 1. **Known-good frozen encoder sanity probe.**
+   - Plain-English meaning: take an ASR checkpoint that is already known to contain useful supervised ASR features, freeze its encoder, and run the same ROB-119 CTC probe/eval path on top of it.
    - Use the exact ROB-119 TEDLIUM CTC path with a supervised checkpoint already known to decode or fine-tune well in this repo.
    - Freeze the encoder and train the same weighted-state/BiLSTM probe where possible.
    - If this also stays blank, debug the probe harness, CTC labels, LR, batching, or eval path before drawing more SSL conclusions.
    - If it emits words, the ROB-119 path is viable and the ROB-100 frozen SSL representation is the likely blocker.
 
 2. **Small top-N-unfrozen ROB-100 probe.**
+   - Plain-English meaning: start from ROB-100 again, but do not freeze the whole SSL model. Unfreeze only the last one or two encoder layers and train those layers together with the weighted-state/BiLSTM CTC head.
    - Start from the ROB-119 config but unfreeze only the top one or two encoder layers, optionally with a lower encoder LR than the BiLSTM/weighted-sum LR.
    - If this quickly escapes deletion collapse, the SSL checkpoint contains some useful low/mid-level information but its frozen final representation is not linearly/recurrently accessible enough.
    - If it remains blank, the issue is probably deeper: data/labels/eval, insufficient SSL pretraining, or architecture/objective mismatch.
