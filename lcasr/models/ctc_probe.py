@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import inspect
 from typing import Iterable, Optional
 
 from lcasr.components.decoder import ASRLinearSCDecoder
@@ -72,6 +73,12 @@ class FrozenBackboneCTCProbe(nn.Module):
         self.acoustic_model = acoustic_model
         self.decoder = decoder
         self.weighted_sum = weighted_sum
+        signature = inspect.signature(acoustic_model.forward)
+        self._acoustic_forward_params = set(signature.parameters)
+        self._acoustic_accepts_kwargs = any(
+            param.kind == inspect.Parameter.VAR_KEYWORD
+            for param in signature.parameters.values()
+        )
 
     @property
     def subsampling(self):
@@ -91,6 +98,8 @@ class FrozenBackboneCTCProbe(nn.Module):
         kwargs["skip_vocab_projection"] = True
         if self.weighted_sum is not None:
             kwargs["return_all_hidden_states"] = True
+        if not self._acoustic_accepts_kwargs:
+            kwargs = {key: value for key, value in kwargs.items() if key in self._acoustic_forward_params}
         output = self.acoustic_model(*args, **kwargs)
         if self.weighted_sum is not None:
             hidden_states = self.weighted_sum(output["all_hidden_states"])
