@@ -416,8 +416,9 @@ def sample_streaming_rollouts(
         h = x + model.prev_token_embedding(prev_ids)
         if key_padding_mask is not None:
             h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
+        rotary_emb_fn = model._rotary_emb_fn(h.size(1), h.device) if hasattr(model, "_rotary_emb_fn") else None
         for layer in model.layers:
-            h = layer(h)
+            h = layer(h, rotary_emb_fn=rotary_emb_fn)
         step_h = model.norm(h[:, step])
         logits = model._combined_logits(model.silence_head(step_h), model.text_head(step_h))
         pred = torch.multinomial((logits / temperature).softmax(dim=-1), num_samples=1).squeeze(-1)
@@ -1150,6 +1151,15 @@ def self_test() -> None:
         def decode(self, tokens):
             return " ".join(f"tok{int(token)}" for token in tokens)
 
+    class ToyLayer(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.seen_rotary = False
+
+        def forward(self, x, rotary_emb_fn=None):
+            self.seen_rotary = self.seen_rotary or rotary_emb_fn is not None
+            return x
+
     class ToyStreaming(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -1157,7 +1167,7 @@ def self_test() -> None:
             self.subsampling_factor = 1
             self.prev_token_embedding = torch.nn.Embedding(5, 3)
             self.proj = torch.nn.Linear(3, 5)
-            self.layers = torch.nn.ModuleList([])
+            self.layers = torch.nn.ModuleList([ToyLayer()])
             self.norm = torch.nn.Identity()
 
         def get_silence_id(self):
@@ -1179,6 +1189,10 @@ def self_test() -> None:
 
         def subsampling(self, x, lengths):
             return torch.zeros(x.size(0), x.size(1), 3), lengths
+
+        def _rotary_emb_fn(self, length, device):
+            del length, device
+            return lambda q, k: (q, k)
 
         def _combined_logits(self, silence_logits, text_logits):
             return self.proj(torch.zeros(text_logits.size(0), 3))
@@ -1206,6 +1220,7 @@ def self_test() -> None:
     lengths = torch.tensor([4, 3], dtype=torch.long)
     actions, action_lengths = sample_streaming_rollouts(toy, audio, lengths, num_rollouts=2, temperature=1.0)
     assert actions.shape == (4, 4)
+    assert toy.layers[0].seen_rotary
     logprobs = streaming_sequence_logprobs(toy, audio, lengths, actions, action_lengths, num_rollouts=2)
     assert logprobs.shape == (4,)
     (-logprobs.mean()).backward()
