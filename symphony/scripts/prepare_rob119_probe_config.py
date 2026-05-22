@@ -86,6 +86,7 @@ def base_config(args, label, checkpoint_file, learning_rate, run_label):
             "name": f"{run_id}_{run_label}_weighted_bilstm_ctc_probe",
             "id": "",
             "dir": str(Path(args.run_dir) / "wandb"),
+            "watch_model": False,
             "update_config_with_wandb_id": False,
         },
         "checkpointing": {

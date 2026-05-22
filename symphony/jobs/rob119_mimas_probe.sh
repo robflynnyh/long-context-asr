@@ -65,7 +65,18 @@ if [[ "${ROB119_RUN_DIR_EXEC:-0}" != "1" ]]; then
   exec bash "$EXECUTED_SCRIPT" "$@"
 fi
 
-mkdir -p "$RUN_DIR" "$CHECKPOINT_CACHE" "$CHECKPOINT_ROOT"
+mkdir -p \
+  "$RUN_DIR" \
+  "$CHECKPOINT_CACHE" \
+  "$CHECKPOINT_ROOT" \
+  "$RUN_DIR/tmp" \
+  "$RUN_DIR/wandb" \
+  "$RUN_DIR/wandb/wandb" \
+  "$RUN_DIR/wandb-cache" \
+  "$RUN_DIR/wandb-config" \
+  "$RUN_DIR/wandb-data" \
+  "$RUN_DIR/wandb-artifacts" \
+  "$RUN_DIR/xdg-cache"
 exec > >(tee -a "$OUT_LOG") 2> >(tee -a "$ERR_LOG" >&2)
 
 on_exit() {
@@ -148,6 +159,14 @@ cd "$REPO_DIR"
 export PYTHONPATH="$PWD:${PYTHONPATH:-}"
 export LCASR_TEDLIUM_ROOT="$TEDLIUM_ROOT"
 export ROB119_RUN_MANIFEST="$RUN_MANIFEST"
+export TMPDIR="${TMPDIR:-$RUN_DIR/tmp}"
+export WANDB_DIR="${WANDB_DIR:-$RUN_DIR/wandb}"
+export WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-$RUN_DIR/wandb-cache}"
+export WANDB_CONFIG_DIR="${WANDB_CONFIG_DIR:-$RUN_DIR/wandb-config}"
+export WANDB_DATA_DIR="${WANDB_DATA_DIR:-$RUN_DIR/wandb-data}"
+export WANDB_ARTIFACT_DIR="${WANDB_ARTIFACT_DIR:-$RUN_DIR/wandb-artifacts}"
+export WANDB_DISABLE_CODE="${WANDB_DISABLE_CODE:-true}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$RUN_DIR/xdg-cache}"
 
 for checkpoint in step_105360.pt step_99264.pt; do
   if [[ ! -s "$CHECKPOINT_CACHE/$checkpoint" ]]; then
