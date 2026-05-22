@@ -418,7 +418,10 @@ class SimpleDataset(torch.utils.data.Dataset):
     @staticmethod
     def resolve_txt(txt:Dict[str, Any]):
         if 'word_timestamps' in txt: # floras 50 format prepared via: https://github.com/robflynnyh/align_floras50/tree/main
-            return txt['word_timestamps']
+            return sorted(
+                txt['word_timestamps'],
+                key=lambda item: (float(item['start']), float(item['end'])),
+            )
         else:
             return txt['results'][-1]['alternatives'][0]['words'] # spotify format prepared by spotify 
 
@@ -555,7 +558,6 @@ class VariableBatchSimpleDataloader():
 
     def __len__(self):
         return len(self.dataloader) 
-
 
 
 
