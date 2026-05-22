@@ -140,6 +140,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-22
 
 - ROB-105 follow-up after the merged PR clarification: answered the latest Linear questions, then changed the RL chunk reference filter from end-frame-only to half-open frame overlap so words that start inside the current chunk but end just after the boundary remain in the chunk-local reward target. Replaced the binary late-correct-word extra WER count with a configurable ramp using `late_word_penalty_per_second` and `late_word_penalty_max`, defaulting to 0.25 penalty per excess second after `late_word_tolerance_seconds` and capped at 1.0 per word.
+- ROB-127 launch setup: added a RoPE-seeded streaming-decoder RL/GRPO Mimas preparer and wrapper that reuse the merged ROB-105 streaming-aligned reward path, force RoPE theta `1500000`, seed from the latest documented ROB-116 checkpoint `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob116_mimas_5epoch_rob116-rope-mimas-5epoch-20260521T153748Z/step_98629.pt`, keep W&B/temp files under the run directory, and callback to ROB-127 when the detached Mimas screen exits.
 
 ## 2026-05-12
 
