@@ -133,6 +133,11 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-91 PR follow-up: removed the issue-specific probe trainer. Frozen SSL backbone loading and probe freezing now live in reusable `lcasr.models.ctc_probe` helpers, and the ROB-91 wrapper trains generated probe configs through the normal `exp/train.py` entrypoint.
 
+## 2026-05-22
+
+- ROB-119 added a ROB-100 TEDLIUM frozen-probe path using a trainable weighted sum over SCConformer layer states plus a 2-layer 1024-hidden BiLSTM CTC head. Mimas smoke `rob119-smoke-20260522T110057Z` loaded `/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/rob100_papermask_p012_l4_sc_off_20260520/step_105360.pt`, trained two TEDLIUM records, ran break-eval, and wrote diagnostics/summary under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/rob119-smoke-20260522T110057Z/`.
+- ROB-119 full Mimas probe `rob119-full-weighted-bilstm-20260522T110547Z` completed successfully on the ROB-100 primary checkpoint with the same weighted-state BiLSTM setup. TEDLIUM test WER was `99.61%`, CER `96.85%`, deletions `92.44%`, insertions `0.00%`, substitutions `7.17%`, final diagnostic loss `21.5259`, and final blank probability `100.00%`; this is only a `0.12` WER-point improvement over the ROB-91 10-epoch TEDLIUM probe reference and remains a blank/deletion-collapse negative result. Artifacts are under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/rob119-full-weighted-bilstm-20260522T110547Z/`, with `OUTCOME.md`, `tedlium_test_results.csv`, and trained checkpoint `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/checkpoints/rob119-full-weighted-bilstm-20260522T110547Z/primary/step_7740.pt`.
+
 ## 2026-05-12
 
 - ROB-69 eval job `10156464` completed successfully, but finalizer job `10156465` failed because appended finetuned CSV rows included an extra pandas index field. Normalized the completed remote result into `eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`, made ROB-69 summarization tolerate and normalize that output shape, and fixed eval manager CSV appends to write `index=False`. Mean WER was slightly worse for the long-only finetuned checkpoints on most dataset/window pairs, with small improvements only on `rev16` window 128, `tedlium` window 8192, and `this_american_life` windows 128 and 22500.

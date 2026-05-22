@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Iterable
+from typing import Iterable, Optional
 
 from lcasr.components.decoder import ASRLinearSCDecoder
 from lcasr.models.base import LayerNorm, RMSNorm
@@ -47,11 +47,31 @@ class BiLSTMCTCProbeHead(nn.Module):
         return x + proj1
 
 
+class HiddenStateWeightedSum(nn.Module):
+    def __init__(self, num_hidden_states: int):
+        super().__init__()
+        self.num_hidden_states = num_hidden_states
+        self.weights = nn.Parameter(torch.zeros(num_hidden_states))
+
+    def forward(self, hidden_states):
+        if len(hidden_states) != self.num_hidden_states:
+            raise RuntimeError(
+                f"expected {self.num_hidden_states} hidden states, got {len(hidden_states)}"
+            )
+        weights = torch.softmax(self.weights, dim=0)
+        mixed = None
+        for weight, hidden_state in zip(weights, hidden_states):
+            contribution = hidden_state * weight.to(device=hidden_state.device, dtype=hidden_state.dtype)
+            mixed = contribution if mixed is None else mixed + contribution
+        return mixed
+
+
 class FrozenBackboneCTCProbe(nn.Module):
-    def __init__(self, acoustic_model: nn.Module, decoder: nn.Module):
+    def __init__(self, acoustic_model: nn.Module, decoder: nn.Module, weighted_sum: Optional[nn.Module] = None):
         super().__init__()
         self.acoustic_model = acoustic_model
         self.decoder = decoder
+        self.weighted_sum = weighted_sum
 
     @property
     def subsampling(self):
@@ -69,8 +89,14 @@ class FrozenBackboneCTCProbe(nn.Module):
     def forward(self, *args, **kwargs):
         return_logits = kwargs.get("return_logits", False)
         kwargs["skip_vocab_projection"] = True
+        if self.weighted_sum is not None:
+            kwargs["return_all_hidden_states"] = True
         output = self.acoustic_model(*args, **kwargs)
-        hidden_states = output["hidden_states"]
+        hidden_states = (
+            self.weighted_sum(output["all_hidden_states"])
+            if self.weighted_sum is not None
+            else output["hidden_states"]
+        )
         if getattr(self.acoustic_model, "legasee_double_norm", False):
             hidden_states = self.decoder.norm(hidden_states)
         final_posts = self.decoder(x=hidden_states, logits=return_logits)
@@ -108,7 +134,12 @@ def wrap_model_with_ctc_probe(config, acoustic_model: nn.Module, vocab_size: int
         )
     else:
         raise NotImplementedError(f"unknown CTC probe head: {probe_head}")
-    return FrozenBackboneCTCProbe(acoustic_model=acoustic_model, decoder=head)
+    weighted_sum = None
+    if config.probe.get("hidden_state_weighted_sum", False):
+        weighted_sum = HiddenStateWeightedSum(
+            num_hidden_states=config.probe.get("num_hidden_states", config.model.get("n_layers", 0))
+        )
+    return FrozenBackboneCTCProbe(acoustic_model=acoustic_model, decoder=head, weighted_sum=weighted_sum)
 
 
 def acoustic_model_from_probe(model: nn.Module):

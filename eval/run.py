@@ -40,6 +40,15 @@ def get_transcribe_kwargs(args, verbose):
     return transcribe_kwargs
 
 
+def length_diagnostics(hypotheses, references):
+    return {
+        'hyp_words': sum(len(text.split()) for text in hypotheses),
+        'ref_words': sum(len(text.split()) for text in references),
+        'hyp_chars': sum(len(text.replace(" ", "")) for text in hypotheses),
+        'ref_chars': sum(len(text.replace(" ", "")) for text in references),
+    }
+
+
 def main(args):
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     model_config = checkpoint['config']
@@ -134,13 +143,20 @@ def main(args):
 
         if include_per_recording_evaluations:
             wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text])
+            cer, chars, char_ins_rate, char_del_rate, char_sub_rate = word_error_rate_detail(hypotheses=[out], references=[gold_text], use_cer=True)
             wer_data.append({
                 'recording': data[rec]['id'],
                 'wer': wer,
+                'cer': cer,
                 'words': words,
+                'chars': chars,
                 'ins_rate': ins_rate,
                 'del_rate': del_rate,
-                'sub_rate': sub_rate
+                'sub_rate': sub_rate,
+                'char_ins_rate': char_ins_rate,
+                'char_del_rate': char_del_rate,
+                'char_sub_rate': char_sub_rate,
+                **length_diagnostics([out], [gold_text]),
             })
 
         if args.__dict__.get('break_eval', False): break
@@ -148,16 +164,23 @@ def main(args):
         
 
     wer, words, ins_rate, del_rate, sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds)
+    cer, chars, char_ins_rate, char_del_rate, char_sub_rate = word_error_rate_detail(hypotheses=all_texts, references=all_golds, use_cer=True)
 
     if verbose: print(f'WER: {wer}')
 
     wer_data.append({
         'recording': 'all',
         'wer': wer,
+        'cer': cer,
         'words': words,
+        'chars': chars,
         'ins_rate': ins_rate,
         'del_rate': del_rate,
-        'sub_rate': sub_rate
+        'sub_rate': sub_rate,
+        'char_ins_rate': char_ins_rate,
+        'char_del_rate': char_del_rate,
+        'char_sub_rate': char_sub_rate,
+        **length_diagnostics(all_texts, all_golds),
     })
     return wer_data, model_config
     
