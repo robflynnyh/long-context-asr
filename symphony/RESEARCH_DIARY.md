@@ -139,6 +139,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 ## 2026-05-22
 
+- ROB-98 post-ROB-125/128 investigation: latest human guidance changed the TEDLIUM probe diagnosis from "sort the timestamp chunks" to "do not chunk TEDLIUM training for this probe." The ROB-91/119/125 probe path builds full-recording TEDLIUM manifests and trains through `exp/train.py`, which slices fixed 2048-frame chunks and calls `chunk_text_json`; the repo TEDLIUM eval path already exposes natural STM utterance segments. Updated `symphony/rob-98-poor-ssl-performance-report.md` with this boundary/batch-size finding, stopped stale child runs ROB-126 `rob126-full-top2-4epoch-20260522T171921Z` and ROB-128 `rob128-overfit-bilstm-sortfix-20260522T211416Z`, and moved both child issues back to `Todo` with instructions to rebuild around utterance-level TEDLIUM training before rerunning.
 - ROB-105 follow-up after the merged PR clarification: answered the latest Linear questions, then changed the RL chunk reference filter from end-frame-only to half-open frame overlap so words that start inside the current chunk but end just after the boundary remain in the chunk-local reward target. Replaced the binary late-correct-word extra WER count with a configurable ramp using `late_word_penalty_per_second` and `late_word_penalty_max`, defaulting to 0.25 penalty per excess second after `late_word_tolerance_seconds` and capped at 1.0 per word.
 
 ## 2026-05-12

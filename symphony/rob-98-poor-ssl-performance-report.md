@@ -4,13 +4,15 @@ Date: 2026-05-20
 
 Post-ROB-119 addendum: 2026-05-22
 
+Post-ROB-125/128 addendum: 2026-05-22
+
 ## Scope
 
 This report investigates why the ROB-91 frozen probes over the ROB-70 BEST-RQ SSL checkpoints performed poorly. It compares the repository implementation against the open BEST-RQ implementation described in arXiv:2405.04296 and the current SpeechBrain BEST-RQ recipe.
 
 Required preflight was completed before planning or editing:
 
-- `symphony/instructions/linear-context.md`: required a recent Linear comment reread. The initial report was written when ROB-98 had no comments; a later human clarification asked where the 60% masking claim came from, and this revision answers that by separating the paper's start-frame mask percentages from actual masked-frame percentages.
+- `symphony/instructions/linear-context.md`: required a recent Linear comment reread. The initial report was written when ROB-98 had no comments; later human clarifications asked where the 60% masking claim came from, then asked that TEDLIUM probe training use default utterance boundaries instead of repo chunking and that the small probe batch sizes be corrected.
 - `symphony/instructions/repository.md`: report artifacts should live in the repo, with concise diary entries for future agents.
 - `symphony/instructions/work-loop.md`: no `Branch/ref` was supplied, so this work branches from `dev`.
 - `symphony/instructions/experiment-execution.md`: do not launch long GPU work unless requested. This issue asks for investigation/reporting, not a new run.
@@ -43,6 +45,10 @@ Repository evidence:
   - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/rob119-full-weighted-bilstm-20260522T110547Z/run_manifest.json`
   - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/rob119-full-weighted-bilstm-20260522T110547Z/diagnostics/primary.jsonl`
 - ROB-119 implementation branch inspected at `origin/symphony/rob-119-paper-matched-bestrq-probe`
+- ROB-125/ROB-128 Linear comments on the supervised-feature probe, unsorted TEDLIUM train timestamps, and the newer utterance-boundary correction.
+- `symphony/scripts/prepare_rob91_tedlium_manifest.py`
+- `exp/train.py`
+- `eval/tedlium/run.py`
 
 ## Bottom Line
 
@@ -259,8 +265,87 @@ Do not start with another blind full SSL rerun. The next checks should separate 
    - A useful repeat should target update count and recipe match, not just raw audio hours. Concretely: more optimizer updates, AdamW/Noam-style settings, explicit checkpoint labels by optimizer update, and possibly a 12-layer architecture if resources allow.
    - Continue logging actual mask ratio, skipped-empty-mask count, SSL CE, and downstream probe diagnostics.
 
+## Post-ROB-125/128 Addendum: TEDLIUM Probe Training Unit Is Likely Wrong
+
+The latest ROB-98 human comment changes the interpretation again. ROB-128 found a real bug in the chunk-label path: ROB-125 TEDLIUM training transcript JSONs were mostly out of timestamp order, and `chunk_text_json()` assumes chronological entries. Sorting would improve chunk labels, but the newer instruction is stronger: for TEDLIUM supervised probe training, use the default TEDLIUM utterance boundaries rather than this repo's long-recording chunking setup.
+
+That is consistent with the code:
+
+- `symphony/scripts/prepare_rob91_tedlium_manifest.py` builds one manifest item per TEDLIUM `.sph` recording and writes all STM segments into `word_timestamps`.
+- `exp/train.py` loads that manifest through `VariableBatchSimpleDataloader`, slices each whole recording into fixed `audio_chunking.size` chunks, and calls `chunk_text_json()` to create a CTC target for each chunk.
+- `eval/tedlium/run.py` already knows the default TEDLIUM utterance unit through `fetch_utterances(...)`: it slices each STM segment by start/end frame and keeps the original segment text.
+
+So the ROB-91/119/125 probe training path was not using the same natural training unit as TEDLIUM evaluation. It was training a fresh CTC head on artificial fixed-width slices of full talks, with labels reconstructed by time-window inclusion. That is fragile even after sorting: utterances crossing chunk boundaries can disappear or be split poorly, silent chunks are skipped, and the model sees an optimization problem that differs from ordinary utterance-level ASR probe training.
+
+This also explains the otherwise odd ROB-125 split:
+
+| Evidence | What it says |
+| --- | --- |
+| ROB-125 source supervised CTC smoke: `8.06%` WER on one TEDLIUM record through the moving-window/greedy path | The checkpoint and eval path can emit normal words. |
+| ROB-125 fresh weighted-BiLSTM probe on the same known-good supervised features: `99.53%` WER, `89.87%` deletions | Fresh probe training is still broken or badly mismatched. |
+| ROB-128 timestamp audit | The current chunk-label construction was definitely corrupt for most records before sorting. |
+| Latest human boundary correction | Sorting is not the full fix; TEDLIUM probe training should avoid chunk-label construction and use utterance segments directly. |
+
+### Batch Size Correction
+
+The small probe batch sizes are now another likely setup issue. ROB-91's wrapper defaulted the full probe batch to `16`, ROB-126 was launched with `ROB126_BATCH_SIZE=8`, and ROB-128 queued a one-record overfit with `ROB128_BATCH_SIZE=1`. Those values are much smaller than the open BEST-RQ setting's dynamic batching regime. The paper says the open experiments used dynamic batches of about `100` seconds per GPU across 8 V100s, and the current SpeechBrain recipe uses dynamic length batching rather than a tiny fixed example count.
+
+The direct fix is not simply "set batch size to one huge number" for full talks. Once TEDLIUM is converted to utterance-level samples, the average sequence is much shorter and the batch can be increased substantially. A practical next run should either:
+
+- use dynamic/bucketed batching by utterance duration; or
+- start with a conservative fixed utterance batch such as `64` or `128`, then increase until GPU memory is close to full.
+
+This matters because CTC probe training with very small batches can get a biased blank-heavy gradient, especially with a randomly initialized BiLSTM/CTC head and no LM.
+
+### Child Runs Corrected
+
+Because the latest instruction made the active child setup stale, I stopped the obsolete child runs instead of letting them consume GPU time:
+
+- ROB-126 `rob126-full-top2-4epoch-20260522T171921Z`: stopped after it had launched on Mimas GPU 2. It used `ROB126_BATCH_SIZE=8` and the chunked TEDLIUM manifest path.
+- ROB-128 `rob128-overfit-bilstm-sortfix-20260522T211416Z`: removed while still waiting in the `with-gpu` queue. It used the one-record/chunked-label overfit design with `ROB128_BATCH_SIZE=1`.
+
+Both child issues were moved back to `Todo` with comments instructing the next worker to rebuild around TEDLIUM utterance-level training examples before rerunning.
+
+### Revised Current Diagnosis
+
+The parent investigation now has two concrete probe-training blockers, not just a vague "fresh CTC probe may be bad" hypothesis:
+
+1. **TEDLIUM probe labels were constructed with the wrong training unit.** The repo treated full TEDLIUM talks like long-context training recordings and generated fixed-window CTC labels. TEDLIUM probe training should instead use STM utterance boundaries as the sample boundaries.
+2. **The existing chunk-label path also had a timestamp-order bug.** ROB-128 showed that sorting changes labels for almost all ROB-125 training records. This is real, but it is now secondary because the corrected design should avoid chunking for TEDLIUM probe training.
+3. **Probe batches were too small.** The completed and queued probes used fixed example counts between 1 and 16. Once utterance-level samples are used, increase batch size materially or switch to duration-based dynamic batching.
+4. **SSL quality is still unresolved.** ROB-100 fixed the SSL masking mismatch and learned the SSL objective, but the downstream evidence is confounded until the supervised-feature probe works with clean utterance-level TEDLIUM training.
+
+### Replacement Plan
+
+The next ROB-126/128 work should use this order:
+
+1. Build a TEDLIUM utterance-level training manifest.
+   - One sample per non-ignored STM segment.
+   - Audio is `processing_chain(sph_path)[:, :, start_frame:end_frame]` or a cached equivalent.
+   - Text is the exact normalized STM segment text.
+   - No `chunk_text_json()` and no fixed 2048-frame training chunks for this supervised probe.
+
+2. Add a small loader smoke.
+   - Print/record the first few IDs, durations, token lengths, and decoded labels.
+   - Assert there are no zero-token training examples except deliberately filtered silence/ignored segments.
+   - Confirm padding/batching uses utterance lengths, not full-talk chunk lengths.
+
+3. Run the known-good supervised-feature probe first.
+   - Use the ROB-125 supervised checkpoint.
+   - Freeze the encoder/backbone and train the same weighted-state BiLSTM CTC head.
+   - Start with a much larger utterance batch than `8` if memory allows.
+   - The acceptance criterion is not final WER; it is escaping near-total deletion collapse and showing that the exact fresh-probe path can learn from known-good features.
+
+4. Only after that, rerun ROB-126.
+   - Reuse the utterance-level path.
+   - Start from ROB-100, unfreeze top encoder layers as before, and keep the GPU 1/2 constraint if still required by current human comments.
+
+5. Reinterpret ROB-119/ROB-125 frozen-probe WER as stale until this is done.
+   - The source supervised CTC eval evidence remains valid.
+   - The fresh-probe results are not clean evidence against ROB-100 SSL representation quality until the TEDLIUM training unit and batch-size issues are fixed.
+
 ### Updated Conclusion
 
 The initial ROB-98 conclusion should be revised, not discarded. Low actual mask density was the highest-confidence mismatch in ROB-70 and it was worth fixing. ROB-100 fixed that mismatch, but ROB-119 shows that the corrected one-epoch checkpoint still does not yield useful frozen TEDLIUM CTC representations under a substantially more paper-matched probe.
 
-The most actionable next move is a probe-path sanity check with known-good supervised features plus a small top-layer-unfrozen ROB-100 probe. Those two results would say whether to spend effort on probe/training-path debugging or on a longer, more paper-like SSL rerun.
+The most actionable next move is now narrower: fix the supervised TEDLIUM probe training path before interpreting any more frozen SSL probe WER. Use default TEDLIUM utterance boundaries, increase the practical utterance batch size, and first prove that the fresh weighted-state BiLSTM CTC probe can learn from a known-good supervised encoder. Only then should ROB-126's top-layer-unfrozen ROB-100 probe or a longer paper-like SSL rerun be used as evidence about SSL representation quality.
