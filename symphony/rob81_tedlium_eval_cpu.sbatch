@@ -2,7 +2,7 @@
 #SBATCH --job-name=rob81-ted-eval
 #SBATCH --partition=interactive
 #SBATCH --time=04:00:00
-#SBATCH --mem=80GB
+#SBATCH --mem=60GB
 #SBATCH --cpus-per-task=4
 #SBATCH --output=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/eval/tedlium-eval-%j.out
 #SBATCH --error=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/eval/tedlium-eval-%j.err
