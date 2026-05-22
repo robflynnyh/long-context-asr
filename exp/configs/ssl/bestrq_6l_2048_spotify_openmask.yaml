@@ -1,5 +1,5 @@
 model_class: 'SCConformerXL'
-description: "ROB-100 BEST-RQ SSL training on Spotify with paper-style 48% masking and self-conditioning disabled."
+description: "ROB-100 BEST-RQ SSL training on Spotify with open/SpeechBrain 60% masking and self-conditioning disabled."
 
 model:
   feat_in: 80
@@ -32,7 +32,7 @@ model:
 
 best_rq:
   mask_mode: "speechbrain"
-  mask_prob: 0.12
+  mask_prob: 0.15
   mask_length: 4
   downsampling_factor: 8
   codebook_size: 8192
@@ -53,13 +53,13 @@ audio_chunking:
 wandb:
   use: true
   project_name: "spotify_long_context_ssl"
-  name: "rob100_bestrq_6l_2048_papermask_p012_l4_sc_off_20260520"
+  name: "rob100_bestrq_6l_2048_openmask_p015_l4_sc_off_20260520"
   id: ""
   dir: '/mnt/parscratch/users/acp21rjf/wandb_log/'
   watch_model: false
 
 checkpointing:
-  dir: '/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/rob100_papermask_p012_l4_sc_off_20260520'
+  dir: '/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/rob100_openmask_p015_l4_sc_off_20260520'
   save_every_n_steps: 2000
 
 data:

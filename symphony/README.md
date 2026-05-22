@@ -9,6 +9,11 @@ This directory contains Symphony runner configuration and lightweight operationa
 - `training-notes.md`: training config/template launch flow and checkpoint caveats.
 - `eval-notes.md`: evaluation entrypoints, config shape, dataset path handling, and outputs.
 - `slurm-notes.md`: cluster launch patterns observed in repo scripts.
+- `scripts/linear_job_callback.py`: reusable stdlib-only Linear callback core
+  for bounded job handoff comments and state transitions.
+- `scripts/linear_stanage_callback.py` and `scripts/linear_mimas_callback.py`:
+  thin target-specific callback entry points for Slurm/finalizer and detached
+  `screen` wrappers.
 - Additional focused notes may be added here when agents discover non-obvious repo procedures, Slurm patterns, environment setup, data/checkpoint locations, evaluation commands, or recurring failure modes.
 
 Do not store credentials, raw data, checkpoints, large logs, or generated artifacts here. `symphony/.env` is local-only and ignored by Git. Put large non-commit files under parscratch and reference their paths.
