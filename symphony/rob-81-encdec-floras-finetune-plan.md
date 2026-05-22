@@ -259,6 +259,52 @@ bash -n <rob81-callback-or-finalizer>
 Then run the Stanage CPU smoke job and inspect its stdout/stderr for tracebacks,
 missing paths, load failures, permission errors, or callback errors.
 
+## Completion Check
+
+On 2026-05-22, the latest Stanage check found no matching `rob81` jobs in
+`squeue`. The same-batch `_nw0` supervised Floras finetune job completed:
+
+```text
+10234385|rob81-ft-floras12-nw0|COMPLETED|0:0|1-19:24:08
+10234385.batch|batch|COMPLETED|0:0|1-19:24:08|MaxRSS=136320700K
+```
+
+Run shape:
+
+- config: `exp/configs/enc_dec/rob81_floras50_supervised_12ep_lr1e-4_nw0.yaml`
+- source checkpoint:
+  `/mnt/parscratch/users/acp21rjf/spotify/checkpoints/enc_dec/enc_dec_no_anorm_V2_lr_2e3_ctcw_0_05/step_210720.pt`
+- filtered manifest:
+  `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/manifests/floras50_safe_norm_drop_oov.json`
+- `batch_size=88`
+- `audio_chunking.size=2048`
+- `lr=1e-4`
+- 12 epochs
+- `num_workers=0`, no pinned memory, `prefetch_factor=1`
+- Slurm memory: `130GB`
+
+Artifacts:
+
+- stdout:
+  `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-nw0-10234385.out`
+- stderr:
+  `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/floras12-nw0-10234385.err`
+- W&B:
+  `https://wandb.ai/wobrob101/floras50_enc_dec_supervised/runs/wy8cnqch`
+- latest checkpoint:
+  `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_nw0/step_323484.pt`
+
+The dependent finalizer job `10234386` failed before posting the automatic
+Linear handoff:
+
+```text
+/var/spool/slurmd.spool/job10234386/slurm_script: line 45: DRY_RUN_ARGS[@]: unbound variable
+```
+
+The latest human question was answered in Linear with this evidence, and the
+issue was left in `Todo` rather than moved to `In Review` from a clarification
+thread.
+
 ## Proposed 12-Epoch Launch Specification
 
 This is the concrete launch shape to use for the latest Linear request. Do not

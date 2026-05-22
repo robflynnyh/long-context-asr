@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-22
+
+- ROB-81 completion check after the latest Linear question: Stanage queue had no matching `rob81` jobs, GPU finetune job `10234385` completed `0:0` in `1-19:24:08` with `MaxRSS=136320700K`, and the latest checkpoint is `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/checkpoints/supervised_floras50_spotifytok_safe_norm_drop_oov_lr1e-4_12ep_nw0/step_323484.pt`. Finalizer job `10234386` failed before posting because `set -u` treated the empty `DRY_RUN_ARGS[@]` expansion as unbound; fixed the finalizer to use explicit dry-run and normal callback branches.
+
 ## 2026-05-21
 
 - ROB-105 final run evidence: the b32/r6 microbatch-16 Mimas run `rob105-streaming-rl-grpo-b32-r6-micro16-10k-20260520T224055Z` was manually killed by the user to save GPUs after they said the implementation looked working. The wrapper callback reported `exit_code=130`, but the progress log shows the run reached update `759/10000` with active reward groups, finite losses, W&B sync `y687qlnx`, and saved checkpoint `step_500.pt` under `/store/store5/data/acp21rjf/spotify/streaming_decoder_asr_100m_two_head_rob105_rl_grpo_rob105-streaming-rl-grpo-b32-r6-micro16-10k-20260520T224055Z/`.

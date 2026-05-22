@@ -37,15 +37,19 @@ else
   STATUS=failure
 fi
 
-DRY_RUN_ARGS=()
 if [[ "${ROB81_FINALIZER_DRY_RUN:-0}" == "1" ]]; then
-  DRY_RUN_ARGS=(--dry-run)
+  python symphony/rob81_linear_callback.py \
+    --dry-run \
+    --gpu-job-id "${GPU_JOB_ID}" \
+    --status "${STATUS}" \
+    --out-log "${OUT_LOG}" \
+    --err-log "${ERR_LOG}" \
+    --checkpoint-dir "${CHECKPOINT_DIR}"
+else
+  python symphony/rob81_linear_callback.py \
+    --gpu-job-id "${GPU_JOB_ID}" \
+    --status "${STATUS}" \
+    --out-log "${OUT_LOG}" \
+    --err-log "${ERR_LOG}" \
+    --checkpoint-dir "${CHECKPOINT_DIR}"
 fi
-
-python symphony/rob81_linear_callback.py \
-  "${DRY_RUN_ARGS[@]}" \
-  --gpu-job-id "${GPU_JOB_ID}" \
-  --status "${STATUS}" \
-  --out-log "${OUT_LOG}" \
-  --err-log "${ERR_LOG}" \
-  --checkpoint-dir "${CHECKPOINT_DIR}"
