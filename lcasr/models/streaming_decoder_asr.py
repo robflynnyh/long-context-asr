@@ -5,6 +5,7 @@ from typing import Iterable, Optional
 
 from lcasr.components.attention import Attention
 from lcasr.components.helpers import get_act
+from lcasr.components.positional_encodings import RotaryPositionalEmbedding, apply_rotary
 from lcasr.components.subsampling import ConvSubsampling, calc_length
 from lcasr.models.base import BaseModel
 
@@ -49,12 +50,13 @@ class CausalDecoderLayer(nn.Module):
             nn.Dropout(dropout_ff),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, rotary_emb_fn=None) -> torch.Tensor:
         """Apply causal self-attention and feed-forward residual updates to `[B, T, D]`."""
         x_norm = self.attn_norm(x)
         x = x + self.attn(
             x_norm,
             flash_attn=True,
+            rotary_emb_fn=rotary_emb_fn,
         )
         x = x + self.ff(self.ff_norm(x))
         return x
@@ -81,6 +83,9 @@ class StreamingDecoderASR(BaseModel):
         dropout_attn: float = 0.0,
         decoder_norm: bool = True,
         previous_token_dropout: float = 0.0,
+        use_rotary: bool = True,
+        rotary_base_freq: int = 1_500_000,
+        rotary_interpolation_factor: float = 1.0,
         **kwargs,
     ):
         """Build the streaming decoder, previous-token embedding, and two prediction heads."""
@@ -90,6 +95,9 @@ class StreamingDecoderASR(BaseModel):
         self.num_classes = vocab_size + 1
         self.subsampling_factor = subsampling_factor
         self.previous_token_dropout = previous_token_dropout
+        self.use_rotary = use_rotary
+        self.rotary_base_freq = rotary_base_freq
+        self.rotary_interpolation_factor = rotary_interpolation_factor
 
         self.subsampling = ConvSubsampling(
             subsampling=subsampling,
@@ -120,6 +128,29 @@ class StreamingDecoderASR(BaseModel):
         self.norm = LayerNorm(d_model) if decoder_norm else nn.Identity()
         self.silence_head = nn.Linear(d_model, 2, bias=False)
         self.text_head = nn.Linear(d_model, vocab_size, bias=False)
+        self.rotary_pos_emb = None
+        if self.use_rotary:
+            self.rotary_pos_emb = RotaryPositionalEmbedding(
+                dim=d_model // n_heads,
+                base=rotary_base_freq,
+                rotary_interpolation_factor=rotary_interpolation_factor,
+            )
+            self._mark_rotary_buffers_non_persistent()
+
+    def _mark_rotary_buffers_non_persistent(self) -> None:
+        """Keep deterministic RoPE buffers out of checkpoints for old-state compatibility."""
+        if self.rotary_pos_emb is None:
+            return
+        self.rotary_pos_emb._non_persistent_buffers_set.update(
+            {"inv_freq", "rotary_interpolation_factor"}
+        )
+
+    def _rotary_emb_fn(self, seq_len: int, device: torch.device):
+        """Build the shared attention rotary callback for the current sequence length."""
+        if self.rotary_pos_emb is None:
+            return None
+        cos, sin = self.rotary_pos_emb(seq_len, device)
+        return apply_rotary(cos=cos, sin=sin, learned=self.rotary_pos_emb.learned_freq)
 
     def get_silence_id(self) -> int:
         """Return the extra class id used for frame-level silence predictions."""
@@ -231,8 +262,9 @@ class StreamingDecoderASR(BaseModel):
         key_padding_mask = key_padding_mask if key_padding_mask.any() else None
         if key_padding_mask is not None:
             x = x.masked_fill(key_padding_mask.unsqueeze(-1), 0)
+        rotary_emb_fn = self._rotary_emb_fn(x.size(1), x.device)
         for layer in self.layers:
-            x = layer(x)
+            x = layer(x, rotary_emb_fn=rotary_emb_fn)
         x = self.norm(x)
         silence_logits = self.silence_head(x)
         text_logits = self.text_head(x)
@@ -335,8 +367,9 @@ class StreamingDecoderASR(BaseModel):
             h = x + self.prev_token_embedding(prev_ids)
             if key_padding_mask is not None:
                 h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
+            rotary_emb_fn = self._rotary_emb_fn(h.size(1), h.device)
             for layer in self.layers:
-                h = layer(h)
+                h = layer(h, rotary_emb_fn=rotary_emb_fn)
             step_h = self.norm(h[:, step])
             step_prediction = self._step_predictions(step_h, sample=False)
             predictions.append(step_prediction)
@@ -376,8 +409,9 @@ class StreamingDecoderASR(BaseModel):
             h = x + self.prev_token_embedding(prev_ids)
             if key_padding_mask is not None:
                 h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
+            rotary_emb_fn = self._rotary_emb_fn(h.size(1), h.device)
             for layer in self.layers:
-                h = layer(h)
+                h = layer(h, rotary_emb_fn=rotary_emb_fn)
             step_h = self.norm(h[:, step])
             step_prediction = self._step_predictions(step_h, sample=True, temperature=temperature)
             predictions.append(step_prediction)

@@ -15,6 +15,9 @@ model:
   subsampling_norm_out: true
   decoder_norm: true
   previous_token_dropout: 0.0
+  use_rotary: true
+  rotary_base_freq: 1500000
+  rotary_interpolation_factor: 1.0
 
 optimizer:
   name: madgrad
