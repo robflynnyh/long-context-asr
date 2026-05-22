@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import lcasr
 import torch
 import argparse
@@ -103,6 +104,9 @@ def train(
     clip_value = args.config['training'].get('clip_value', 0.8) 
     random.seed(args.config['training'].get('random_seed', 12345))
     wandb_config = args.config['wandb']
+    diagnostics_path = args.config['training'].get('diagnostics_path', None)
+    if diagnostics_path is not None:
+        os.makedirs(os.path.dirname(diagnostics_path), exist_ok=True)
     dtype = get_dtype(args.config['training'].get('dtype', 'bfloat16'))
     rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
     resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
@@ -324,6 +328,17 @@ def train(
                             'epoch': epoch,
                             'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
                         })
+                    if diagnostics_path is not None:
+                        with open(diagnostics_path, 'a', encoding='utf-8') as handle:
+                            handle.write(json.dumps({
+                                'step': int(cur_podcast),
+                                'epoch': int(epoch),
+                                'loss': float(loss_to_log),
+                                'blank_p': float(blank_prob),
+                                'learning_rate': float(learning_rate),
+                                'sequence_length': int(chunk_size),
+                                'batch_size': int(batch_size),
+                            }) + '\n')
                     
                     cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
                 prev_selection_mask = selection_mask.clone()
@@ -403,7 +418,8 @@ def main(args):
         wandb_dir = args.config['wandb'].get('dir', './wandb')
         config = OmegaConf.to_container(args.config, resolve=True)
         wandb.init(project=project_name, config=config, name=run_name, dir=wandb_dir) if w_id == '' else wandb.init(project=project_name, id=w_id, resume="must", config=config, allow_val_change=True, dir=wandb_dir)
-        wandb.watch(model, log="all") # sometimes this causes a crash ):
+        if wandb_config.get("watch_model", True):
+            wandb.watch(model, log="all") # sometimes this causes a crash ):
         wandb.config.update({'total_params': tparams}, allow_val_change=True)
         print(f'\nLoggging with Wandb id: {wandb.run.id}\n')
         args.config['wandb']['id'] = wandb.run.id # add wandb config to args.config

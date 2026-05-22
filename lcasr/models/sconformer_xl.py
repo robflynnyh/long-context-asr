@@ -12,7 +12,7 @@ ConformerFeedForward = fused_dense.FusedMLP
 ConvSubsampling, StackingSubsampling = subsampling.ConvSubsampling, subsampling.StackingSubsampling
 
 try: from apex.normalization import FusedRMSNorm as DEFAULT_NORM, FusedRMSNorm as RMSNorm, FusedLayerNorm as LayerNorm
-except: 
+except:
     from lcasr.components.normalisation import RMSNorm as RMSNorm, RMSNorm as DEFAULT_NORM
     from torch.nn import LayerNorm as LayerNorm
 
@@ -26,10 +26,10 @@ from lcasr.models.base import BaseModel
 import warnings
 
 
-# TODO: 
+# TODO:
 # -. remove caching stuff as it is not used anymore
 
-class SCConformerXL(BaseModel): 
+class SCConformerXL(BaseModel):
     def __init__(
         self,
         vocab_size = 128,
@@ -64,7 +64,7 @@ class SCConformerXL(BaseModel):
         **kwargs
     ):
         super().__init__()
-        
+
         self.feat_in = feat_in
         self.n_layers = n_layers
         self.d_model = d_model
@@ -79,7 +79,7 @@ class SCConformerXL(BaseModel):
         self.sandwich_norm = sandwich_norm
         self.bias_in_ff = bias_in_ff
         self.transformer = transformer
-    
+
         self.legasee_double_norm = legasee_double_norm
 
         self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
@@ -93,7 +93,7 @@ class SCConformerXL(BaseModel):
         subsampling_act = get_act(subsampling_act)
 
         self.flash_attn = kwargs.get('flash_attn', True)
-      
+
         self.checkpoint_every_n_layers = checkpoint_every_n_layers
 
         self.dropout_ff = dropout_ff
@@ -135,7 +135,7 @@ class SCConformerXL(BaseModel):
                 if subsampling != 'stacking' else \
                      StackingSubsampling(norm = True if not subsampling_norm_out else False, default_norm = default_norm, **subsampling_args)
 
-        
+
         self.layers = nn.ModuleList()
 
 
@@ -159,15 +159,16 @@ class SCConformerXL(BaseModel):
                 **kwargs
             )
             self.layers.append(l)
-        
+
     def forward(
-            self, 
+            self,
             audio_signal,
-            length = None, 
-            cached_kvs = None, 
-            cached_kv_lengths = None, 
+            length = None,
+            cached_kvs = None,
+            cached_kv_lengths = None,
             return_logits = False,
             skip_vocab_projection = False, # for pretraining
+            return_all_hidden_states = False,
         ):
         '''
         audio_signal: (batch_size, time, feat)
@@ -183,25 +184,25 @@ class SCConformerXL(BaseModel):
 
         if length is None:
             length = torch.tensor([max_audio_length] * audio_signal.size(0), device=audio_signal.device)
-            
+
         audio_signal = torch.transpose(audio_signal, 1, 2)
         audio_signal, length = self.subsampling(audio_signal, lengths = length) if not self.checkpoint_subsampling else checkpoint(self.create_custom_forward(self.subsampling), audio_signal, length)
 
         max_audio_length = audio_signal.size(1)
         ## create masks
-        
+
         mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
-    
+
         rotary_emb_fn = None
-   
+
         full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
         if self.use_rotary:
             max_seq_len = full_kv_lengths.max()
             q_offset = 0 if cached_kvs is None else cached_kvs.shape[1]
-      
+
             cos, sin = self.rotary_pos_emb(max_seq_len, audio_signal.device)
             rotary_emb_fn = apply_rotary(cos = cos, sin = sin, q_offset = q_offset, learned = self.rotary_pos_emb.learned_freq)
-        
+
 
         if length.max() == length.min():
             att_mask, mask = None, None
@@ -214,15 +215,16 @@ class SCConformerXL(BaseModel):
                 att_mask = ~(rearrange(qmask, 'b n -> b () n ()') * rearrange(kmask, 'b n -> b () () n'))
                 att_mask = att_mask.to(audio_signal.dtype) * -torch.finfo(audio_signal.dtype).max
 
-        pad_mask = mask 
-    
+        pad_mask = mask
+
         audio_signal = self.fourier_pos_enc(audio_signal)
-        
+
+        all_hidden_states = []
         for lth, layer in enumerate(self.layers):
 
             if self.checkpoint_every_n_layers > 0 and lth % self.checkpoint_every_n_layers == 0:
                 audio_signal = checkpoint(
-                    self.create_custom_forward(layer), 
+                    self.create_custom_forward(layer),
                     audio_signal, # x
                     att_mask, # att_mask
                     length,
@@ -232,24 +234,28 @@ class SCConformerXL(BaseModel):
                 )
             else:
                 audio_signal = layer(
-                    x = audio_signal, 
-                    attn_mask = att_mask, 
+                    x = audio_signal,
+                    attn_mask = att_mask,
                     length = length,
                     pad_mask = pad_mask,
                     flash_attn = self.flash_attn,
                     rotary_emb_fn = rotary_emb_fn
                 )
-            
+
             if lth != len(self.layers) - 1 and self.self_conditioning:
                 iterim_post = torch.nn.functional.softmax(decoder(x=audio_signal, logits=True), dim=-1)
-                audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))        
+                audio_signal = decoder.integrate_projections(audio_signal, decoder.project_back(iterim_post))
+            if return_all_hidden_states:
+                all_hidden_states.append(audio_signal)
 
         if skip_vocab_projection:
             output_dict = {'hidden_states': audio_signal, 'length': length,}
         else:
             audio_signal = decoder.norm(audio_signal) if self.legasee_double_norm else audio_signal
-            final_posts = decoder(x = audio_signal, logits = return_logits) 
+            final_posts = decoder(x = audio_signal, logits = return_logits)
             output_dict = {'final_posteriors': final_posts, 'length': length,}
+        if return_all_hidden_states:
+            output_dict['all_hidden_states'] = all_hidden_states
 
         if self.training and self.rotary_pos_emb is not None:
             self.rotary_pos_emb.reset_if_needed()
@@ -286,11 +292,11 @@ class ConformerLayer(nn.Module):
         self.bias_in_ff = bias_in_ff
         self.trasformer = transformer
 
-        
+
         if not self.trasformer:
-        
+
             self.conv = PreNorm(
-                d_model = d_model, 
+                d_model = d_model,
                 fn = ConformerConvolution(
                     d_model = d_model,
                     kernel_size = conv_kernel_size,
@@ -303,26 +309,26 @@ class ConformerLayer(nn.Module):
 
         if not self.trasformer:
             self.ff1 = Scale(0.5, PreNorm(
-                d_model = d_model, 
+                d_model = d_model,
                 fn = ConformerFeedForward(
-                    d_model, 
-                    bias1 = bias_in_ff, 
+                    d_model,
+                    bias1 = bias_in_ff,
                     bias2 = bias_in_ff,
                     checkpoint_lvl = kwargs.get('ff_checkpoint_lvl', 0)
-                ), 
-                norm = default_norm, 
+                ),
+                norm = default_norm,
                 sandwich_norm = sandwich_norm
             ))
-        
+
         self.ff2 = Scale(0.5, PreNorm(
-            d_model = d_model, 
+            d_model = d_model,
             fn = ConformerFeedForward(
-                d_model, 
-                bias1 = bias_in_ff, 
+                d_model,
+                bias1 = bias_in_ff,
                 bias2 = bias_in_ff,
                 checkpoint_lvl = kwargs.get('ff_checkpoint_lvl', 0)
-            ), 
-            norm = default_norm, 
+            ),
+            norm = default_norm,
             sandwich_norm = sandwich_norm
         ))
 
@@ -332,7 +338,7 @@ class ConformerLayer(nn.Module):
 
         if self.has_attention:
             self.attend = PreNorm(
-                d_model = d_model, 
+                d_model = d_model,
                 fn = Attention(
                     n_feats = d_model,
                     head_dim = head_dim,
@@ -349,7 +355,7 @@ class ConformerLayer(nn.Module):
 
         self.norm_out = default_norm(d_model)
 
-            
+
 
     def forward(self, x, attn_mask, length, pad_mask, flash_attn = True, rotary_emb_fn = None):
         '''
@@ -371,10 +377,10 @@ class ConformerLayer(nn.Module):
                 flash_attn = flash_attn,
                 rotary_emb_fn = rotary_emb_fn
             ))) + x
-        
+
         if not self.trasformer:
             x = self.do_conv(self.conv(x, pad_mask = pad_mask)) + x
-    
+
         x = self.do_ff(self.ff2(x)) + x
 
         x = self.norm_out(x)
@@ -394,4 +400,4 @@ if __name__ == '__main__':
     lengths = lengths.to(device)
     out = model(audio, length=lengths)
     print(out['final_posteriors'].shape)
-    
+
