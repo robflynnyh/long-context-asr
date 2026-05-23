@@ -119,11 +119,19 @@ def main():
                 f"Last train diagnostic for `{run['label']}`: loss={diagnostics.get('loss')}, blank_p={diagnostics.get('blank_p')}, step={diagnostics.get('step')}."
             )
 
+    stage = str(manifest.get("stage") or "")
+    if stage == "ablation":
+        result_label = "Ablation primary probe result"
+        failure_scope = "No primary ablation eval JSON was produced."
+    else:
+        result_label = "One-record overfit result"
+        failure_scope = "No primary eval JSON was produced."
+
     if primary_eval:
         lines.extend(
             [
                 "",
-                f"One-record overfit result: {'PASS' if passed else 'FAIL'}.",
+                f"{result_label}: {'PASS' if passed else 'FAIL'}.",
                 (
                     f"Pass rule: random_bilstm WER <= {percent(args.pass_wer_threshold)}, "
                     f"blank rate <= {percent(args.pass_blank_threshold)}, and nonzero hypothesis words."
@@ -137,7 +145,14 @@ def main():
             ]
         )
     else:
-        lines.extend(["", "One-record overfit result: FAIL. No primary eval JSON was produced."])
+        lines.extend(["", f"{result_label}: FAIL. {failure_scope}"])
+    if stage == "ablation":
+        lines.extend(
+            [
+                "",
+                "Ablation note: this fresh 20-epoch random-BiLSTM result is separate from the gated 80-epoch one-record overfit control.",
+            ]
+        )
 
     lines.extend(
         [
