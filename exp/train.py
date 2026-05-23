@@ -154,13 +154,14 @@ def train(
     while not finished:#################
         try:
             batch, i = next(dataloader_iter), i + 1
-            pbar.update(1) if i > 0 else None
+            pbar.update(1)
         except StopIteration:
             epoch += 1
             seen_ids = reset_seen_ids(seen_ids = seen_ids, epoch = epoch - 1)
             if epoch >= max_epochs:
                 finished = True
             else:
+                pbar.close()
                 dataloader.update(
                     batch_size = dataloader.batch_size, 
                     seen_ids = seen_ids,
@@ -399,7 +400,8 @@ def train(
                 pbar.total = len(dataloader) # update total of tqdm
                 
         del chunks
-        
+
+    pbar.close()
     save_model( # save final model
         model = model, 
         optimizer = optimizer, 
