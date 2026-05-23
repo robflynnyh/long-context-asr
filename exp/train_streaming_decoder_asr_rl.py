@@ -451,6 +451,7 @@ def sample_streaming_rollouts(
     num_rollouts: int,
     temperature: float,
     max_output_frames: Optional[int] = None,
+    use_kv_cache: Optional[bool] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     was_training = model.training
     model.eval()
@@ -469,7 +470,11 @@ def sample_streaming_rollouts(
     prev_ids = torch.full((x.size(0), x.size(1)), model.get_silence_id(), dtype=torch.long, device=x.device)
     predictions = []
     temperature = max(float(temperature), 1e-6)
-    use_kv_cache = rollout_kv_cache_enabled(model)
+    detected_kv_cache = rollout_kv_cache_enabled(model)
+    if use_kv_cache is None:
+        use_kv_cache = detected_kv_cache
+    elif use_kv_cache and not detected_kv_cache:
+        raise ValueError("requested rollout KV cache, but model layers do not expose the required cacheable structure")
     layer_kv_cache: List[Optional[torch.Tensor]] = [None for _ in model.layers]
 
     for step in range(x.size(1)):
@@ -1332,6 +1337,60 @@ def self_test() -> None:
         assert torch.allclose(cached_step, full_prefix[:, -1:], atol=2e-5, rtol=2e-4)
     assert cache is not None and cache.shape[:3] == (2, 5, 2)
     assert len(cached_outputs) == features.size(1)
+
+    class EquivalenceStreaming(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.silence_id = 6
+            self.subsampling_factor = 1
+            self.input_proj = torch.nn.Linear(80, 8)
+            self.prev_token_embedding = torch.nn.Embedding(7, 8)
+            self.layers = torch.nn.ModuleList([CausalDecoderLayer(d_model=8, n_heads=2, expansion_factor=2)])
+            self.norm = torch.nn.LayerNorm(8)
+            self.silence_head = torch.nn.Linear(8, 2)
+            self.text_head = torch.nn.Linear(8, 6)
+            self.rotary_pos_emb = RotaryPositionalEmbedding(dim=4, base=128)
+
+        def get_silence_id(self):
+            return self.silence_id
+
+        def subsampling(self, x, lengths):
+            return self.input_proj(x), lengths
+
+        def _rotary_emb_fn(self, length, device):
+            cos, sin = self.rotary_pos_emb(length, device)
+            return apply_rotary(cos=cos, sin=sin, learned=self.rotary_pos_emb.learned_freq)
+
+        def _combined_logits(self, silence_logits, text_logits):
+            return torch.cat([text_logits, silence_logits[:, :1]], dim=-1)
+
+    torch.manual_seed(13)
+    equiv_model = EquivalenceStreaming().eval()
+    equiv_audio = torch.randn(2, 80, 6)
+    equiv_lengths = torch.tensor([6, 4], dtype=torch.long)
+    assert rollout_kv_cache_enabled(equiv_model)
+    torch.manual_seed(99)
+    cached_actions, cached_lengths = sample_streaming_rollouts(
+        equiv_model,
+        equiv_audio,
+        equiv_lengths,
+        num_rollouts=3,
+        temperature=0.7,
+        max_output_frames=5,
+        use_kv_cache=True,
+    )
+    torch.manual_seed(99)
+    full_actions, full_lengths = sample_streaming_rollouts(
+        equiv_model,
+        equiv_audio,
+        equiv_lengths,
+        num_rollouts=3,
+        temperature=0.7,
+        max_output_frames=5,
+        use_kv_cache=False,
+    )
+    assert torch.equal(cached_lengths, full_lengths)
+    assert torch.equal(cached_actions, full_actions)
     print("Self-test passed")
 
 
