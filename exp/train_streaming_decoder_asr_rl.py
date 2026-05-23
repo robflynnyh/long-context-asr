@@ -455,82 +455,141 @@ def sample_streaming_rollouts(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     was_training = model.training
     model.eval()
-
-    x = audio.transpose(1, 2)
-    x, out_lengths = model.subsampling(x, lengths=audio_lengths)
-    if max_output_frames is not None and max_output_frames > 0 and x.size(1) > max_output_frames:
-        x = x[:, :max_output_frames]
-        out_lengths = out_lengths.clamp(max=max_output_frames)
-
-    x = x.repeat_interleave(num_rollouts, dim=0)
-    out_lengths = out_lengths.repeat_interleave(num_rollouts, dim=0)
-    key_padding_mask = torch.arange(x.size(1), device=x.device).expand(x.size(0), -1) >= out_lengths.unsqueeze(1)
-    key_padding_mask = key_padding_mask if key_padding_mask.any() else None
-
-    prev_ids = torch.full((x.size(0), x.size(1)), model.get_silence_id(), dtype=torch.long, device=x.device)
-    predictions = []
-    temperature = max(float(temperature), 1e-6)
-    detected_kv_cache = rollout_kv_cache_enabled(model)
-    if use_kv_cache is None:
-        use_kv_cache = detected_kv_cache
-    elif use_kv_cache and not detected_kv_cache:
-        raise ValueError("requested rollout KV cache, but model layers do not expose the required cacheable structure")
-    layer_kv_cache: List[Optional[torch.Tensor]] = [None for _ in model.layers]
-
-    for step in range(x.size(1)):
-        if use_kv_cache:
-            h = x[:, step : step + 1] + model.prev_token_embedding(prev_ids[:, step : step + 1])
-            valid = (step < out_lengths).view(-1, 1, 1)
-            h = h.masked_fill(~valid, 0)
-            rotary_emb_fn = _rotary_emb_fn_for_step(model, step, h.device)
-            for layer_idx, layer in enumerate(model.layers):
-                h, layer_kv_cache[layer_idx] = _cached_decoder_layer_step(
-                    layer=layer,
-                    x_step=h,
-                    cached_kv=layer_kv_cache[layer_idx],
-                    rotary_emb_fn=rotary_emb_fn,
-                )
-            step_h = model.norm(h.squeeze(1))
-        else:
-            h = x + model.prev_token_embedding(prev_ids)
-            if key_padding_mask is not None:
-                h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
-            rotary_emb_fn = model._rotary_emb_fn(h.size(1), h.device) if hasattr(model, "_rotary_emb_fn") else None
-            for layer in model.layers:
-                h = layer(h, rotary_emb_fn=rotary_emb_fn)
-            step_h = model.norm(h[:, step])
-        logits = model._combined_logits(model.silence_head(step_h), model.text_head(step_h))
-        pred = torch.multinomial((logits / temperature).softmax(dim=-1), num_samples=1).squeeze(-1)
-        valid = step < out_lengths
-        pred = torch.where(valid, pred, torch.full_like(pred, model.get_silence_id()))
-        predictions.append(pred)
-        if step + 1 < x.size(1):
-            prev_ids[:, step + 1] = pred
-
-    if was_training:
-        model.train()
-    return torch.stack(predictions, dim=1), out_lengths
+    try:
+        x = audio.transpose(1, 2)
+        x, out_lengths = model.subsampling(x, lengths=audio_lengths)
+        if max_output_frames is not None and max_output_frames > 0 and x.size(1) > max_output_frames:
+            x = x[:, :max_output_frames]
+            out_lengths = out_lengths.clamp(max=max_output_frames)
+        return sample_streaming_rollouts_from_encoded(
+            model=model,
+            encoded=x,
+            encoded_lengths=out_lengths,
+            num_rollouts=num_rollouts,
+            temperature=temperature,
+            use_kv_cache=use_kv_cache,
+        )
+    finally:
+        if was_training:
+            model.train()
 
 
-def streaming_sequence_logprobs(
+@torch.no_grad()
+def sample_streaming_rollouts_from_encoded(
     model: torch.nn.Module,
-    audio: torch.Tensor,
-    audio_lengths: torch.Tensor,
+    encoded: torch.Tensor,
+    encoded_lengths: torch.Tensor,
+    num_rollouts: int,
+    temperature: float,
+    use_kv_cache: Optional[bool] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    was_training = model.training
+    model.eval()
+    try:
+        x = encoded
+        out_lengths = encoded_lengths
+        x = x.repeat_interleave(num_rollouts, dim=0)
+        out_lengths = out_lengths.repeat_interleave(num_rollouts, dim=0)
+        key_padding_mask = torch.arange(x.size(1), device=x.device).expand(x.size(0), -1) >= out_lengths.unsqueeze(1)
+        key_padding_mask = key_padding_mask if key_padding_mask.any() else None
+
+        prev_ids = torch.full((x.size(0), x.size(1)), model.get_silence_id(), dtype=torch.long, device=x.device)
+        predictions = []
+        temperature = max(float(temperature), 1e-6)
+        detected_kv_cache = rollout_kv_cache_enabled(model)
+        if use_kv_cache is None:
+            use_kv_cache = detected_kv_cache
+        elif use_kv_cache and not detected_kv_cache:
+            raise ValueError("requested rollout KV cache, but model layers do not expose the required cacheable structure")
+        layer_kv_cache: List[Optional[torch.Tensor]] = [None for _ in model.layers]
+
+        for step in range(x.size(1)):
+            if use_kv_cache:
+                h = x[:, step : step + 1] + model.prev_token_embedding(prev_ids[:, step : step + 1])
+                valid = (step < out_lengths).view(-1, 1, 1)
+                h = h.masked_fill(~valid, 0)
+                rotary_emb_fn = _rotary_emb_fn_for_step(model, step, h.device)
+                for layer_idx, layer in enumerate(model.layers):
+                    h, layer_kv_cache[layer_idx] = _cached_decoder_layer_step(
+                        layer=layer,
+                        x_step=h,
+                        cached_kv=layer_kv_cache[layer_idx],
+                        rotary_emb_fn=rotary_emb_fn,
+                    )
+                step_h = model.norm(h.squeeze(1))
+            else:
+                h = x + model.prev_token_embedding(prev_ids)
+                if key_padding_mask is not None:
+                    h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
+                rotary_emb_fn = model._rotary_emb_fn(h.size(1), h.device) if hasattr(model, "_rotary_emb_fn") else None
+                for layer in model.layers:
+                    h = layer(h, rotary_emb_fn=rotary_emb_fn)
+                step_h = model.norm(h[:, step])
+            logits = model._combined_logits(model.silence_head(step_h), model.text_head(step_h))
+            pred = torch.multinomial((logits / temperature).softmax(dim=-1), num_samples=1).squeeze(-1)
+            valid = step < out_lengths
+            pred = torch.where(valid, pred, torch.full_like(pred, model.get_silence_id()))
+            predictions.append(pred)
+            if step + 1 < x.size(1):
+                prev_ids[:, step + 1] = pred
+
+        return torch.stack(predictions, dim=1), out_lengths
+    finally:
+        if was_training:
+            model.train()
+
+
+def streaming_sequence_logprobs_from_encoded(
+    model: torch.nn.Module,
+    encoded: torch.Tensor,
+    encoded_lengths: torch.Tensor,
     actions: torch.Tensor,
     action_lengths: torch.Tensor,
     num_rollouts: int,
 ) -> torch.Tensor:
-    repeated_audio = audio.repeat_interleave(num_rollouts, dim=0)
-    repeated_lengths = audio_lengths.repeat_interleave(num_rollouts, dim=0)
-    tensor_lengths = torch.full((audio.size(0),), audio.size(-1), dtype=audio_lengths.dtype, device=audio_lengths.device)
-    full_output_length = int(model.output_lengths(tensor_lengths).max().item())
+    repeated_encoded = encoded.repeat_interleave(num_rollouts, dim=0)
+    repeated_lengths = encoded_lengths.repeat_interleave(num_rollouts, dim=0)
+    full_output_length = encoded.size(1)
     if actions.size(1) < full_output_length:
         pad = full_output_length - actions.size(1)
         actions_for_forward = torch.nn.functional.pad(actions, (0, pad), value=model.get_silence_id())
     else:
         actions_for_forward = actions
-    out = model(audio_signal=repeated_audio, length=repeated_lengths, frame_targets=actions_for_forward, return_logits=True)
-    logits = out["logits"]
+
+    if hasattr(model, "_previous_targets"):
+        prev_ids = model._previous_targets(
+            actions_for_forward,
+            repeated_encoded.size(0),
+            repeated_encoded.size(1),
+            repeated_encoded.device,
+        )
+    else:
+        prev_ids = actions_for_forward[:, : repeated_encoded.size(1)].clone()
+        prev_ids = torch.cat(
+            [
+                torch.full(
+                    (prev_ids.size(0), 1),
+                    model.get_silence_id(),
+                    dtype=torch.long,
+                    device=prev_ids.device,
+                ),
+                prev_ids[:, :-1],
+            ],
+            dim=1,
+        )
+    x = repeated_encoded + model.prev_token_embedding(prev_ids)
+    key_padding_mask = (
+        torch.arange(x.size(1), device=x.device).expand(x.size(0), -1) >= repeated_lengths.unsqueeze(1)
+    )
+    key_padding_mask = key_padding_mask if key_padding_mask.any() else None
+    if key_padding_mask is not None:
+        x = x.masked_fill(key_padding_mask.unsqueeze(-1), 0)
+    rotary_emb_fn = model._rotary_emb_fn(x.size(1), x.device) if hasattr(model, "_rotary_emb_fn") else None
+    for layer in model.layers:
+        x = layer(x, rotary_emb_fn=rotary_emb_fn)
+    x = model.norm(x)
+    logits = model._combined_logits(model.silence_head(x), model.text_head(x))
+
     if logits.size(1) != actions.size(1):
         common = min(logits.size(1), actions.size(1))
         logits = logits[:, :common]
@@ -542,13 +601,24 @@ def streaming_sequence_logprobs(
     return token_log_probs.masked_fill(~mask, 0.0).sum(dim=1)
 
 
-def slice_streaming_chunk(chunk: Dict[str, Any], start: int, end: int) -> Dict[str, Any]:
-    return {
-        "audio": chunk["audio"][start:end],
-        "audio_lengths": chunk["audio_lengths"][start:end],
-        "transcripts": chunk["transcripts"][start:end],
-        "chunk_start_frames": chunk["chunk_start_frames"][start:end],
-    }
+def streaming_sequence_logprobs(
+    model: torch.nn.Module,
+    audio: torch.Tensor,
+    audio_lengths: torch.Tensor,
+    actions: torch.Tensor,
+    action_lengths: torch.Tensor,
+    num_rollouts: int,
+) -> torch.Tensor:
+    x = audio.transpose(1, 2)
+    encoded, encoded_lengths = model.subsampling(x, lengths=audio_lengths)
+    return streaming_sequence_logprobs_from_encoded(
+        model=model,
+        encoded=encoded,
+        encoded_lengths=encoded_lengths,
+        actions=actions,
+        action_lengths=action_lengths,
+        num_rollouts=num_rollouts,
+    )
 
 
 def aggregate_microbatch_metrics(metrics_list: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -588,6 +658,71 @@ def aggregate_microbatch_metrics(metrics_list: List[Dict[str, Any]]) -> Dict[str
     return output
 
 
+def _rollout_group_slice(tensor: torch.Tensor, start: int, end: int, num_rollouts: int) -> torch.Tensor:
+    grouped = tensor.reshape(-1, num_rollouts, *tensor.shape[1:])
+    return grouped[start:end].reshape(-1, *tensor.shape[1:])
+
+
+def _logprob_microbatch_size(rl_config: Any, batch_size: int) -> int:
+    value = rl_config.get("logprob_microbatch_size", rl_config.get("microbatch_size", 0))
+    microbatch_size = int(value or 0)
+    if microbatch_size <= 0:
+        microbatch_size = batch_size
+    return max(1, min(microbatch_size, batch_size))
+
+
+def streaming_logprob_loss_from_encoded(
+    model: torch.nn.Module,
+    encoded: torch.Tensor,
+    encoded_lengths: torch.Tensor,
+    actions: torch.Tensor,
+    action_lengths: torch.Tensor,
+    advantages: torch.Tensor,
+    num_rollouts: int,
+    microbatch_size: int,
+    backward: bool = False,
+) -> Tuple[torch.Tensor, int]:
+    batch_size = encoded.size(0)
+    microbatch_size = max(1, min(int(microbatch_size), batch_size))
+    encoded_for_logprobs = encoded
+    if backward:
+        encoded_for_logprobs = encoded.detach()
+        if encoded.requires_grad:
+            encoded_for_logprobs.requires_grad_(True)
+    total_loss: Optional[torch.Tensor] = None
+    microbatches = 0
+
+    for start in range(0, batch_size, microbatch_size):
+        end = min(start + microbatch_size, batch_size)
+        micro_actions = _rollout_group_slice(actions, start, end, num_rollouts)
+        micro_action_lengths = _rollout_group_slice(action_lengths, start, end, num_rollouts)
+        micro_advantages = _rollout_group_slice(advantages, start, end, num_rollouts)
+        logprobs = streaming_sequence_logprobs_from_encoded(
+            model=model,
+            encoded=encoded_for_logprobs[start:end],
+            encoded_lengths=encoded_lengths[start:end],
+            actions=micro_actions,
+            action_lengths=micro_action_lengths,
+            num_rollouts=num_rollouts,
+        )
+        micro_loss = -(micro_advantages.detach() * logprobs).mean()
+        weighted_loss = micro_loss * (float(end - start) / float(batch_size))
+        microbatches += 1
+
+        if backward:
+            weighted_loss.backward()
+            detached = weighted_loss.detach()
+            total_loss = detached if total_loss is None else total_loss + detached
+        else:
+            total_loss = weighted_loss if total_loss is None else total_loss + weighted_loss
+
+    if total_loss is None:
+        total_loss = encoded.sum() * 0.0
+    if backward and encoded.requires_grad and encoded_for_logprobs.grad is not None:
+        encoded.backward(encoded_for_logprobs.grad)
+    return total_loss, microbatches
+
+
 def rl_loss_for_chunk(
     model: torch.nn.Module,
     chunk: Dict[str, Any],
@@ -596,6 +731,7 @@ def rl_loss_for_chunk(
     device: torch.device,
     dtype: torch.dtype,
     normalizer: Any,
+    backward: bool = False,
 ) -> Tuple[torch.Tensor, bool, Dict[str, Any]]:
     rl_config = config.rl
     num_rollouts = int(rl_config.num_rollouts)
@@ -608,91 +744,101 @@ def rl_loss_for_chunk(
     max_output_frames = rl_config.get("max_output_frames", None)
     max_output_frames = None if max_output_frames is None else int(max_output_frames)
 
-    with torch.autocast(device.type, dtype=dtype) if device.type == "cuda" and dtype != torch.float32 else nullcontext():
-        actions, action_lengths = sample_streaming_rollouts(
-            model=model,
-            audio=audio,
-            audio_lengths=audio_lengths,
-            num_rollouts=num_rollouts,
-            temperature=float(rl_config.temperature),
-            max_output_frames=max_output_frames,
-        )
+    was_training = model.training
+    model.eval()
+    try:
+        with torch.autocast(device.type, dtype=dtype) if device.type == "cuda" and dtype != torch.float32 else nullcontext():
+            x = audio.transpose(1, 2)
+            encoded, encoded_lengths = model.subsampling(x, lengths=audio_lengths)
+            if max_output_frames is not None and max_output_frames > 0 and encoded.size(1) > max_output_frames:
+                encoded = encoded[:, :max_output_frames]
+                encoded_lengths = encoded_lengths.clamp(max=max_output_frames)
 
-        hypotheses = []
-        hypothesis_word_times = []
-        for row_idx in range(actions.size(0)):
-            prediction_ids = actions[row_idx, : int(action_lengths[row_idx].item())].detach().cpu().tolist()
-            base_idx = row_idx // num_rollouts
-            hypotheses.append(
-                decode_model_prediction_ids(
-                    model=model,
-                    tokenizer=tokenizer,
-                    prediction_ids=prediction_ids,
-                    max_tokens=None,
-                    normalizer=normalizer,
-                )
+            actions, action_lengths = sample_streaming_rollouts_from_encoded(
+                model=model,
+                encoded=encoded.detach(),
+                encoded_lengths=encoded_lengths,
+                num_rollouts=num_rollouts,
+                temperature=float(rl_config.temperature),
             )
-            hypothesis_word_times.append(
-                prediction_words_with_times(
-                    model=model,
-                    tokenizer=tokenizer,
-                    prediction_ids=prediction_ids,
-                    chunk_start_frames=int(chunk_start_frames[base_idx].item()),
+
+            hypotheses = []
+            hypothesis_word_times = []
+            for row_idx in range(actions.size(0)):
+                prediction_ids = actions[row_idx, : int(action_lengths[row_idx].item())].detach().cpu().tolist()
+                base_idx = row_idx // num_rollouts
+                hypotheses.append(
+                    decode_model_prediction_ids(
+                        model=model,
+                        tokenizer=tokenizer,
+                        prediction_ids=prediction_ids,
+                        max_tokens=None,
+                        normalizer=normalizer,
+                    )
+                )
+                hypothesis_word_times.append(
+                    prediction_words_with_times(
+                        model=model,
+                        tokenizer=tokenizer,
+                        prediction_ids=prediction_ids,
+                        chunk_start_frames=int(chunk_start_frames[base_idx].item()),
+                        subsampling_factor=model.subsampling_factor,
+                        normalizer=normalizer,
+                    )
+                )
+            base_lengths = action_lengths.view(-1, num_rollouts)[:, 0].detach().cpu()
+            references = []
+            reference_word_times = []
+            for batch_idx, transcript in enumerate(transcripts):
+                reference = streaming_reference_for_reward(
+                    transcript=transcript,
+                    chunk_start_frames=int(chunk_start_frames[batch_idx].item()),
+                    output_length=int(base_lengths[batch_idx].item()),
                     subsampling_factor=model.subsampling_factor,
+                    delay_seconds=float(config.streaming.get("delay_seconds", 2.0)),
                     normalizer=normalizer,
                 )
-            )
-        base_lengths = action_lengths.view(-1, num_rollouts)[:, 0].detach().cpu()
-        references = []
-        reference_word_times = []
-        for batch_idx, transcript in enumerate(transcripts):
-            reference = streaming_reference_for_reward(
-                transcript=transcript,
-                chunk_start_frames=int(chunk_start_frames[batch_idx].item()),
-                output_length=int(base_lengths[batch_idx].item()),
-                subsampling_factor=model.subsampling_factor,
-                delay_seconds=float(config.streaming.get("delay_seconds", 2.0)),
-                normalizer=normalizer,
-            )
-            references.extend([reference] * num_rollouts)
-            ref_timed = timed_reference_words(transcript, normalizer=normalizer)
-            reference_word_times.extend([ref_timed] * num_rollouts)
+                references.extend([reference] * num_rollouts)
+                ref_timed = timed_reference_words(transcript, normalizer=normalizer)
+                reference_word_times.extend([ref_timed] * num_rollouts)
 
-        rewards, reward_stats = compute_rewards(
-            hypotheses=hypotheses,
-            references=references,
-            reward_config=rl_config,
-            hypothesis_word_times=hypothesis_word_times,
-            reference_word_times=reference_word_times,
-        )
-        rewards = rewards.to(device)
-        advantages = compute_grpo_advantages(
-            rewards=rewards,
-            group_size=num_rollouts,
-            eps=float(rl_config.get("advantage_eps", 1e-6)),
-            min_group_std=float(rl_config.get("reward_std_min", 0.0)),
-        ).to(device)
+            rewards, reward_stats = compute_rewards(
+                hypotheses=hypotheses,
+                references=references,
+                reward_config=rl_config,
+                hypothesis_word_times=hypothesis_word_times,
+                reference_word_times=reference_word_times,
+            )
+            rewards = rewards.to(device)
+            advantages = compute_grpo_advantages(
+                rewards=rewards,
+                group_size=num_rollouts,
+                eps=float(rl_config.get("advantage_eps", 1e-6)),
+                min_group_std=float(rl_config.get("reward_std_min", 0.0)),
+            ).to(device)
 
-        if advantages.abs().sum() == 0:
-            loss = torch.zeros((), device=device, requires_grad=True)
-            skipped_zero_advantage = True
-        else:
-            was_training = model.training
-            model.eval()
-            try:
-                logprobs = streaming_sequence_logprobs(
+            if advantages.abs().sum() == 0:
+                loss = torch.zeros((), device=device, requires_grad=True)
+                skipped_zero_advantage = True
+                logprob_microbatch_size = _logprob_microbatch_size(rl_config, encoded.size(0))
+                logprob_microbatches = 0
+            else:
+                logprob_microbatch_size = _logprob_microbatch_size(rl_config, encoded.size(0))
+                loss, logprob_microbatches = streaming_logprob_loss_from_encoded(
                     model=model,
-                    audio=audio,
-                    audio_lengths=audio_lengths,
+                    encoded=encoded,
+                    encoded_lengths=encoded_lengths,
                     actions=actions,
                     action_lengths=action_lengths,
                     num_rollouts=num_rollouts,
+                    advantages=advantages,
+                    microbatch_size=logprob_microbatch_size,
+                    backward=backward,
                 )
-            finally:
-                if was_training:
-                    model.train()
-            loss = -(advantages.detach() * logprobs).mean()
-            skipped_zero_advantage = False
+                skipped_zero_advantage = False
+    finally:
+        if was_training:
+            model.train()
 
     rewards_grouped = rearrange(rewards.detach().cpu(), "(b g) -> b g", g=num_rollouts)
     reward_std_grouped = rewards_grouped.std(dim=1, unbiased=False)
@@ -718,7 +864,8 @@ def rl_loss_for_chunk(
         "late_correct_penalty_fraction": reward_stats["late_correct_penalty_fraction"],
         "output_frames": int(action_lengths.max().detach().cpu().item()),
         "chunk_batch": len(transcripts),
-        "microbatches": 1,
+        "microbatches": int(logprob_microbatches),
+        "logprob_microbatch_size": int(logprob_microbatch_size),
     }
     return loss, skipped_zero_advantage, metrics
 
@@ -733,43 +880,28 @@ def rl_update(
     dtype: torch.dtype,
     normalizer: Any,
 ) -> Dict[str, Any]:
-    batch_size = len(chunk["transcripts"])
-    microbatch_size = int(config.rl.get("microbatch_size", 0) or 0)
-    if microbatch_size <= 0:
-        microbatch_size = batch_size
-    microbatch_size = max(1, min(microbatch_size, batch_size))
-
     optimizer.zero_grad()
-    metrics_list = []
-    any_update = False
-    for start in range(0, batch_size, microbatch_size):
-        micro_chunk = slice_streaming_chunk(chunk, start, min(start + microbatch_size, batch_size))
-        loss, skipped_zero_advantage, metrics = rl_loss_for_chunk(
-            model=model,
-            chunk=micro_chunk,
-            tokenizer=tokenizer,
-            config=config,
-            device=device,
-            dtype=dtype,
-            normalizer=normalizer,
-        )
-        metrics_list.append(metrics)
-        if not skipped_zero_advantage:
-            loss_scale = float(metrics["chunk_batch"]) / float(batch_size)
-            (loss * loss_scale).backward()
-            any_update = True
-        del loss
-        if device.type == "cuda":
-            torch.cuda.empty_cache()
+    loss, skipped_zero_advantage, metrics = rl_loss_for_chunk(
+        model=model,
+        chunk=chunk,
+        tokenizer=tokenizer,
+        config=config,
+        device=device,
+        dtype=dtype,
+        normalizer=normalizer,
+        backward=True,
+    )
 
-    if any_update:
+    if not skipped_zero_advantage:
         clip_value = float(config.training.get("clip_value", 0.8))
         if clip_value > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
         optimizer.step()
+    del loss
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
 
-    metrics = aggregate_microbatch_metrics(metrics_list)
-    metrics["microbatch_size"] = microbatch_size
+    metrics["microbatch_size"] = metrics["logprob_microbatch_size"]
     return metrics
 
 
@@ -965,6 +1097,7 @@ def train(args: argparse.Namespace) -> None:
     print(f"RL algorithm: {config.rl.algorithm}")
     print(f"Rollouts per chunk: {config.rl.num_rollouts}")
     print(f"RL microbatch size: {config.rl.get('microbatch_size', 0)}")
+    print(f"RL logprob microbatch size: {config.rl.get('logprob_microbatch_size', config.rl.get('microbatch_size', 0))}")
     print(f"Rollout KV cache: {rollout_kv_cache_enabled(model)}")
     print(f"Reward std minimum: {config.rl.get('reward_std_min', 0.0)}")
     print(f"Max output frames: {config.rl.get('max_output_frames', None)}")
@@ -1246,6 +1379,7 @@ def self_test() -> None:
             super().__init__()
             self.silence_id = 4
             self.subsampling_factor = 1
+            self.subsampling_calls = 0
             self.prev_token_embedding = torch.nn.Embedding(5, 3)
             self.proj = torch.nn.Linear(3, 5)
             self.layers = torch.nn.ModuleList([ToyLayer()])
@@ -1269,6 +1403,7 @@ def self_test() -> None:
             return lengths
 
         def subsampling(self, x, lengths):
+            self.subsampling_calls += 1
             return torch.zeros(x.size(0), x.size(1), 3), lengths
 
         def _rotary_emb_fn(self, length, device):
@@ -1276,13 +1411,13 @@ def self_test() -> None:
             return lambda q, k: (q, k)
 
         def _combined_logits(self, silence_logits, text_logits):
-            return self.proj(torch.zeros(text_logits.size(0), 3))
+            return self.proj(torch.zeros(*text_logits.shape[:-1], 3))
 
         def silence_head(self, h):
-            return torch.zeros(h.size(0), 2)
+            return torch.zeros(*h.shape[:-1], 2)
 
         def text_head(self, h):
-            return torch.zeros(h.size(0), 4)
+            return torch.zeros(*h.shape[:-1], 4)
 
         def forward(self, audio_signal, length, frame_targets, return_logits=True):
             h = self.prev_token_embedding(frame_targets.clamp_min(0))
@@ -1299,13 +1434,42 @@ def self_test() -> None:
     assert repeated_text == "tok1 tok1 tok2 tok2"
     audio = torch.zeros(2, 80, 4)
     lengths = torch.tensor([4, 3], dtype=torch.long)
+    toy.subsampling_calls = 0
     actions, action_lengths = sample_streaming_rollouts(toy, audio, lengths, num_rollouts=2, temperature=1.0)
     assert actions.shape == (4, 4)
     assert toy.layers[0].seen_rotary
+    assert toy.subsampling_calls == 1
+    toy.subsampling_calls = 0
     logprobs = streaming_sequence_logprobs(toy, audio, lengths, actions, action_lengths, num_rollouts=2)
     assert logprobs.shape == (4,)
+    assert toy.subsampling_calls == 1
     (-logprobs.mean()).backward()
     assert toy.proj.weight.grad is not None
+    encoded, encoded_lengths = toy.subsampling(audio.transpose(1, 2), lengths=lengths)
+    advantages = torch.tensor([1.0, -1.0, 0.5, -0.5])
+    full_loss, full_microbatches = streaming_logprob_loss_from_encoded(
+        toy,
+        encoded,
+        encoded_lengths,
+        actions,
+        action_lengths,
+        advantages,
+        num_rollouts=2,
+        microbatch_size=2,
+    )
+    micro_loss, micro_microbatches = streaming_logprob_loss_from_encoded(
+        toy,
+        encoded,
+        encoded_lengths,
+        actions,
+        action_lengths,
+        advantages,
+        num_rollouts=2,
+        microbatch_size=1,
+    )
+    assert full_microbatches == 1
+    assert micro_microbatches == 2
+    assert torch.allclose(full_loss, micro_loss, atol=1e-6, rtol=1e-6)
 
     from lcasr.components.positional_encodings import RotaryPositionalEmbedding
     from lcasr.models.streaming_decoder_asr import CausalDecoderLayer
