@@ -6,6 +6,8 @@ Post-ROB-119 addendum: 2026-05-22
 
 Post-ROB-125/128 addendum: 2026-05-22
 
+Post-ROB-128 completion addendum: 2026-05-23
+
 ## Scope
 
 This report investigates why the ROB-91 frozen probes over the ROB-70 BEST-RQ SSL checkpoints performed poorly. It compares the repository implementation against the open BEST-RQ implementation described in arXiv:2405.04296 and the current SpeechBrain BEST-RQ recipe.
@@ -46,6 +48,8 @@ Repository evidence:
   - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/rob119-full-weighted-bilstm-20260522T110547Z/diagnostics/primary.jsonl`
 - ROB-119 implementation branch inspected at `origin/symphony/rob-119-paper-matched-bestrq-probe`
 - ROB-125/ROB-128 Linear comments on the supervised-feature probe, unsorted TEDLIUM train timestamps, and the newer utterance-boundary correction.
+- ROB-128 utterance-boundary overfit summary: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-128/rob128-utterance-ladder-normfix-20260523T161617Z/OUTCOME.md`
+- ROB-128 stage-scoped ablation summary: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-128/rob128-ablation-stagefix-20260523T165221Z/ABLATION.md`
 - `symphony/scripts/prepare_rob91_tedlium_manifest.py`
 - `exp/train.py`
 - `eval/tedlium/run.py`
@@ -349,3 +353,33 @@ The next ROB-126/128 work should use this order:
 The initial ROB-98 conclusion should be revised, not discarded. Low actual mask density was the highest-confidence mismatch in ROB-70 and it was worth fixing. ROB-100 fixed that mismatch, but ROB-119 shows that the corrected one-epoch checkpoint still does not yield useful frozen TEDLIUM CTC representations under a substantially more paper-matched probe.
 
 The most actionable next move is now narrower: fix the supervised TEDLIUM probe training path before interpreting any more frozen SSL probe WER. Use default TEDLIUM utterance boundaries, increase the practical utterance batch size, and first prove that the fresh weighted-state BiLSTM CTC probe can learn from a known-good supervised encoder. Only then should ROB-126's top-layer-unfrozen ROB-100 probe or a longer paper-like SSL rerun be used as evidence about SSL representation quality.
+
+## Post-ROB-128 Completion Addendum: Probe Path Is Viable, But Head Optimization Is Sensitive
+
+ROB-128 has now run the corrected supervised-control ladder on known-good ROB-81 supervised features with TEDLIUM train examples cut on STM utterance boundaries and normalized before tokenization. This resolves one parent-level question: the corrected utterance-boundary probe path can train a fresh CTC head to emit real words when the frozen encoder is known to be useful.
+
+Key ROB-128 results:
+
+| Evidence | Result | Parent-level interpretation |
+| --- | --- | --- |
+| One-record normalized-label random-BiLSTM overfit, 80 epochs | `0.23%` WER, `0.31%` CER, `49.46%` blank, `2655` hyp words / `2649` ref words | The fresh probe stack can learn from known-good supervised features once TEDLIUM labels and utterance boundaries are correct. This rules out a universal decode/CTC-label-path failure. |
+| Source CTC eval-only on the same one-record utterance set | `22.69%` WER, `81.57%` blank, `2247` hyp words / `2649` ref words | The supervised checkpoint is useful under the utterance-level eval path, though its source projection is not tuned for this exact one-record normalized probe setup. |
+| Stage-scoped 20-epoch source-linear trainable head | `10.49%` WER | Starting from a useful supervised CTC projection adapts cleanly. |
+| Stage-scoped 20-epoch random-linear head | `43.07%` WER | A simple fresh head can learn usable output under the corrected labels, although not as well as the source-initialized head. |
+| Stage-scoped 20-epoch fresh random-BiLSTM head | `100.00%` WER, `100.00%` blank, `0` hyp words | The BiLSTM probe recipe is still highly sensitive to initialization/training horizon/optimization. The earlier blank-heavy BiLSTM failures cannot be read as pure representation-quality evidence. |
+
+The important correction is that ROB-128 is not "probe fixed, SSL bad." It is more precise:
+
+1. **TEDLIUM probe data/label construction was a real blocker and is now corrected in ROB-128.** The one-record overfit result would not be possible if the utterance-boundary loader, normalized labels, CTC tokenization, or greedy eval path were fundamentally broken.
+2. **The known-good supervised-control result still points to probe-head sensitivity.** A source-initialized linear head and a random linear head both learn on the corrected one-record setup, while the fresh random BiLSTM collapses at 20 epochs and only proves overfit success after the longer gated 80-epoch run.
+3. **ROB-119/ROB-125 frozen SSL WER remains stale evidence.** Those runs used the old full-recording/chunk-label TEDLIUM setup and small fixed batches, so they should not be treated as final evidence against ROB-100 SSL representation quality.
+4. **ROB-100 SSL quality remains unresolved.** The parent issue has now isolated a corrected probe path, but that path still needs to be applied to ROB-100/ROB-126 with the same diagnostics before drawing a conclusion about the BEST-RQ checkpoint.
+
+### Current Recommendation
+
+Use the ROB-128 corrected utterance-boundary infrastructure as the gate for any further ROB-100 interpretation:
+
+1. Start the next ROB-100/ROB-126 probe with a conservative head that already proved learnable on supervised features, preferably source-style linear initialization where possible and a random-linear control.
+2. Keep the fresh BiLSTM probe as a separate stress test, not the sole acceptance criterion. If used, give it enough horizon and log blank probability, hypothesis word count, and train loss at each stage.
+3. Keep the result labeled as TEDLIUM transfer evidence unless a LibriSpeech train-clean-100/dev-clean/test-clean/test-other path is added for direct comparison to the open BEST-RQ/MP3S setup.
+4. Do not launch another large SSL rerun from the parent issue until the corrected probe ladder has been run against ROB-100. The original SSL masking diagnosis was real, but current uncertainty is dominated by probe setup and head optimization rather than a known remaining SSL-code bug.
