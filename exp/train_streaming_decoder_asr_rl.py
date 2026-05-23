@@ -17,7 +17,7 @@ from lcasr.eval.wer import word_error_rate_detail
 from lcasr.utils.dataloading import VariableBatchSimpleDataloader, reset_seen_ids
 from lcasr.utils.general import get_model_class, load_checkpoint, load_model, load_optimizer
 from lcasr.utils.streaming_targets import (
-    filter_words_by_end_frame,
+    filter_words_by_frame_overlap,
     pad_audio_for_streaming_delay,
     resolve_timed_words,
 )
@@ -191,6 +191,8 @@ def weighted_error_rewards(
     hypothesis_word_times: Optional[List[List[Dict[str, Any]]]] = None,
     reference_word_times: Optional[List[List[Dict[str, Any]]]] = None,
     late_word_tolerance_seconds: Optional[float] = None,
+    late_word_penalty_per_second: float = 0.25,
+    late_word_penalty_max: float = 1.0,
     wer_weight: float = 0.7,
     cer_weight: float = 0.3,
     reward_offset: float = 1.0,
@@ -202,11 +204,16 @@ def weighted_error_rewards(
     weight_sum = wer_weight + cer_weight
     if weight_sum <= 0:
         raise ValueError("reward weights must sum to a positive value")
+    if late_word_penalty_per_second < 0:
+        raise ValueError("late_word_penalty_per_second must be non-negative")
+    if late_word_penalty_max < 0:
+        raise ValueError("late_word_penalty_max must be non-negative")
     wer_weight = wer_weight / weight_sum
     cer_weight = cer_weight / weight_sum
 
     rewards = []
     late_correct_words = 0
+    late_correct_penalty = 0.0
     matched_words = 0
     for idx, (hyp, ref) in enumerate(zip(hypotheses, references)):
         wer, *_ = word_error_rate_detail(hypotheses=[hyp], references=[ref], use_cer=False)
@@ -225,17 +232,24 @@ def weighted_error_rewards(
             )
             ref_count = max(len(ref_timed), 1)
             late_count = 0
+            late_penalty = 0.0
             for op, ref_idx, hyp_idx in alignment:
                 if op != "equal" or ref_idx is None or hyp_idx is None:
                     continue
                 matched_words += 1
                 ref_time = float(ref_timed[ref_idx]["time"])
                 hyp_time = float(hyp_timed[hyp_idx]["time"])
-                if hyp_time - ref_time > float(late_word_tolerance_seconds):
+                excess_lateness = hyp_time - ref_time - float(late_word_tolerance_seconds)
+                if excess_lateness > 0:
                     late_count += 1
+                    late_penalty += min(
+                        float(late_word_penalty_max),
+                        excess_lateness * float(late_word_penalty_per_second),
+                    )
             if late_count > 0:
                 late_correct_words += late_count
-                wer += late_count / ref_count
+                late_correct_penalty += late_penalty
+                wer += late_penalty / ref_count
         cer, *_ = word_error_rate_detail(hypotheses=[hyp], references=[ref], use_cer=True)
         error = wer_weight * float(wer) + cer_weight * float(cer)
         reward = reward_offset - reward_scale * error
@@ -248,8 +262,10 @@ def weighted_error_rewards(
         rewards.append(reward)
     stats = {
         "late_correct_words": float(late_correct_words),
+        "late_correct_penalty": float(late_correct_penalty),
         "matched_words": float(matched_words),
         "late_correct_word_fraction": float(late_correct_words) / max(float(matched_words), 1.0),
+        "late_correct_penalty_fraction": float(late_correct_penalty) / max(float(matched_words), 1.0),
     }
     return torch.tensor(rewards, dtype=torch.float32), stats
 
@@ -277,6 +293,8 @@ def compute_rewards(
         hypothesis_word_times=hypothesis_word_times,
         reference_word_times=reference_word_times,
         late_word_tolerance_seconds=_optional_float(reward_config, "late_word_tolerance_seconds", None),
+        late_word_penalty_per_second=float(reward_config.get("late_word_penalty_per_second", 0.25)),
+        late_word_penalty_max=float(reward_config.get("late_word_penalty_max", 1.0)),
         wer_weight=float(reward_config.get("reward_wer_weight", 0.7)),
         cer_weight=float(reward_config.get("reward_cer_weight", 0.3)),
         reward_offset=float(reward_config.get("reward_offset", 1.0)),
@@ -337,7 +355,7 @@ def make_streaming_rl_chunks(
         chunk = audio[active, :, chunk_start : chunk_start + chunk_size]
         chunk_lengths = torch.clamp(audio_lengths[active] - chunk_start, min=0, max=chunk.size(-1))
         chunk_transcripts = [
-            filter_words_by_end_frame(transcripts[i], chunk_start, chunk_start + chunk_size)
+            filter_words_by_frame_overlap(transcripts[i], chunk_start, chunk_start + chunk_size)
             for i, keep in enumerate(active.tolist())
             if keep
         ]
@@ -463,6 +481,7 @@ def aggregate_microbatch_metrics(metrics_list: List[Dict[str, Any]]) -> Dict[str
         return sum(float(metrics[key]) * int(metrics["chunk_batch"]) for metrics in metrics_list) / max(total_base, 1)
 
     late_correct_words = sum(float(metrics["late_correct_words"]) for metrics in metrics_list)
+    late_correct_penalty = sum(float(metrics["late_correct_penalty"]) for metrics in metrics_list)
     matched_words = sum(float(metrics["matched_words"]) for metrics in metrics_list)
     output = {
         "loss": weighted_mean("loss"),
@@ -478,8 +497,10 @@ def aggregate_microbatch_metrics(metrics_list: List[Dict[str, Any]]) -> Dict[str
         "sample_hypothesis": metrics_list[0]["sample_hypothesis"],
         "sample_reference": metrics_list[0]["sample_reference"],
         "late_correct_words": late_correct_words,
+        "late_correct_penalty": late_correct_penalty,
         "matched_words": matched_words,
         "late_correct_word_fraction": late_correct_words / max(matched_words, 1.0),
+        "late_correct_penalty_fraction": late_correct_penalty / max(matched_words, 1.0),
         "output_frames": max(int(metrics["output_frames"]) for metrics in metrics_list),
         "chunk_batch": total_base,
         "microbatches": len(metrics_list),
@@ -611,8 +632,10 @@ def rl_loss_for_chunk(
         "sample_hypothesis": hypotheses[0] if len(hypotheses) > 0 else "",
         "sample_reference": references[0] if len(references) > 0 else "",
         "late_correct_words": reward_stats["late_correct_words"],
+        "late_correct_penalty": reward_stats["late_correct_penalty"],
         "matched_words": reward_stats["matched_words"],
         "late_correct_word_fraction": reward_stats["late_correct_word_fraction"],
+        "late_correct_penalty_fraction": reward_stats["late_correct_penalty_fraction"],
         "output_frames": int(action_lengths.max().detach().cpu().item()),
         "chunk_batch": len(transcripts),
         "microbatches": 1,
@@ -864,6 +887,9 @@ def train(args: argparse.Namespace) -> None:
     print(f"RL microbatch size: {config.rl.get('microbatch_size', 0)}")
     print(f"Reward std minimum: {config.rl.get('reward_std_min', 0.0)}")
     print(f"Max output frames: {config.rl.get('max_output_frames', None)}")
+    print(f"Late word tolerance seconds: {config.rl.get('late_word_tolerance_seconds', None)}")
+    print(f"Late word penalty per second: {config.rl.get('late_word_penalty_per_second', 0.25)}")
+    print(f"Late word penalty max: {config.rl.get('late_word_penalty_max', 1.0)}")
 
     pbar = tqdm(total=max_steps, initial=step, desc="Streaming decoder RL updates")
     while step < max_steps:
@@ -1027,6 +1053,17 @@ def smoke_rollout(args: argparse.Namespace) -> None:
 
 
 def self_test() -> None:
+    overlap_words = filter_words_by_frame_overlap(
+        [
+            {"start": 0.5, "end": 0.9, "text": "before"},
+            {"start": 0.9, "end": 1.1, "text": "left"},
+            {"start": 1.5, "end": 2.2, "text": "right"},
+            {"start": 2.1, "end": 2.3, "text": "after"},
+        ],
+        start_frame=100,
+        end_frame=200,
+    )
+    assert [word["text"] for word in overlap_words] == ["left", "right"]
     rewards = torch.tensor([0.5, 0.5, 0.5, 0.9, 0.1, 0.5])
     advantages = compute_grpo_advantages(rewards, group_size=3, eps=1e-6, min_group_std=0.02)
     assert advantages[:3].abs().sum() == 0
@@ -1043,7 +1080,29 @@ def self_test() -> None:
         late_word_tolerance_seconds=2.0,
     )
     assert late_stats["late_correct_words"] == 1.0
+    assert late_stats["late_correct_penalty"] == 0.625
     assert late_reward[0].item() < 1.0
+    mild_late_reward, mild_late_stats = weighted_error_rewards(
+        ["world"],
+        ["world"],
+        hypothesis_word_times=[[{"word": "world", "time": 4.0}]],
+        reference_word_times=[[{"word": "world", "time": 1.0}]],
+        late_word_tolerance_seconds=2.0,
+        late_word_penalty_per_second=0.25,
+        late_word_penalty_max=1.0,
+    )
+    capped_late_reward, capped_late_stats = weighted_error_rewards(
+        ["world"],
+        ["world"],
+        hypothesis_word_times=[[{"word": "world", "time": 8.0}]],
+        reference_word_times=[[{"word": "world", "time": 1.0}]],
+        late_word_tolerance_seconds=2.0,
+        late_word_penalty_per_second=0.25,
+        late_word_penalty_max=1.0,
+    )
+    assert mild_late_stats["late_correct_penalty"] == 0.25
+    assert capped_late_stats["late_correct_penalty"] == 1.0
+    assert capped_late_reward[0].item() < mild_late_reward[0].item()
     on_time_reward, on_time_stats = weighted_error_rewards(
         ["hello world"],
         ["hello world"],

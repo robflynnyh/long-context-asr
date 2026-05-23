@@ -105,6 +105,8 @@ def main():
     parser.add_argument("--reward-wer-weight", type=float, default=0.7)
     parser.add_argument("--reward-cer-weight", type=float, default=0.3)
     parser.add_argument("--late-word-tolerance-seconds", type=float, default=2.0)
+    parser.add_argument("--late-word-penalty-per-second", type=float, default=0.25)
+    parser.add_argument("--late-word-penalty-max", type=float, default=1.0)
     parser.add_argument("--force-seed", action="store_true")
     parser.add_argument("--no-validate-paths", action="store_true")
     args = parser.parse_args()
@@ -139,6 +141,8 @@ def main():
         "reward_wer_weight": args.reward_wer_weight,
         "reward_cer_weight": args.reward_cer_weight,
         "late_word_tolerance_seconds": args.late_word_tolerance_seconds,
+        "late_word_penalty_per_second": args.late_word_penalty_per_second,
+        "late_word_penalty_max": args.late_word_penalty_max,
         "reward_offset": 1.0,
         "reward_scale": 1.0,
         "reward_min": 0.0,
@@ -177,6 +181,8 @@ def main():
     print(f"reward_std_min={args.reward_std_min}")
     print(f"sample_text_log_every={args.sample_text_log_every}")
     print(f"late_word_tolerance_seconds={args.late_word_tolerance_seconds}")
+    print(f"late_word_penalty_per_second={args.late_word_penalty_per_second}")
+    print(f"late_word_penalty_max={args.late_word_penalty_max}")
 
 
 if __name__ == "__main__":
