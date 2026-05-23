@@ -185,10 +185,11 @@ run_suite() {
   local manifest="$4"
   local summary="$5"
   local pass_json="$6"
+  local suite_checkpoint_root="$CHECKPOINT_ROOT/$stage"
 
   prepare_args=(
     --run-dir "$RUN_DIR"
-    --checkpoint-root "$CHECKPOINT_ROOT"
+    --checkpoint-root "$suite_checkpoint_root"
     --train-data-path "$TRAIN_UTTERANCE_DIR"
     --utterance-summary "$UTTERANCE_SUMMARY"
     --manifest-out "$manifest"
@@ -267,7 +268,14 @@ PY
 }
 
 OVERFIT_MANIFEST="$RUN_MANIFEST"
-run_suite overfit random_bilstm "$MAX_EPOCHS" "$OVERFIT_MANIFEST" "$RESULT_SUMMARY" "$PASS_JSON"
+if [[ "$STAGE" == "ablation" ]]; then
+  ABLATION_MANIFEST="$RUN_DIR/ablation_manifest.json"
+  ABLATION_SUMMARY="$RUN_DIR/ABLATION.md"
+  run_suite ablation source_linear_trainable,random_linear,random_bilstm "$ABLATION_MAX_EPOCHS" "$ABLATION_MANIFEST" "$ABLATION_SUMMARY" "$RUN_DIR/ablation_pass.json"
+  cp "$ABLATION_SUMMARY" "$RESULT_SUMMARY"
+elif [[ "$STAGE" == "overfit" || "$STAGE" == "ladder" ]]; then
+  run_suite overfit random_bilstm "$MAX_EPOCHS" "$OVERFIT_MANIFEST" "$RESULT_SUMMARY" "$PASS_JSON"
+fi
 
 if [[ "$STAGE" == "ladder" ]]; then
   if python - "$PASS_JSON" <<'PY'

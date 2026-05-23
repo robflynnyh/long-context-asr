@@ -18,6 +18,16 @@ def read_last_jsonl(path):
     return last
 
 
+def eval_only_run(label, eval_result):
+    return {
+        "label": label,
+        "max_epochs": "eval-only",
+        "learning_rate": None,
+        "eval_only": True,
+        "checkpoint": eval_result.get("checkpoint", ""),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-manifest", required=True)
@@ -43,6 +53,15 @@ def main():
                 "diagnostics": read_last_jsonl(run.get("diagnostics_path")),
             }
         )
+    seen_labels = {row["run"]["label"] for row in rows}
+    for label in ["source_ctc_eval_only"]:
+        if label in seen_labels:
+            continue
+        eval_path = eval_dir / f"{label}.json"
+        if not eval_path.exists():
+            continue
+        result = json.loads(eval_path.read_text(encoding="utf-8"))
+        rows.append({"run": eval_only_run(label, result), "eval": result, "diagnostics": None})
 
     primary = next((row for row in rows if row["run"]["label"] == "random_bilstm"), rows[0] if rows else None)
     primary_eval = primary["eval"] if primary else None
@@ -80,7 +99,7 @@ def main():
                 [
                     run["label"],
                     str(run.get("max_epochs", "")),
-                    f"{run.get('learning_rate', 0.0):.0e}",
+                    "eval-only" if run.get("learning_rate") is None else f"{run.get('learning_rate', 0.0):.0e}",
                     "" if result.get("ctc_loss_per_utterance") is None else f"{result['ctc_loss_per_utterance']:.4f}",
                     "" if result.get("blank_rate") is None else percent(result["blank_rate"]),
                     "" if result.get("wer") is None else percent(result["wer"]),
