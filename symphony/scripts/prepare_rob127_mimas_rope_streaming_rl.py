@@ -26,6 +26,7 @@ def main():
     )
     parser.add_argument("--wandb-dir", required=True)
     parser.add_argument("--wandb-name", default="rob127_rope_streaming_decoder_asr_rl_grpo")
+    parser.add_argument("--wandb-id", default="")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--max-steps", type=int, default=10000)
     parser.add_argument("--save-every", type=int, default=500)
@@ -67,7 +68,7 @@ def main():
     config.scheduler.name = "constant"
     config.wandb.use = True
     config.wandb.name = args.wandb_name
-    config.wandb.id = ""
+    config.wandb.id = args.wandb_id
     config.wandb.dir = args.wandb_dir
     config.wandb.update_config_with_wandb_id = False
     config.rl = {
@@ -109,6 +110,7 @@ def main():
     print(f"seed_checkpoint={args.seed_checkpoint}")
     print(f"wandb_dir={args.wandb_dir}")
     print(f"wandb_name={args.wandb_name}")
+    print(f"wandb_id={args.wandb_id or 'new'}")
     print(f"batch_size={args.batch_size}")
     print(f"max_steps={args.max_steps}")
     print(f"save_every={args.save_every}")

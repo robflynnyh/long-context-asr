@@ -20,6 +20,7 @@ CHECKPOINT_DIR="${ROB127_CHECKPOINT_DIR:-/store/store5/data/acp21rjf/spotify/str
 WANDB_DIR="${ROB127_WANDB_DIR:-$ARTIFACT_ROOT/wandb}"
 TMPDIR="${ROB127_TMPDIR:-$RUN_DIR/tmp}"
 WANDB_NAME="${ROB127_WANDB_NAME:-rob127_rope_streaming_decoder_asr_rl_grpo}"
+WANDB_ID="${ROB127_WANDB_ID:-}"
 BATCH_SIZE="${ROB127_BATCH_SIZE:-32}"
 MAX_STEPS="${ROB127_MAX_STEPS:-10000}"
 SAVE_EVERY="${ROB127_SAVE_EVERY:-500}"
@@ -82,6 +83,7 @@ on_exit() {
     echo "wandb_dir=${WANDB_DIR}"
     echo "tmpdir=${TMPDIR}"
     echo "wandb_name=${WANDB_NAME}"
+    echo "wandb_id=${WANDB_ID:-new}"
     echo "batch_size=${BATCH_SIZE}"
     echo "max_steps=${MAX_STEPS}"
     echo "save_every=${SAVE_EVERY}"
@@ -122,6 +124,7 @@ on_exit() {
       --title "ROB-127 Mimas RoPE streaming decoder RL GRPO run finished"
       --metadata "Runtime config=$RUNTIME_CONFIG"
       --metadata "Seed checkpoint=$SEED_CHECKPOINT"
+      --metadata "W&B id=${WANDB_ID:-new}"
     )
     if [[ "${ROB127_CALLBACK_DRY_RUN:-0}" == "1" ]]; then
       callback_args+=(--dry-run)
@@ -145,6 +148,7 @@ trap 'trap - INT TERM; exit 130' INT
   echo "callback_script=${CALLBACK_SCRIPT}"
   echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-unset}"
   echo "tmpdir=${TMPDIR}"
+  echo "wandb_id=${WANDB_ID:-new}"
 } > "$SUMMARY_FILE"
 
 if [[ "${ROB127_CALLBACK_ONLY:-0}" == "1" ]]; then
@@ -165,6 +169,7 @@ prepare_args=(
   --seed-checkpoint "$SEED_CHECKPOINT"
   --wandb-dir "$WANDB_DIR"
   --wandb-name "$WANDB_NAME"
+  --wandb-id "$WANDB_ID"
   --batch-size "$BATCH_SIZE"
   --max-steps "$MAX_STEPS"
   --save-every "$SAVE_EVERY"

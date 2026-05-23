@@ -13,6 +13,7 @@ from einops import rearrange
 from omegaconf import OmegaConf
 from tqdm import tqdm
 
+from lcasr.components.positional_encodings import apply_rotary
 from lcasr.eval.wer import word_error_rate_detail
 from lcasr.utils.dataloading import VariableBatchSimpleDataloader, reset_seen_ids
 from lcasr.utils.general import get_model_class, load_checkpoint, load_model, load_optimizer
@@ -385,6 +386,63 @@ def make_streaming_rl_chunks(
     return chunks
 
 
+def _layer_supports_kv_cache(layer: torch.nn.Module) -> bool:
+    attn = getattr(layer, "attn", None)
+    return (
+        attn is not None
+        and hasattr(layer, "attn_norm")
+        and hasattr(layer, "ff_norm")
+        and hasattr(layer, "ff")
+        and hasattr(attn, "qkv")
+        and hasattr(attn, "out_proj")
+        and hasattr(attn, "apply_rotary")
+    )
+
+
+def rollout_kv_cache_enabled(model: torch.nn.Module) -> bool:
+    return all(_layer_supports_kv_cache(layer) for layer in model.layers)
+
+
+def _rotary_emb_fn_for_step(model: torch.nn.Module, step: int, device: torch.device):
+    rotary_pos_emb = getattr(model, "rotary_pos_emb", None)
+    if rotary_pos_emb is None:
+        return None
+    cos, sin = rotary_pos_emb(step + 1, device)
+    return apply_rotary(
+        cos=cos[:, step : step + 1],
+        sin=sin[:, step : step + 1],
+        learned=rotary_pos_emb.learned_freq,
+    )
+
+
+def _cached_decoder_layer_step(
+    layer: torch.nn.Module,
+    x_step: torch.Tensor,
+    cached_kv: Optional[torch.Tensor],
+    rotary_emb_fn: Any,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    attn = layer.attn
+    x_norm = layer.attn_norm(x_step)
+    q, k, v = attn.qkv(x_norm)
+    current_kv = torch.stack([k, v], dim=2)
+    q, current_kv = attn.apply_rotary(q, current_kv, rotary_emb_fn)
+    full_kv = current_kv if cached_kv is None else torch.cat([cached_kv, current_kv], dim=1)
+
+    q = q.transpose(1, 2).contiguous()
+    k, v = rearrange(full_kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
+    attn_out = torch.nn.functional.scaled_dot_product_attention(
+        q,
+        k,
+        v,
+        dropout_p=0.0,
+        is_causal=False,
+    )
+    attn_out = rearrange(attn_out, "b h n d -> b n (h d)")
+    x_step = x_step + attn.out_proj(attn_out)
+    x_step = x_step + layer.ff(layer.ff_norm(x_step))
+    return x_step, full_kv
+
+
 @torch.no_grad()
 def sample_streaming_rollouts(
     model: torch.nn.Module,
@@ -411,15 +469,31 @@ def sample_streaming_rollouts(
     prev_ids = torch.full((x.size(0), x.size(1)), model.get_silence_id(), dtype=torch.long, device=x.device)
     predictions = []
     temperature = max(float(temperature), 1e-6)
+    use_kv_cache = rollout_kv_cache_enabled(model)
+    layer_kv_cache: List[Optional[torch.Tensor]] = [None for _ in model.layers]
 
     for step in range(x.size(1)):
-        h = x + model.prev_token_embedding(prev_ids)
-        if key_padding_mask is not None:
-            h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
-        rotary_emb_fn = model._rotary_emb_fn(h.size(1), h.device) if hasattr(model, "_rotary_emb_fn") else None
-        for layer in model.layers:
-            h = layer(h, rotary_emb_fn=rotary_emb_fn)
-        step_h = model.norm(h[:, step])
+        if use_kv_cache:
+            h = x[:, step : step + 1] + model.prev_token_embedding(prev_ids[:, step : step + 1])
+            valid = (step < out_lengths).view(-1, 1, 1)
+            h = h.masked_fill(~valid, 0)
+            rotary_emb_fn = _rotary_emb_fn_for_step(model, step, h.device)
+            for layer_idx, layer in enumerate(model.layers):
+                h, layer_kv_cache[layer_idx] = _cached_decoder_layer_step(
+                    layer=layer,
+                    x_step=h,
+                    cached_kv=layer_kv_cache[layer_idx],
+                    rotary_emb_fn=rotary_emb_fn,
+                )
+            step_h = model.norm(h.squeeze(1))
+        else:
+            h = x + model.prev_token_embedding(prev_ids)
+            if key_padding_mask is not None:
+                h = h.masked_fill(key_padding_mask.unsqueeze(-1), 0)
+            rotary_emb_fn = model._rotary_emb_fn(h.size(1), h.device) if hasattr(model, "_rotary_emb_fn") else None
+            for layer in model.layers:
+                h = layer(h, rotary_emb_fn=rotary_emb_fn)
+            step_h = model.norm(h[:, step])
         logits = model._combined_logits(model.silence_head(step_h), model.text_head(step_h))
         pred = torch.multinomial((logits / temperature).softmax(dim=-1), num_samples=1).squeeze(-1)
         valid = step < out_lengths
@@ -886,6 +960,7 @@ def train(args: argparse.Namespace) -> None:
     print(f"RL algorithm: {config.rl.algorithm}")
     print(f"Rollouts per chunk: {config.rl.num_rollouts}")
     print(f"RL microbatch size: {config.rl.get('microbatch_size', 0)}")
+    print(f"Rollout KV cache: {rollout_kv_cache_enabled(model)}")
     print(f"Reward std minimum: {config.rl.get('reward_std_min', 0.0)}")
     print(f"Max output frames: {config.rl.get('max_output_frames', None)}")
     print(f"Late word tolerance seconds: {config.rl.get('late_word_tolerance_seconds', None)}")
@@ -1018,6 +1093,7 @@ def smoke_rollout(args: argparse.Namespace) -> None:
 
     model = load_model(config, tokenizer.vocab_size(), get_model_class(config=config))
     model = model.to(device)
+    print(f"Smoke rollout KV cache: {rollout_kv_cache_enabled(model)}")
     optimizer, _ = load_optimizer(config, model)
     load_checkpoint(args=args, model=model, optimizer=None, path=config.checkpointing.dir, device=device)
     normalizer = EnglishTextNormalizer() if EnglishTextNormalizer is not None else None
@@ -1225,6 +1301,37 @@ def self_test() -> None:
     assert logprobs.shape == (4,)
     (-logprobs.mean()).backward()
     assert toy.proj.weight.grad is not None
+
+    from lcasr.components.positional_encodings import RotaryPositionalEmbedding
+    from lcasr.models.streaming_decoder_asr import CausalDecoderLayer
+
+    torch.manual_seed(7)
+    cached_layer = CausalDecoderLayer(d_model=8, n_heads=2, expansion_factor=2)
+    cached_layer.eval()
+
+    class RotaryOwner:
+        def __init__(self):
+            self.rotary_pos_emb = RotaryPositionalEmbedding(dim=4, base=128)
+
+    rotary_owner = RotaryOwner()
+    features = torch.randn(2, 5, 8)
+    cache = None
+    cached_outputs = []
+    for step in range(features.size(1)):
+        rotary_step = _rotary_emb_fn_for_step(rotary_owner, step, features.device)
+        cached_step, cache = _cached_decoder_layer_step(
+            layer=cached_layer,
+            x_step=features[:, step : step + 1],
+            cached_kv=cache,
+            rotary_emb_fn=rotary_step,
+        )
+        cached_outputs.append(cached_step)
+        cos, sin = rotary_owner.rotary_pos_emb(step + 1, features.device)
+        full_rotary = apply_rotary(cos=cos, sin=sin, learned=rotary_owner.rotary_pos_emb.learned_freq)
+        full_prefix = cached_layer(features[:, : step + 1], rotary_emb_fn=full_rotary)
+        assert torch.allclose(cached_step, full_prefix[:, -1:], atol=2e-5, rtol=2e-4)
+    assert cache is not None and cache.shape[:3] == (2, 5, 2)
+    assert len(cached_outputs) == features.size(1)
     print("Self-test passed")
 
 
