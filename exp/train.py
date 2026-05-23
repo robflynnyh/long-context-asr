@@ -82,7 +82,34 @@ def apply_augmentation(audio, lengths, augmentation, epoch, start_augment_after_
         return audio
     else:
         return augmentation(audio, lengths)
-    
+
+
+def refresh_dataloader_for_epoch(args, dataloader, tokenizer, batch_size:int, seen_ids:List[str], random_seed:int):
+    if hasattr(dataloader, 'update'):
+        dataloader.update(
+            batch_size=batch_size,
+            seen_ids=seen_ids,
+            random_seed=random_seed,
+        )
+        return dataloader
+
+    if args.config['data'].get('format', 'recording_manifest') == 'utterance_folder':
+        if random_seed == 'same':
+            random_seed = args.config['training'].get('random_seed', 1234)
+        return Utterance_Dataloader(
+            utterance_folder=args.config['data']['path'],
+            tokenizer=tokenizer,
+            batch_size=batch_size,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_memory,
+            prefetch=args.prefetch_factor,
+            seen_ids=seen_ids,
+            random_seed=random_seed,
+            max_records=args.config['data'].get('max_records', None),
+        )
+
+    raise AttributeError(f'{type(dataloader).__name__} has no update() method')
+
 def get_dtype(dtype:str) -> torch.dtype:
     if dtype == 'bfloat16':
         return torch.bfloat16
@@ -161,10 +188,13 @@ def train(
             if epoch >= max_epochs:
                 finished = True
             else:
-                dataloader.update(
-                    batch_size = dataloader.batch_size, 
-                    seen_ids = seen_ids,
-                    random_seed = random.randint(0, 10000),
+                dataloader = refresh_dataloader_for_epoch(
+                    args=args,
+                    dataloader=dataloader,
+                    tokenizer=tokenizer,
+                    batch_size=dataloader.batch_size,
+                    seen_ids=seen_ids,
+                    random_seed=random.randint(0, 10000),
                 )
                 dataloader_iter = iter(dataloader)
                 pbar = tqdm(total = len(dataloader), desc = f'Training - Epoch {epoch}')
@@ -389,9 +419,13 @@ def train(
                 args.config['audio_chunking']['size'] = new_seq_len
                 chunk_size = new_seq_len
                 batch_size = new_bs
-                dataloader.update(
-                    batch_size = batch_size,
-                    seen_ids = seen_ids,
+                dataloader = refresh_dataloader_for_epoch(
+                    args=args,
+                    dataloader=dataloader,
+                    tokenizer=tokenizer,
+                    batch_size=batch_size,
+                    seen_ids=seen_ids,
+                    random_seed='same',
                 )
                 if args.config['model']['use_rotary'] and args.config['sequence_scheduler'].get('interpolate_rotary', False):
                     model.rotary_pos_emb.rotary_interpolation_factor = model.rotary_pos_emb.rotary_interpolation_factor * sequence_scheduler.increase_by_multiplier
@@ -530,7 +564,14 @@ def main(args):
     
     if sequence_scheduler and dataloader.batch_size != sequence_scheduler.cur_batch_size:
         print('WARNING: dataloader batch size does not match sequence scheduler batch size, updating dataloader batch size')
-        dataloader.update(batch_size = sequence_scheduler.cur_batch_size, seen_ids = seen_ids)
+        dataloader = refresh_dataloader_for_epoch(
+            args=args,
+            dataloader=dataloader,
+            tokenizer=tokenizer,
+            batch_size=sequence_scheduler.cur_batch_size,
+            seen_ids=seen_ids,
+            random_seed='same',
+        )
 
     final_model = train(
         args = args, 

@@ -375,7 +375,7 @@ class Utterance_Dataloader(torch.utils.data.DataLoader):
         return len(self.dataset.files)
 
     def __len__(self):
-        return len(self.dataset) 
+        return super().__len__()
 
 ### for presegmented data
 
@@ -561,7 +561,6 @@ class VariableBatchSimpleDataloader():
 
     def __len__(self):
         return len(self.dataloader) 
-
 
 
 
