@@ -7,12 +7,17 @@ from pathlib import Path
 import lcasr
 import torch
 from tqdm import tqdm
+from whisper.normalizers import EnglishTextNormalizer
 
 from lcasr.utils.audio_tools import processing_chain, total_frames
 
 
+english_normalizer = EnglishTextNormalizer()
+
+
 def normalize_stm_text(text: str) -> str:
     text = re.sub(r" '([a-z])", r"'\1", text)
+    text = english_normalizer(text).lower().strip()
     return re.sub(r" +", " ", text).strip()
 
 

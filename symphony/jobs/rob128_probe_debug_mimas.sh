@@ -166,6 +166,7 @@ utterance_args=(
   --split train
   --output-dir "$TRAIN_UTTERANCE_DIR"
   --summary-out "$UTTERANCE_SUMMARY"
+  --force
 )
 if [[ "$MODE" == "smoke" ]]; then
   utterance_args+=(--max-recordings 1 --max-utterances "$SMOKE_MAX_UTTERANCES")

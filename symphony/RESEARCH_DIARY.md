@@ -145,6 +145,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-23
 
 - ROB-128 callback follow-up: the first utterance-boundary Mimas ladder failed before any overfit conclusion because `exp/train.py` tried to call the recording-manifest dataloader `update()` method after the utterance-folder dataloader exhausted. Patched the training loop to recreate utterance-folder dataloaders at epoch/sequence updates and fixed `Utterance_Dataloader.__len__()` to report batch count. Validation used a two-utterance, two-epoch CPU smoke that crossed the failed epoch boundary and saved `step_4.pt`.
+- ROB-128 overfit-debug follow-up: the reset-fix one-record run did not prove a clean fresh-probe failure because the generated TEDLIUM utterance `.pt` labels still contained STM trailing ID/timestamp markers and raw `(2)`/`{BREATH}`/`<sil>` annotation syntax. The random probe learned to emit metadata-like text while eval references were normalized. Patched the ROB-128 utterance preparation to apply the same English text normalization used by eval before tokenization, and made the Mimas wrapper force-regenerate utterance files on rerun.
 
 ## 2026-05-12
 
