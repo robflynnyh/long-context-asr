@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${ROB123_REPO_DIR:-/mnt/parscratch/users/acp21rjf/symphony-workspaces-long-context-asr/ROB-123}"
 REMOTE_BRANCH="${ROB123_REMOTE_BRANCH:-symphony/ROB-123-rope-full-spotify-stanage}"
 TARGET_COMMIT="${ROB123_TARGET_COMMIT:?ROB123_TARGET_COMMIT must pin the code revision}"
-RUN_ID="${ROB123_RUN_ID:-rob123-rope-smoke-${SLURM_JOB_ID:-manual}-$(date -u +%Y%m%dT%H%M%SZ)}"
+RUN_ID="${ROB123_RUN_ID:-rob123-rope-smoke-delay0p5-${SLURM_JOB_ID:-manual}-$(date -u +%Y%m%dT%H%M%SZ)}"
 ARTIFACT_ROOT="${ROB123_ARTIFACT_ROOT:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123}"
 RUN_DIR="${ROB123_RUN_DIR:-$ARTIFACT_ROOT/$RUN_ID}"
 OUT_LOG="${ROB123_OUT_LOG:-$ARTIFACT_ROOT/rob123-rope-smoke-${SLURM_JOB_ID:-manual}.out}"
@@ -23,7 +23,7 @@ EXECUTED_SCRIPT="${ROB123_EXECUTED_SCRIPT:-$RUN_DIR/$(basename "$0")}"
 CALLBACK_SCRIPT="${ROB123_CALLBACK_SCRIPT:-$RUN_DIR/linear_stanage_callback.py}"
 BASE_CONFIG="${ROB123_BASE_CONFIG:-exp/configs/streaming_decoder_asr_100m.yaml}"
 SOURCE_PAIRS="${ROB123_SOURCE_PAIRS:-/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json}"
-RUNTIME_CONFIG="${ROB123_RUNTIME_CONFIG:-$RUN_DIR/streaming_decoder_asr_100m_rope_full_spotify_2epoch_smoke.yaml}"
+RUNTIME_CONFIG="${ROB123_RUNTIME_CONFIG:-$RUN_DIR/streaming_decoder_asr_100m_rope_full_spotify_2epoch_delay0p5_smoke.yaml}"
 CHECKPOINT_DIR="${ROB123_CHECKPOINT_DIR:-$RUN_DIR/checkpoints}"
 WANDB_DIR="${ROB123_WANDB_DIR:-$ARTIFACT_ROOT/wandb}"
 WANDB_NAME="${ROB123_WANDB_NAME:-rob123_rope_streaming_decoder_full_spotify_2epoch_smoke}"
@@ -31,6 +31,7 @@ BATCH_SIZE="${ROB123_BATCH_SIZE:-88}"
 MAX_EPOCHS="${ROB123_MAX_EPOCHS:-2}"
 LEARNING_RATE="${ROB123_LEARNING_RATE:-3e-4}"
 ROTARY_BASE_FREQ="${ROB123_ROTARY_BASE_FREQ:-1500000}"
+DELAY_SECONDS="${ROB123_DELAY_SECONDS:-0.5}"
 DEBUG_GENERATE_EVERY_RECORDS="${ROB123_DEBUG_GENERATE_EVERY_RECORDS:-0}"
 DEBUG_GENERATE_MAX_FRAMES="${ROB123_DEBUG_GENERATE_MAX_FRAMES:-0}"
 VALIDATE_PATH_LIMIT="${ROB123_VALIDATE_PATH_LIMIT:-50}"
@@ -87,6 +88,7 @@ on_exit() {
     echo "learning_rate=${LEARNING_RATE}"
     echo "use_rotary=true"
     echo "rotary_base_freq=${ROTARY_BASE_FREQ}"
+    echo "delay_seconds=${DELAY_SECONDS}"
     echo "max_records=${MAX_RECORDS}"
     echo "max_steps=${MAX_STEPS}"
   } >> "$SUMMARY_FILE"
@@ -110,6 +112,7 @@ on_exit() {
       --metadata "branch=${REMOTE_BRANCH}"
       --metadata "commit=${TARGET_COMMIT}"
       --metadata "runtime_config=${RUNTIME_CONFIG}"
+      --metadata "delay_seconds=${DELAY_SECONDS}"
     )
     if [[ "${ROB123_CALLBACK_DRY_RUN:-1}" == "1" ]]; then
       callback_args+=(--dry-run)
@@ -156,6 +159,7 @@ python symphony/scripts/prepare_rob123_stanage_rope_full_spotify.py \
   --max-epochs "$MAX_EPOCHS" \
   --learning-rate "$LEARNING_RATE" \
   --rotary-base-freq "$ROTARY_BASE_FREQ" \
+  --delay-seconds "$DELAY_SECONDS" \
   --debug-generate-every-records "$DEBUG_GENERATE_EVERY_RECORDS" \
   --debug-generate-max-frames "$DEBUG_GENERATE_MAX_FRAMES" \
   --validate-path-limit "$VALIDATE_PATH_LIMIT"

@@ -46,6 +46,7 @@ def main():
     parser.add_argument("--max-epochs", type=int, default=2)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
     parser.add_argument("--rotary-base-freq", type=int, default=1_500_000)
+    parser.add_argument("--delay-seconds", type=float, default=0.5)
     parser.add_argument("--debug-generate-every-records", type=int, default=500)
     parser.add_argument("--debug-generate-max-frames", type=int, default=0)
     parser.add_argument("--validate-path-limit", type=int, default=50)
@@ -70,6 +71,7 @@ def main():
     config.training.batch_size = args.batch_size
     config.training.max_epochs = args.max_epochs
     config.optimizer.args.lr = args.learning_rate
+    config.streaming.delay_seconds = args.delay_seconds
     config.training.debug_generation = {
         "enabled": args.debug_generate_every_records > 0,
         "every_records": args.debug_generate_every_records,
@@ -106,6 +108,8 @@ def main():
         f"use_rotary={config.model.use_rotary}",
         f"rotary_base_freq={config.model.rotary_base_freq}",
         f"rotary_interpolation_factor={config.model.rotary_interpolation_factor}",
+        f"delay_seconds={config.streaming.delay_seconds}",
+        f"buffer_seconds={config.streaming.buffer_seconds}",
         f"debug_generate_every_records={args.debug_generate_every_records}",
         f"debug_generate_max_frames={args.debug_generate_max_frames}",
     ]
