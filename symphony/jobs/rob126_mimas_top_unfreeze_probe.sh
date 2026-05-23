@@ -17,6 +17,12 @@ CALLBACK_LIB="${ROB126_CALLBACK_LIB:-$RUN_DIR/linear_job_callback.py}"
 LINEAR_KEY_FILE="${ROB126_LINEAR_KEY_FILE:-$ARTIFACT_ROOT/.linear_api_key}"
 LINEAR_FALLBACK_KEY_FILE="${ROB126_LINEAR_FALLBACK_KEY_FILE:-/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/.linear_api_key}"
 CALLBACK_PYTHON="${ROB126_CALLBACK_PYTHON:-python3}"
+WITH_GPU="${ROB126_WITH_GPU:-/store/store5/software/simple-gpu-schedule/with-gpu}"
+GPU_POOL="${ROB126_GPU_POOL:-1,2}"
+SMOKE_GPU_POOL="${ROB126_SMOKE_GPU_POOL:-$GPU_POOL}"
+GPU_NUM="${ROB126_GPU_NUM:-1}"
+GPU_IDLE_SECONDS="${ROB126_GPU_IDLE_SECONDS:-30}"
+GPU_STAGE="${ROB126_GPU_STAGE:-0}"
 
 TEDLIUM_ROOT="${ROB126_TEDLIUM_ROOT:-/store/store4/data/TEDLIUM_release1/legacy}"
 CHECKPOINT_CACHE="${ROB126_CHECKPOINT_CACHE:-$ARTIFACT_ROOT/source-checkpoints}"
@@ -26,6 +32,7 @@ if [[ "$MODE" == "smoke" ]]; then
   TRAIN_UTTERANCE_DIR="${ROB126_TRAIN_UTTERANCE_DIR:-$RUN_DIR/tedlium_train_utterances}"
 fi
 UTTERANCE_SUMMARY="${ROB126_UTTERANCE_SUMMARY:-$RUN_DIR/tedlium_train_utterances.json}"
+UTTERANCE_COMPLETION="${ROB126_UTTERANCE_COMPLETION:-$TRAIN_UTTERANCE_DIR/_SUCCESS.clean_stm_target_v2.json}"
 CHECKPOINT_ROOT="${ROB126_CHECKPOINT_ROOT:-$ARTIFACT_ROOT/checkpoints/$RUN_ID}"
 RUN_MANIFEST="${ROB126_RUN_MANIFEST:-$RUN_DIR/run_manifest.json}"
 EVAL_CONFIG="${ROB126_EVAL_CONFIG:-$RUN_DIR/rob126_tedlium_eval.yaml}"
@@ -70,6 +77,7 @@ if [[ "${ROB126_RUN_DIR_EXEC:-0}" != "1" ]]; then
   export ROB126_RESULT_SUMMARY="$RESULT_SUMMARY"
   export ROB126_EXECUTED_SCRIPT="$EXECUTED_SCRIPT"
   export ROB126_CALLBACK_SCRIPT="$CALLBACK_SCRIPT"
+  export ROB126_UTTERANCE_COMPLETION="$UTTERANCE_COMPLETION"
   exec bash "$EXECUTED_SCRIPT" "$@"
 fi
 
@@ -86,7 +94,10 @@ mkdir -p \
   "$RUN_DIR/wandb-artifacts" \
   "$RUN_DIR/xdg-cache" \
   "$TRAIN_UTTERANCE_DIR"
-exec > >(tee -a "$OUT_LOG") 2> >(tee -a "$ERR_LOG" >&2)
+if [[ "${ROB126_LOGGING_CONFIGURED:-0}" != "1" ]]; then
+  export ROB126_LOGGING_CONFIGURED=1
+  exec > >(tee -a "$OUT_LOG") 2> >(tee -a "$ERR_LOG" >&2)
+fi
 
 on_exit() {
   local status=$?
@@ -103,6 +114,7 @@ on_exit() {
     echo "source_checkpoint_dir=${SOURCE_CHECKPOINT_DIR}"
     echo "train_utterance_dir=${TRAIN_UTTERANCE_DIR}"
     echo "utterance_summary=${UTTERANCE_SUMMARY}"
+    echo "utterance_completion=${UTTERANCE_COMPLETION}"
     echo "run_manifest=${RUN_MANIFEST}"
     echo "result_csv=${RESULT_CSV}"
     echo "result_summary=${RESULT_SUMMARY}"
@@ -115,6 +127,7 @@ on_exit() {
     echo "checkpoint_labels=${CHECKPOINT_LABELS}"
     echo "unfreeze_top_n_layers=${UNFREEZE_TOP_N_LAYERS}"
     echo "encoder_lr_scale=${ENCODER_LR_SCALE}"
+    echo "gpu_stage=${GPU_STAGE}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB126_ENABLE_CALLBACK:-1}" == "1" ]]; then
     if [[ -z "${LINEAR_API_KEY:-}" ]]; then
@@ -162,6 +175,7 @@ trap 'trap - INT; exit 130' INT
   echo "source_checkpoint_dir=${SOURCE_CHECKPOINT_DIR}"
   echo "train_utterance_dir=${TRAIN_UTTERANCE_DIR}"
   echo "utterance_summary=${UTTERANCE_SUMMARY}"
+  echo "utterance_completion=${UTTERANCE_COMPLETION}"
   echo "learning_rate=${LEARNING_RATE}"
   echo "learning_rates=${LEARNING_RATES:-unset}"
   echo "scheduler=${SCHEDULER}"
@@ -170,6 +184,7 @@ trap 'trap - INT; exit 130' INT
   echo "checkpoint_labels=${CHECKPOINT_LABELS}"
   echo "unfreeze_top_n_layers=${UNFREEZE_TOP_N_LAYERS}"
   echo "encoder_lr_scale=${ENCODER_LR_SCALE}"
+  echo "gpu_stage=${GPU_STAGE}"
 } > "$SUMMARY_FILE"
 
 if [[ "${ROB126_CALLBACK_ONLY:-0}" == "1" ]]; then
@@ -177,7 +192,7 @@ if [[ "${ROB126_CALLBACK_ONLY:-0}" == "1" ]]; then
   exit 0
 fi
 
-if [[ "$MODE" != "smoke" && "${CUDA_VISIBLE_DEVICES:-}" != "1" && "${CUDA_VISIBLE_DEVICES:-}" != "2" ]]; then
+if [[ "$GPU_STAGE" == "1" && "$MODE" != "smoke" && "${CUDA_VISIBLE_DEVICES:-}" != "1" && "${CUDA_VISIBLE_DEVICES:-}" != "2" ]]; then
   echo "ROB-126 full runs must run through with-gpu pool 1,2; got CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset}" >&2
   exit 2
 fi
@@ -195,91 +210,99 @@ export WANDB_ARTIFACT_DIR="${WANDB_ARTIFACT_DIR:-$RUN_DIR/wandb-artifacts}"
 export WANDB_DISABLE_CODE="${WANDB_DISABLE_CODE:-true}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$RUN_DIR/xdg-cache}"
 
-IFS=',' read -r -a selected_labels <<< "$CHECKPOINT_LABELS"
-selected_checkpoints=()
-for label in "${selected_labels[@]}"; do
-  label="${label//[[:space:]]/}"
-  case "$label" in
-    primary)
-      selected_checkpoints+=("step_105360.pt")
-      ;;
-    backup)
-      if [[ -z "$BACKUP_REASON" ]]; then
-        echo "ROB126_BACKUP_REASON is required when CHECKPOINT_LABELS includes backup" >&2
+if [[ "$GPU_STAGE" != "1" ]]; then
+  IFS=',' read -r -a selected_labels <<< "$CHECKPOINT_LABELS"
+  selected_checkpoints=()
+  for label in "${selected_labels[@]}"; do
+    label="${label//[[:space:]]/}"
+    case "$label" in
+      primary)
+        selected_checkpoints+=("step_105360.pt")
+        ;;
+      backup)
+        if [[ -z "$BACKUP_REASON" ]]; then
+          echo "ROB126_BACKUP_REASON is required when CHECKPOINT_LABELS includes backup" >&2
+          exit 2
+        fi
+        selected_checkpoints+=("step_99264.pt")
+        ;;
+      *)
+        echo "unknown ROB126_CHECKPOINT_LABELS entry: $label" >&2
         exit 2
-      fi
-      selected_checkpoints+=("step_99264.pt")
-      ;;
-    *)
-      echo "unknown ROB126_CHECKPOINT_LABELS entry: $label" >&2
-      exit 2
-      ;;
-  esac
-done
+        ;;
+    esac
+  done
 
-for checkpoint in "${selected_checkpoints[@]}"; do
-  if [[ ! -s "$CHECKPOINT_CACHE/$checkpoint" ]]; then
-    if [[ -s "/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/source-checkpoints/$checkpoint" ]]; then
-      cp "/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/source-checkpoints/$checkpoint" "$CHECKPOINT_CACHE/"
-    else
-      rsync -av "acp21rjf@stanage.shef.ac.uk:${SOURCE_CHECKPOINT_DIR}/${checkpoint}" "$CHECKPOINT_CACHE/"
+  for checkpoint in "${selected_checkpoints[@]}"; do
+    if [[ ! -s "$CHECKPOINT_CACHE/$checkpoint" ]]; then
+      if [[ -s "/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/source-checkpoints/$checkpoint" ]]; then
+        cp "/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/source-checkpoints/$checkpoint" "$CHECKPOINT_CACHE/"
+      else
+        rsync -av "acp21rjf@stanage.shef.ac.uk:${SOURCE_CHECKPOINT_DIR}/${checkpoint}" "$CHECKPOINT_CACHE/"
+      fi
+    fi
+  done
+
+  utterance_args=(
+    --tedlium-root "$TEDLIUM_ROOT"
+    --split train
+    --output-dir "$TRAIN_UTTERANCE_DIR"
+    --summary-out "$UTTERANCE_SUMMARY"
+  )
+  if [[ "$MODE" == "smoke" ]]; then
+    utterance_args+=(--max-recordings "$SMOKE_MAX_RECORDINGS" --max-utterances "$SMOKE_MAX_UTTERANCES")
+  else
+    if [[ -n "$FULL_MAX_RECORDINGS" ]]; then
+      utterance_args+=(--max-recordings "$FULL_MAX_RECORDINGS")
+    fi
+    if [[ -n "$FULL_MAX_UTTERANCES" ]]; then
+      utterance_args+=(--max-utterances "$FULL_MAX_UTTERANCES")
     fi
   fi
-done
-
-utterance_args=(
-  --tedlium-root "$TEDLIUM_ROOT"
-  --split train
-  --output-dir "$TRAIN_UTTERANCE_DIR"
-  --summary-out "$UTTERANCE_SUMMARY"
-)
-if [[ "$MODE" == "smoke" ]]; then
-  utterance_args+=(--max-recordings "$SMOKE_MAX_RECORDINGS" --max-utterances "$SMOKE_MAX_UTTERANCES")
-else
-  if [[ -n "$FULL_MAX_RECORDINGS" ]]; then
-    utterance_args+=(--max-recordings "$FULL_MAX_RECORDINGS")
-  fi
-  if [[ -n "$FULL_MAX_UTTERANCES" ]]; then
-    utterance_args+=(--max-utterances "$FULL_MAX_UTTERANCES")
-  fi
-fi
-python symphony/scripts/prepare_rob126_tedlium_utterances.py "${utterance_args[@]}"
-
-prepare_args=(
-  --run-dir "$RUN_DIR"
-  --checkpoint-cache "$CHECKPOINT_CACHE"
-  --checkpoint-root "$CHECKPOINT_ROOT"
-  --train-data-path "$TRAIN_UTTERANCE_DIR"
-  --train-data-format utterance_folder
-  --manifest-out "$RUN_MANIFEST"
-  --source-checkpoint-dir "$SOURCE_CHECKPOINT_DIR"
-  --batch-size "$BATCH_SIZE"
-  --smoke-batch-size "$SMOKE_BATCH_SIZE"
-  --max-epochs "$MAX_EPOCHS"
-  --learning-rate "$LEARNING_RATE"
-  --scheduler "$SCHEDULER"
-  --warmup-steps "$WARMUP_STEPS"
-  --checkpoint-labels "$CHECKPOINT_LABELS"
-  --unfreeze-top-n-layers "$UNFREEZE_TOP_N_LAYERS"
-  --encoder-lr-scale "$ENCODER_LR_SCALE"
-)
-if [[ -n "$BACKUP_REASON" ]]; then
-  prepare_args+=(--backup-reason "$BACKUP_REASON")
-fi
-if [[ -n "$LEARNING_RATES" ]]; then
-  prepare_args+=(--learning-rates "$LEARNING_RATES")
-fi
-if [[ "$MODE" == "smoke" ]]; then
-  prepare_args+=(--smoke)
-  if [[ "$SMOKE_ENABLE_WANDB" == "1" ]]; then
-    prepare_args+=(--enable-smoke-wandb)
+  if [[ "$MODE" != "smoke" && -z "$FULL_MAX_RECORDINGS" && -z "$FULL_MAX_UTTERANCES" && -s "$UTTERANCE_COMPLETION" ]]; then
+    echo "reusing completed ROB-126 TEDLIUM utterance cache: $TRAIN_UTTERANCE_DIR"
+    cp "$UTTERANCE_COMPLETION" "$UTTERANCE_SUMMARY"
   else
+    utterance_args+=(--completion-out "$UTTERANCE_COMPLETION")
+    python symphony/scripts/prepare_rob126_tedlium_utterances.py "${utterance_args[@]}"
+  fi
+
+  prepare_args=(
+    --run-dir "$RUN_DIR"
+    --checkpoint-cache "$CHECKPOINT_CACHE"
+    --checkpoint-root "$CHECKPOINT_ROOT"
+    --train-data-path "$TRAIN_UTTERANCE_DIR"
+    --train-data-format utterance_folder
+    --manifest-out "$RUN_MANIFEST"
+    --source-checkpoint-dir "$SOURCE_CHECKPOINT_DIR"
+    --batch-size "$BATCH_SIZE"
+    --smoke-batch-size "$SMOKE_BATCH_SIZE"
+    --max-epochs "$MAX_EPOCHS"
+    --learning-rate "$LEARNING_RATE"
+    --scheduler "$SCHEDULER"
+    --warmup-steps "$WARMUP_STEPS"
+    --checkpoint-labels "$CHECKPOINT_LABELS"
+    --unfreeze-top-n-layers "$UNFREEZE_TOP_N_LAYERS"
+    --encoder-lr-scale "$ENCODER_LR_SCALE"
+  )
+  if [[ -n "$BACKUP_REASON" ]]; then
+    prepare_args+=(--backup-reason "$BACKUP_REASON")
+  fi
+  if [[ -n "$LEARNING_RATES" ]]; then
+    prepare_args+=(--learning-rates "$LEARNING_RATES")
+  fi
+  if [[ "$MODE" == "smoke" ]]; then
+    prepare_args+=(--smoke)
+    if [[ "$SMOKE_ENABLE_WANDB" == "1" ]]; then
+      prepare_args+=(--enable-smoke-wandb)
+    else
+      prepare_args+=(--disable-wandb)
+    fi
+  elif [[ "$DISABLE_WANDB" == "1" ]]; then
     prepare_args+=(--disable-wandb)
   fi
-elif [[ "$DISABLE_WANDB" == "1" ]]; then
-  prepare_args+=(--disable-wandb)
+  python symphony/scripts/prepare_rob126_probe_config.py "${prepare_args[@]}"
 fi
-python symphony/scripts/prepare_rob126_probe_config.py "${prepare_args[@]}"
 
 python - <<'PY'
 import json
@@ -292,6 +315,18 @@ for run in manifest["runs"]:
     print(f"checkpoint path check ok: {run['label']} {run['local_checkpoint']}")
     print(f"trainable_encoder_layers: {run['trainable_encoder_layers']}")
 PY
+
+if [[ "$GPU_STAGE" != "1" ]]; then
+  if [[ "$MODE" == "smoke" ]]; then
+    selected_pool="$SMOKE_GPU_POOL"
+  else
+    selected_pool="$GPU_POOL"
+  fi
+  echo "CPU prep complete; acquiring GPU through with-gpu pool ${selected_pool}."
+  export ROB126_GPU_STAGE=1
+  ROB126_ENABLE_CALLBACK=0 "$WITH_GPU" "$selected_pool" --num "$GPU_NUM" --idle-seconds "$GPU_IDLE_SECONDS" -- bash "$EXECUTED_SCRIPT"
+  exit $?
+fi
 
 while IFS=$'\t' read -r config_path checkpoint_dir; do
   train_args=(-config "$config_path" -num_workers "$NUM_WORKERS" -prefetch "$PREFETCH" -reset_step)

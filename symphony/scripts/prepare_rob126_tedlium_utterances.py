@@ -10,25 +10,37 @@ from tqdm import tqdm
 
 from lcasr.utils.audio_tools import processing_chain, total_frames
 
+try:
+    from whisper.normalizers import EnglishTextNormalizer
+except ImportError:
+    EnglishTextNormalizer = None
 
-def normalize_stm_text(text: str) -> str:
+
+def clean_stm_target(text: str, normalizer=None) -> str:
+    text = re.sub(r"\s+\([A-Za-z0-9_]+[-.][A-Za-z0-9_.-]+(?:-[A-Za-z0-9_.-]+)*\)\s*$", " ", text)
+    text = re.sub(r"\{[^}]*\}", " ", text)
+    text = re.sub(r"<[^>]*>", " ", text)
+    text = re.sub(r"\b([^\s()]+)\(\d+\)", r"\1", text)
     text = re.sub(r" '([a-z])", r"'\1", text)
-    return re.sub(r" +", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    if normalizer is not None:
+        text = normalizer(text)
+    return re.sub(r"\s+", " ", text).strip().lower()
 
 
-def read_stm_utterances(stm_path: Path):
+def read_stm_utterances(stm_path: Path, normalizer=None):
     utterances = []
     for line in stm_path.read_text(encoding="utf-8").splitlines():
         parts = line.split()
         if len(parts) < 7:
             continue
         start, end = float(parts[3]), float(parts[4])
-        text = " ".join(parts[6:])
-        if text == "ignore_time_segment_in_scoring":
+        raw_text = " ".join(parts[6:])
+        if raw_text == "ignore_time_segment_in_scoring":
             continue
-        text = normalize_stm_text(text)
+        text = clean_stm_target(raw_text, normalizer=normalizer)
         if text:
-            utterances.append({"start": start, "end": end, "text": text})
+            utterances.append({"start": start, "end": end, "text": text, "raw_text": raw_text})
     return utterances
 
 
@@ -42,6 +54,7 @@ def main():
     parser.add_argument("--summary-out", required=True)
     parser.add_argument("--max-recordings", type=int)
     parser.add_argument("--max-utterances", type=int)
+    parser.add_argument("--completion-out")
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
@@ -58,6 +71,7 @@ def main():
     Path(args.summary_out).parent.mkdir(parents=True, exist_ok=True)
 
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
+    normalizer = EnglishTextNormalizer() if EnglishTextNormalizer is not None else None
     sph_paths = sorted(sph_dir.glob("*.sph"))
     if args.max_recordings is not None:
         sph_paths = sph_paths[: args.max_recordings]
@@ -75,12 +89,12 @@ def main():
 
         spec = processing_chain(str(sph_path))
         rec_saved = 0
-        for utt_idx, utterance in enumerate(read_stm_utterances(stm_path)):
+        for utt_idx, utterance in enumerate(read_stm_utterances(stm_path, normalizer=normalizer)):
             if args.max_utterances is not None and saved >= args.max_utterances:
                 break
             start_frame = total_frames(utterance["start"])
             end_frame = total_frames(utterance["end"])
-            utterance_spec = spec[:, :, start_frame:end_frame]
+            utterance_spec = spec[:, :, start_frame:end_frame].clone().contiguous()
             token_ids = tokenizer.encode(utterance["text"])
             if utterance_spec.shape[-1] == 0 or len(token_ids) == 0:
                 skipped_empty += 1
@@ -92,10 +106,17 @@ def main():
                 torch.save(
                     {
                         "id": utt_id,
+                        "recording": stem,
+                        "start": utterance["start"],
+                        "end": utterance["end"],
+                        "text": utterance["text"],
+                        "raw_text": utterance["raw_text"],
                         "audio": utterance_spec,
                         "txt": torch.LongTensor(token_ids).unsqueeze(0),
                         "txt_lengths": torch.LongTensor([len(token_ids)]),
                         "audio_lengths": torch.LongTensor([utterance_spec.shape[-1]]),
+                        "frame_start": start_frame,
+                        "frame_end": end_frame,
                     },
                     out_path,
                 )
@@ -112,9 +133,13 @@ def main():
         "skipped_empty": skipped_empty,
         "max_recordings": args.max_recordings,
         "max_utterances": args.max_utterances,
+        "cleaning": "clean_stm_target_v2",
+        "audio_storage": "clone_contiguous_slice",
         "recordings": recordings,
     }
     Path(args.summary_out).write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    if args.completion_out:
+        Path(args.completion_out).write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(args.summary_out)
 
 

@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-23
+
+- ROB-126 cache repair after human review: stopped stale run `rob126-full-utterance-top2-b32-4epoch-20260523T143047Z`, removed the bad `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-126/tedlium_train_utterances` cache that had serialized full-recording backing storage, and patched STM-boundary utterance prep to save cloned contiguous slices plus cleaned English-normalized STM targets before tokenization. A 12-utterance sample under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-126/rob126-cleanprep-sample-20260523T155106Z/` produced 15.0-447.5 KiB files, no decoded `{UH}`/`<sil>`/`{BREATH}`/`word(2)`/trailing-id artifacts, and frame lengths matching STM durations within rounding. The ROB-126 wrapper now performs checkpoint/config/utterance CPU prep before acquiring Mimas GPU through `with-gpu`.
+
 ## 2026-05-22
 
 - ROB-126 corrective rerun setup after ROB-98 guidance: replaced the TEDLIUM recording-manifest training path with STM-boundary utterance `.pt` examples for the ROB-100 top-layer adaptation probe. `exp/train.py` now accepts `data.format: utterance_folder` and consumes presegmented utterance batches directly instead of re-running `chunk_spectogram()` and `chunk_text_json()`. The corrected Mimas smoke `rob126-smoke-utterance-top2-20260522T220821Z` is queued through `with-gpu any` behind ticket `0935af58`; if it passes, the full rerun should use GPU pool `1,2` and the wrapper default batch size `32`.
