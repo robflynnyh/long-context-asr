@@ -3,6 +3,7 @@
 Date: 2026-05-20
 
 Post-ROB-119 addendum: 2026-05-22
+Post-ROB-130 addendum: 2026-05-24
 
 ## Scope
 
@@ -43,6 +44,13 @@ Repository evidence:
   - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/rob119-full-weighted-bilstm-20260522T110547Z/run_manifest.json`
   - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-119/rob119-full-weighted-bilstm-20260522T110547Z/diagnostics/primary.jsonl`
 - ROB-119 implementation branch inspected at `origin/symphony/rob-119-paper-matched-bestrq-probe`
+- ROB-130 corrected low-mask probe summary: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-130/rob130-lowmask-100pct-b32-lr1e3-4epoch-20260524T140324Z/OUTCOME.md`
+- ROB-130 result CSV, manifest, cache contract, and diagnostics:
+  - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-130/rob130-lowmask-100pct-b32-lr1e3-4epoch-20260524T140324Z/tedlium_test_results.csv`
+  - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-130/rob130-lowmask-100pct-b32-lr1e3-4epoch-20260524T140324Z/run_manifest.json`
+  - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-130/rob130-lowmask-100pct-b32-lr1e3-4epoch-20260524T140324Z/cache_contract.json`
+  - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-130/rob130-lowmask-100pct-b32-lr1e3-4epoch-20260524T140324Z/diagnostics/random_linear.jsonl`
+  - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-130/rob130-lowmask-100pct-b32-lr1e3-4epoch-20260524T140324Z/diagnostics/random_bilstm.jsonl`
 
 ## Bottom Line
 
@@ -264,3 +272,33 @@ Do not start with another blind full SSL rerun. The next checks should separate 
 The initial ROB-98 conclusion should be revised, not discarded. Low actual mask density was the highest-confidence mismatch in ROB-70 and it was worth fixing. ROB-100 fixed that mismatch, but ROB-119 shows that the corrected one-epoch checkpoint still does not yield useful frozen TEDLIUM CTC representations under a substantially more paper-matched probe.
 
 The most actionable next move is a probe-path sanity check with known-good supervised features plus a small top-layer-unfrozen ROB-100 probe. Those two results would say whether to spend effort on probe/training-path debugging or on a longer, more paper-like SSL rerun.
+
+## Post-ROB-130 Addendum
+
+ROB-129 later showed that the ROB-119-style paper-mask probe had been using stale full-recording chunked TEDLIUM labels. With the corrected ROB-126 utterance-boundary TEDLIUM cache, the ROB-100 paper-mask frozen weighted-state probe no longer deletion-collapsed: the random 2-layer BiLSTM head reached `38.14%` WER, `22.42%` CER, `9.84%` deletions, and `26375/28215` hyp/ref words. ROB-130 reran the old ROB-70 low-mask checkpoint through that corrected path to test whether the old ROB-91 near-blank result was mostly a probe-data artifact.
+
+ROB-130 used the corrected TEDLIUM train utterance cache at `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-126/tedlium_train_utterances`, with sentinel `_SUCCESS.clean_stm_target_v2.json` validating `56803` utterances. The source checkpoint was the cached ROB-70 final checkpoint `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-91/source-checkpoints/step_105360.pt`. The encoder/backbone stayed fully frozen (`unfreeze_top_n_layers: 0`), and the probe used a trainable weighted sum over six exposed SCConformerXL post-layer hidden states. Checkpoint retention was pruned to the final `step_227212.pt` per probe head.
+
+ROB-130 corrected-path TEDLIUM test results:
+
+| Probe | Source checkpoint | WER | CER | Ins | Del | Sub | Hyp/ref words | Final train loss | Final blank p |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| random linear | `step_105360.pt` | `70.62%` | `52.98%` | `0.79%` | `35.47%` | `34.36%` | `18429/28215` | `15.8930` | `89.02%` |
+| random 2-layer BiLSTM | `step_105360.pt` | `40.86%` | `24.32%` | `3.29%` | `10.95%` | `26.62%` | `26055/28215` | `8.5135` | `83.83%` |
+
+Direct comparison against the ROB-129 corrected paper-mask baseline:
+
+| Head | Low-mask ROB-130 WER | Paper-mask ROB-129 WER | Delta WER | Low-mask ROB-130 CER | Paper-mask ROB-129 CER | Low-mask ROB-130 Del | Paper-mask ROB-129 Del |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| random linear | `70.62%` | `67.17%` | `+3.45` pts | `52.98%` | `48.75%` | `35.47%` | `27.94%` |
+| random 2-layer BiLSTM | `40.86%` | `38.14%` | `+2.72` pts | `24.32%` | `22.42%` | `10.95%` | `9.84%` |
+
+The trained weighted-sum behavior does not point to a single final-layer rescue. The random-linear probe placed most mass on middle states (`L2 57.4%`, `L3 27.6%`, `L1 11.4%`, and about `1-2%` on the other layers). The random-BiLSTM probe spread mass across early/middle states (`L1 28.0%`, `L2 27.7%`, `L3 25.8%`, `L0 12.6%`) and gave little mass to the last two exposed states (`L4 3.5%`, `L5 2.5%`).
+
+### Interpretation After ROB-130
+
+The old ROB-91 deletion collapse was mostly explained by the stale TEDLIUM probe path rather than by the ROB-70 low-mask checkpoint being intrinsically near-blank under any frozen probe. With corrected labels and utterance boundaries, the low-mask BiLSTM probe emits nearly the same number of words as ROB-129 and lands only `2.72` absolute WER points behind the corrected paper-mask probe.
+
+This weakens masking as the remaining quality-gap explanation. Masking was still a real SSL recipe mismatch in ROB-70, but corrected TEDLIUM transfer evidence no longer supports a large old-mask versus paper-mask separation for these one-epoch frozen checkpoints. The result also softens the post-ROB-119 ranking: probe-data correctness was a major confound, and any future comparison should treat the corrected ROB-129/ROB-130 path as the baseline before spending effort on a longer SSL repeat.
+
+The evidence boundary remains important: ROB-129 and ROB-130 are corrected-label TEDLIUM transfer probes, not direct LibriSpeech paper comparisons or full ASR fine-tuning results.
