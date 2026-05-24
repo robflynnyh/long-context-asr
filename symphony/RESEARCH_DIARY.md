@@ -146,6 +146,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-98 parent update after ROB-128 completion: the corrected TEDLIUM utterance-boundary supervised-control path can overfit known-good ROB-81 features with a fresh random BiLSTM (`0.23%` WER after the gated 80-epoch one-record run), but the stage-scoped 20-epoch ablation still shows head sensitivity: source-linear trainable `10.49%` WER, random-linear `43.07%` WER, and fresh random-BiLSTM blank collapse. Updated the ROB-98 report to treat ROB-119/125 frozen SSL WER as stale until ROB-100/126 is rerun through the corrected probe ladder.
 
+## 2026-05-24
+
+- ROB-98 parent update after ROB-126 completion: the corrected TEDLIUM utterance-boundary top-2-unfrozen ROB-100 probe reached `65.37%` WER / `46.60%` CER with `21.83%` deletions on an interrupted step-24416 snapshot, improving by `34.24` WER points and `70.61` deletion-rate points versus the stale ROB-119 frozen weighted-BiLSTM baseline. Created ROB-129 in `Todo` to rerun the normal frozen ROB-100 probe using the reusable cleaned ROB-126 utterance cache at `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-126/tedlium_train_utterances`.
+
 ## 2026-05-12
 
 - ROB-69 eval job `10156464` completed successfully, but finalizer job `10156465` failed because appended finetuned CSV rows included an extra pandas index field. Normalized the completed remote result into `eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`, made ROB-69 summarization tolerate and normalize that output shape, and fixed eval manager CSV appends to write `index=False`. Mean WER was slightly worse for the long-only finetuned checkpoints on most dataset/window pairs, with small improvements only on `rev16` window 128, `tedlium` window 8192, and `this_american_life` windows 128 and 22500.
