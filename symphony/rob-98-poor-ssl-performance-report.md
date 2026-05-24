@@ -16,6 +16,8 @@ Post-ROB-129 old-mask comparison plan: 2026-05-24
 
 Post-ROB-130 completion addendum: 2026-05-24
 
+Post-ROB-131 random-frozen control plan: 2026-05-24
+
 ## Scope
 
 This report investigates why the ROB-91 frozen probes over the ROB-70 BEST-RQ SSL checkpoints performed poorly. It compares the repository implementation against the open BEST-RQ implementation described in arXiv:2405.04296 and the current SpeechBrain BEST-RQ recipe.
@@ -75,6 +77,8 @@ Repository evidence:
 - ROB-130 corrected old low-mask ROB-70 probe summary:
   - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-130/rob130-lowmask-100pct-b32-lr1e3-4epoch-20260524T140324Z/OUTCOME.md`
   - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-130/rob130-lowmask-100pct-b32-lr1e3-4epoch-20260524T140324Z/tedlium_test_results.csv`
+- Latest ROB-98 Linear follow-up asking for a random/pre-SSL frozen-network BiLSTM probe control with low checkpoint retention.
+- ROB-131 child issue: https://linear.app/robflynn/issue/ROB-131/probe-random-frozen-pretraining-baseline-with-corrected-tedlium-cache
 - `symphony/scripts/prepare_rob91_tedlium_manifest.py`
 - `exp/train.py`
 - `eval/tedlium/run.py`
@@ -613,3 +617,37 @@ The investigation now has a clearer split between confirmed bugs and remaining r
 ROB-98 no longer looks like a simple "BEST-RQ SSL failed" issue. The initial low-mask diagnosis was real, and the paper-style ROB-100 recipe remains the cleaner setup, but the largest observed failure came from probing on broken TEDLIUM training units. Once the TEDLIUM probe path was corrected, both the paper-mask ROB-100 checkpoint and the old low-mask ROB-70 checkpoint became CTC-usable under frozen weighted-state BiLSTM probing.
 
 The remaining poor performance is a quality/comparability problem: corrected frozen BEST-RQ transfer is around `38-41%` TEDLIUM WER, which is useful signal but still weak. Future work should stop using the old ROB-91/119 collapse as representation-quality evidence and should compare against a full corrected supervised reference before spending another long run on SSL pretraining.
+
+## Post-ROB-131 Random-Frozen Control Plan: Measure The Probe Recipe Lower Bound
+
+The newest ROB-98 human follow-up asks for a comparison against the network before SSL training: keep a randomly initialized SCConformerXL backbone frozen, then train the same kind of BiLSTM CTC probe on top. This is a useful lower-bound control, but it should be split out rather than launched directly from ROB-98 because it is a new long probe run with smoke/callback/checkpoint-retention requirements.
+
+This has been split into ROB-131: https://linear.app/robflynn/issue/ROB-131/probe-random-frozen-pretraining-baseline-with-corrected-tedlium-cache
+
+### What ROB-131 Should Control
+
+ROB-131 should match the corrected ROB-129/ROB-130 probe setup as closely as possible while replacing the SSL checkpoint with a random frozen pretraining backbone:
+
+| Variable | Current corrected SSL baselines | Random-frozen control |
+| --- | --- | --- |
+| Backbone | ROB-129 paper-mask ROB-100 or ROB-130 low-mask ROB-70 checkpoint | Randomly initialized/pre-SSL SCConformerXL with the same architecture family |
+| Frozen state | Fully frozen encoder/backbone, `unfreeze_top_n_layers: 0` | Same fully frozen state |
+| Probe head | Weighted six-layer hidden-state sum plus random linear and/or random 2-layer BiLSTM CTC head | Same weighted-state probe; at minimum run the random BiLSTM head |
+| Training data | Corrected ROB-126 TEDLIUM STM utterance cache | Same cache, after validating `_SUCCESS.clean_stm_target_v2.json` |
+| Optimization | Four epochs, batch size `32`, constant LR around `1e-3` | Match unless smoke evidence requires a change |
+| Checkpointing | Final-only/pruned retention after the ROB-129 checkpoint-spam issue | Same or stricter; retain at most the newest/final checkpoint needed for eval |
+
+The core interpretation is:
+
+- If a random frozen backbone gets close to ROB-129/ROB-130, then the corrected probe recipe may be doing much of the work and the `38-41%` WER SSL numbers are weaker evidence of learned SSL structure.
+- If the random frozen backbone is much worse, then ROB-100 and ROB-70 are adding real acoustic information even though the corrected frozen TEDLIUM transfer WER is still high.
+- If the random frozen run collapses completely, keep it separate from the earlier stale collapse: this would be a valid lower-bound result under the corrected cache, not evidence that the old chunked TEDLIUM path was fine.
+
+### Reporting Requirements
+
+ROB-131 should post back to ROB-98 with:
+
+1. Random-frozen BiLSTM WER, CER, insertion, deletion, substitution, and hyp/ref word counts.
+2. A direct comparison against ROB-129 paper-mask BiLSTM `38.14%` WER and ROB-130 low-mask BiLSTM `40.86%` WER.
+3. Exact command, artifact directory, logs, checkpoint-retention behavior, and smoke/callback validation.
+4. A clear evidence boundary: this remains a TEDLIUM transfer/probe control, not a direct LibriSpeech arXiv:2405.04296 reproduction.
