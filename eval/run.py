@@ -21,6 +21,9 @@ DATASET_MODULES = {
 }
 
 
+datasets_functions = {name: None for name in DATASET_MODULES}
+
+
 def get_dataset_function(dataset):
     module_name, function_name = DATASET_MODULES[dataset]
     module = importlib.import_module(module_name)

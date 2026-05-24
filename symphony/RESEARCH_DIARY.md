@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-24
+
+- ROB-129 on branch `symphony/ROB-129-frozen-rob100-corrected-utterances`: added a corrected-utterance fully frozen ROB-100 probe wrapper using the ROB-126 TEDLIUM train utterance cache and the ROB-128 utterance-folder probe path. Validation confirmed the ROB-126 sentinel `_SUCCESS.clean_stm_target_v2.json`, 56,803 utterance files, and `Utterance_Dataloader` contract; a bounded CPU smoke loaded `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-126/source-checkpoints/step_105360.pt`, audited all six encoder layers as frozen, trained a two-utterance random-linear probe, and wrote TEDLIUM smoke eval artifacts under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-129/rob129-cpu-smoke-20260524T085302Z/`. The full Mimas run `rob129-full-frozen-b32-4epoch-20260524T085517Z` is queued through `with-gpu 1,2` in detached screen `rob129-frozen` with callback handoff to return ROB-129 to `Todo` on exit.
+
 ## 2026-05-22
 
 - ROB-98 follow-up after ROB-119: updated `symphony/rob-98-poor-ssl-performance-report.md` with a post-ROB-119 addendum. ROB-100 fixed the strongest original masking mismatch (`mask_prob=0.12`, `mask_length=4`, about 48% actual masking, self-conditioning disabled), but ROB-119's stronger frozen weighted-state BiLSTM TEDLIUM probe still produced `99.61%` WER with `92.44%` deletions. The revised recommendation is to separate probe-path viability from frozen SSL representation quality with a known-good frozen supervised encoder sanity probe and a small top-N-unfrozen ROB-100 probe before spending another full SSL rerun.
