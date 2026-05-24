@@ -8,6 +8,7 @@ SOURCE_RUN_ID="${ROB126_SOURCE_RUN_ID:-rob126-full-cleanprep-top2-b32-4epoch-202
 SOURCE_RUN_DIR="${ROB126_SOURCE_RUN_DIR:-$ARTIFACT_ROOT/$SOURCE_RUN_ID}"
 EVAL_RUN_ID="${ROB126_EVAL_RUN_ID:-${SOURCE_RUN_ID}-snapshot-eval-$(date -u +%Y%m%dT%H%M%SZ)}"
 EVAL_RUN_DIR="${ROB126_EVAL_RUN_DIR:-$ARTIFACT_ROOT/$EVAL_RUN_ID}"
+TEDLIUM_ROOT="${ROB126_TEDLIUM_ROOT:-/store/store4/data/TEDLIUM_release1/legacy}"
 OUT_LOG="${ROB126_EVAL_OUT_LOG:-$EVAL_RUN_DIR/${EVAL_RUN_ID}.out}"
 ERR_LOG="${ROB126_EVAL_ERR_LOG:-$EVAL_RUN_DIR/${EVAL_RUN_ID}.err}"
 SUMMARY_FILE="${ROB126_EVAL_SUMMARY_FILE:-$EVAL_RUN_DIR/${EVAL_RUN_ID}.summary.txt}"
@@ -45,6 +46,8 @@ on_exit() {
     echo "eval_config=${EVAL_CONFIG}"
     echo "result_csv=${RESULT_CSV}"
     echo "result_summary=${RESULT_SUMMARY}"
+    echo "tedlium_root=${TEDLIUM_ROOT}"
+    echo "lcasr_tedlium_root=${LCASR_TEDLIUM_ROOT:-unset}"
     echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-unset}"
     echo "gpu_stage=${GPU_STAGE}"
   } >> "$SUMMARY_FILE"
@@ -89,6 +92,7 @@ trap 'trap - INT; exit 130' INT
   echo "commit=$(cd "$REPO_DIR" && git rev-parse HEAD)"
   echo "source_manifest=${SOURCE_MANIFEST}"
   echo "snapshot_manifest=${SNAPSHOT_MANIFEST}"
+  echo "tedlium_root=${TEDLIUM_ROOT}"
   echo "gpu_pool=${GPU_POOL}"
   echo "gpu_stage=${GPU_STAGE}"
 } > "$SUMMARY_FILE"
@@ -102,6 +106,12 @@ cd "$REPO_DIR"
 export PYTHONPATH="$PWD:${PYTHONPATH:-}"
 export TMPDIR="${TMPDIR:-$EVAL_RUN_DIR/tmp}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$EVAL_RUN_DIR/xdg-cache}"
+export LCASR_TEDLIUM_ROOT="$TEDLIUM_ROOT"
+
+if [[ ! -d "$TEDLIUM_ROOT/test/sph" || ! -d "$TEDLIUM_ROOT/test/stm" ]]; then
+  echo "TEDLIUM test split not found under ROB126_TEDLIUM_ROOT=$TEDLIUM_ROOT" >&2
+  exit 3
+fi
 
 if [[ "$GPU_STAGE" != "1" ]]; then
   echo "Acquiring GPU through with-gpu pool ${GPU_POOL} for snapshot eval."
