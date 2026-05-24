@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-24
+
+- ROB-130 on branch `symphony/rob-130-low-mask-corrected-probe`: ported the corrected ROB-129 utterance-folder weighted CTC probe path for the old ROB-70 low-mask BEST-RQ checkpoint. Validation read the ROB-126 sentinel `_SUCCESS.clean_stm_target_v2.json`, confirmed `56803` corrected TEDLIUM train utterances, loaded `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-91/source-checkpoints/step_105360.pt`, exposed six post-layer SCConformerXL hidden states, audited all encoder layers frozen, trained two-utterance random-linear and random-BiLSTM smokes, ran TEDLIUM break eval, and validated the real Mimas callback trap with a dry run. The queued full run id is `rob130-lowmask-100pct-b32-lr1e3-4epoch-20260524T140324Z`; artifacts will be under `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-130/`.
+
 ## 2026-05-22
 
 - ROB-98 follow-up after ROB-119: updated `symphony/rob-98-poor-ssl-performance-report.md` with a post-ROB-119 addendum. ROB-100 fixed the strongest original masking mismatch (`mask_prob=0.12`, `mask_length=4`, about 48% actual masking, self-conditioning disabled), but ROB-119's stronger frozen weighted-state BiLSTM TEDLIUM probe still produced `99.61%` WER with `92.44%` deletions. The revised recommendation is to separate probe-path viability from frozen SSL representation quality with a known-good frozen supervised encoder sanity probe and a small top-N-unfrozen ROB-100 probe before spending another full SSL rerun.
