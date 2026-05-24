@@ -192,6 +192,7 @@ def weighted_error_rewards(
     hypothesis_word_times: Optional[List[List[Dict[str, Any]]]] = None,
     reference_word_times: Optional[List[List[Dict[str, Any]]]] = None,
     late_word_tolerance_seconds: Optional[float] = None,
+    late_word_penalty_mode: str = "linear",
     late_word_penalty_per_second: float = 0.25,
     late_word_penalty_max: float = 1.0,
     wer_weight: float = 0.7,
@@ -209,6 +210,9 @@ def weighted_error_rewards(
         raise ValueError("late_word_penalty_per_second must be non-negative")
     if late_word_penalty_max < 0:
         raise ValueError("late_word_penalty_max must be non-negative")
+    late_word_penalty_mode = str(late_word_penalty_mode).lower()
+    if late_word_penalty_mode not in {"linear", "constant"}:
+        raise ValueError("late_word_penalty_mode must be one of: linear, constant")
     wer_weight = wer_weight / weight_sum
     cer_weight = cer_weight / weight_sum
 
@@ -243,10 +247,13 @@ def weighted_error_rewards(
                 excess_lateness = hyp_time - ref_time - float(late_word_tolerance_seconds)
                 if excess_lateness > 0:
                     late_count += 1
-                    late_penalty += min(
-                        float(late_word_penalty_max),
-                        excess_lateness * float(late_word_penalty_per_second),
-                    )
+                    if late_word_penalty_mode == "constant":
+                        late_penalty += float(late_word_penalty_max)
+                    else:
+                        late_penalty += min(
+                            float(late_word_penalty_max),
+                            excess_lateness * float(late_word_penalty_per_second),
+                        )
             if late_count > 0:
                 late_correct_words += late_count
                 late_correct_penalty += late_penalty
@@ -294,6 +301,7 @@ def compute_rewards(
         hypothesis_word_times=hypothesis_word_times,
         reference_word_times=reference_word_times,
         late_word_tolerance_seconds=_optional_float(reward_config, "late_word_tolerance_seconds", None),
+        late_word_penalty_mode=str(reward_config.get("late_word_penalty_mode", "linear")),
         late_word_penalty_per_second=float(reward_config.get("late_word_penalty_per_second", 0.25)),
         late_word_penalty_max=float(reward_config.get("late_word_penalty_max", 1.0)),
         wer_weight=float(reward_config.get("reward_wer_weight", 0.7)),
@@ -1102,6 +1110,7 @@ def train(args: argparse.Namespace) -> None:
     print(f"Reward std minimum: {config.rl.get('reward_std_min', 0.0)}")
     print(f"Max output frames: {config.rl.get('max_output_frames', None)}")
     print(f"Late word tolerance seconds: {config.rl.get('late_word_tolerance_seconds', None)}")
+    print(f"Late word penalty mode: {config.rl.get('late_word_penalty_mode', 'linear')}")
     print(f"Late word penalty per second: {config.rl.get('late_word_penalty_per_second', 0.25)}")
     print(f"Late word penalty max: {config.rl.get('late_word_penalty_max', 1.0)}")
 
@@ -1318,6 +1327,19 @@ def self_test() -> None:
     assert mild_late_stats["late_correct_penalty"] == 0.25
     assert capped_late_stats["late_correct_penalty"] == 1.0
     assert capped_late_reward[0].item() < mild_late_reward[0].item()
+    immediate_late_reward, immediate_late_stats = weighted_error_rewards(
+        ["world"],
+        ["world"],
+        hypothesis_word_times=[[{"word": "world", "time": 1.05}]],
+        reference_word_times=[[{"word": "world", "time": 1.0}]],
+        late_word_tolerance_seconds=0.0,
+        late_word_penalty_mode="constant",
+        late_word_penalty_per_second=0.25,
+        late_word_penalty_max=1.0,
+    )
+    assert immediate_late_stats["late_correct_words"] == 1.0
+    assert immediate_late_stats["late_correct_penalty"] == 1.0
+    assert immediate_late_reward[0].item() < mild_late_reward[0].item()
     on_time_reward, on_time_stats = weighted_error_rewards(
         ["hello world"],
         ["hello world"],
