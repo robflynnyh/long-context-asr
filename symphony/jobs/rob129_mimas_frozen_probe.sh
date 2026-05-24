@@ -42,7 +42,9 @@ LEARNING_RATES="${ROB129_LEARNING_RATES:-}"
 HEADS="${ROB129_HEADS:-random_linear,random_bilstm}"
 SCHEDULER="${ROB129_SCHEDULER:-constant}"
 WARMUP_STEPS="${ROB129_WARMUP_STEPS:-0}"
-SAVE_EVERY_N_STEPS="${ROB129_SAVE_EVERY_N_STEPS:-200}"
+# Full checkpoints are ~425 MB for this probe. Keep periodic checkpointing off
+# by default; exp/train.py still writes the final checkpoint after training.
+SAVE_EVERY_N_STEPS="${ROB129_SAVE_EVERY_N_STEPS:-1000000000}"
 SEQ_LEN="${ROB129_SEQ_LEN:-2048}"
 DISABLE_WANDB="${ROB129_DISABLE_WANDB:-0}"
 SMOKE_ENABLE_WANDB="${ROB129_SMOKE_ENABLE_WANDB:-0}"

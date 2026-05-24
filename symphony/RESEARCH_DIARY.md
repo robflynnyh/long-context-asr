@@ -156,6 +156,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-24
 
 - ROB-129 frozen ROB-100 corrected-utterance probe: after the human LR correction, stopped the superseded W&B run `rob129-full-frozen-b32-4epoch-wandb-20260524T0924Z` while it was still in epoch 0 at `lr=3e-4`. Raised the ROB-129 wrapper/config-generator default to `1e-3`, matching the corrected ROB-128 utterance-probe default, revalidated callback/config generation, and queued `rob129-full-frozen-b32-lr1e3-4epoch-wandb-20260524T0937Z` through `with-gpu` pool `1,2` with W&B enabled and the encoder fully frozen.
+- ROB-129 checkpoint retention follow-up: stopped `rob129-full-frozen-b32-lr1e3-4epoch-wandb-20260524T0937Z` after discovering the default `save_every_n_steps=200` had already produced 515 full checkpoints and about 204 GB under the interrupted `random_linear` checkpoint tree. Updated the ROB-129 wrapper/config generator to default to final-only checkpointing (`save_every_n_steps=1000000000`), while `exp/train.py` still writes a final checkpoint at training completion.
 
 ## 2026-05-12
 

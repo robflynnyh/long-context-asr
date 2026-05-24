@@ -143,7 +143,7 @@ def main():
     parser.add_argument("--learning-rates")
     parser.add_argument("--scheduler", choices=["cosine", "constant"], default="constant")
     parser.add_argument("--warmup-steps", type=int, default=0)
-    parser.add_argument("--save-every-n-steps", type=int, default=200)
+    parser.add_argument("--save-every-n-steps", type=int, default=1_000_000_000)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--smoke-batch-size", type=int, default=2)
     parser.add_argument("--max-epochs", type=int, default=4)
