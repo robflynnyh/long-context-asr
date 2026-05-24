@@ -149,6 +149,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-24
 
 - ROB-98 parent update after ROB-126 completion: the corrected TEDLIUM utterance-boundary top-2-unfrozen ROB-100 probe reached `65.37%` WER / `46.60%` CER with `21.83%` deletions on an interrupted step-24416 snapshot, improving by `34.24` WER points and `70.61` deletion-rate points versus the stale ROB-119 frozen weighted-BiLSTM baseline. Created ROB-129 in `Todo` to rerun the normal frozen ROB-100 probe using the reusable cleaned ROB-126 utterance cache at `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-126/tedlium_train_utterances`.
+- ROB-98 parent update after ROB-129 completion: the corrected fully frozen ROB-100 TEDLIUM utterance-boundary probe no longer deletion-collapses. The best ROB-129 row is the random BiLSTM weighted-state probe at `38.14%` WER / `22.42%` CER / `9.84%` deletions with `26,375 / 28,215` hyp/ref words, using `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-126/tedlium_train_utterances`. Treat ROB-119/ROB-91 frozen WER as stale evidence from the old chunked TEDLIUM path; the remaining question is why corrected frozen ROB-100 transfer is still weak, not why it collapses.
 
 ## 2026-05-12
 
