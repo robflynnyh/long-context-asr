@@ -264,3 +264,31 @@ Do not start with another blind full SSL rerun. The next checks should separate 
 The initial ROB-98 conclusion should be revised, not discarded. Low actual mask density was the highest-confidence mismatch in ROB-70 and it was worth fixing. ROB-100 fixed that mismatch, but ROB-119 shows that the corrected one-epoch checkpoint still does not yield useful frozen TEDLIUM CTC representations under a substantially more paper-matched probe.
 
 The most actionable next move is a probe-path sanity check with known-good supervised features plus a small top-layer-unfrozen ROB-100 probe. Those two results would say whether to spend effort on probe/training-path debugging or on a longer, more paper-like SSL rerun.
+
+## Post-ROB-128/129 Corrected Utterance-Boundary Probe Update
+
+Later child-issue evidence changed the interpretation of the ROB-119 frozen probe. The stronger correction was not only sorting timestamped words inside the old full-recording manifest path. TEDLIUM probe training should use the repo's default STM utterance boundaries instead of the full-recording/chunked training setup used by ROB-119.
+
+ROB-128 first checked the corrected utterance-boundary path with a known-good supervised encoder. A normalized one-record random-BiLSTM overfit over ROB-81 supervised features reached `0.23%` WER / `0.31%` CER, confirming that the corrected utterance-folder loader, CTC label path, and eval wiring can train and evaluate a fresh probe. The later 20-epoch supervised-control ablation still showed head/init sensitivity: source-linear trainable reached `10.49%` WER, random-linear reached `43.07%`, and fresh random-BiLSTM blank-collapsed. This keeps probe optimization as a real factor, but no longer supports treating the old chunked-label collapse as clean evidence about representation quality.
+
+ROB-129 then reran the normal fully frozen ROB-100 probe on the corrected ROB-126 TEDLIUM utterance cache:
+
+- Source checkpoint: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-126/source-checkpoints/step_105360.pt`.
+- Training data: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-126/tedlium_train_utterances`.
+- Cache sentinel: `_SUCCESS.clean_stm_target_v2.json`, `56803` utterance files.
+- Frozen setup: ROB-100 encoder/backbone fully frozen, `unfreeze_top_n_layers: 0`, trainable weighted sum over six post-layer SCConformerXL states, and trainable CTC head.
+- Hidden-state exposure: layers `0-5`; the weighted sum includes the final encoder-layer state and excludes the pre-layer input.
+- Run artifact: `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-129/rob129-full-frozen-b32-lr1e3-4epoch-wandb-ckptfix-20260524T110914Z/OUTCOME.md`.
+
+The corrected frozen probe result was:
+
+| Probe | Head | Epochs | LR | TEDLIUM test WER | CER | Deletions | Hyp/ref words | Final blank p |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ROB-129 | random linear | 4 | `1e-3` | `67.17%` | `48.75%` | `27.94%` | `20855/28215` | `90.02%` |
+| ROB-129 | random BiLSTM | 4 | `1e-3` | `38.14%` | `22.42%` | `9.84%` | `26375/28215` | `82.63%` |
+
+This is a large change from the stale ROB-119 frozen weighted-BiLSTM row (`99.61%` WER, `92.44%` deletions, `2133/28215` hyp/ref words). The ROB-129 random-BiLSTM row is `-61.47` WER points and `-82.60` deletion-rate points better than ROB-119.
+
+Interpretation: the corrected utterance-boundary labels materially improve the fully frozen ROB-100 TEDLIUM transfer probe. The old ROB-119 deletion collapse should now be treated primarily as stale evidence from the wrong TEDLIUM training path, not as a clean frozen-representation failure. The current evidence says the ROB-100 frozen representation is not blank/deletion-collapsed under the corrected TEDLIUM probe, but the `38.14%` WER result is still TEDLIUM transfer evidence only and is not a direct LibriSpeech paper-comparison number.
+
+Operational note for future parent follow-ups: ROB-129 initially inherited a periodic checkpoint cadence that wrote hundreds of full probe checkpoints, reaching about `204G` for an interrupted `random_linear` tree. The fixed wrapper disables periodic saves by default with `checkpointing.save_every_n_steps=1000000000`, keeps the normal final checkpoint from `exp/train.py`, and prunes each probe directory to its newest `step_*.pt` before evaluation. Future ROB-98 child probes should preserve that final-only or aggressively pruned retention policy unless checkpoint-frequency evidence is explicitly needed.
