@@ -139,7 +139,7 @@ def main():
         default="/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/rob100_papermask_p012_l4_sc_off_20260520/step_105360.pt",
     )
     parser.add_argument("--heads", default="random_linear,random_bilstm")
-    parser.add_argument("--learning-rate", type=float, default=3e-4)
+    parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--learning-rates")
     parser.add_argument("--scheduler", choices=["cosine", "constant"], default="constant")
     parser.add_argument("--warmup-steps", type=int, default=0)
