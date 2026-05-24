@@ -14,6 +14,8 @@ Post-ROB-129 completion addendum: 2026-05-24
 
 Post-ROB-129 old-mask comparison plan: 2026-05-24
 
+Post-ROB-130 completion addendum: 2026-05-24
+
 ## Scope
 
 This report investigates why the ROB-91 frozen probes over the ROB-70 BEST-RQ SSL checkpoints performed poorly. It compares the repository implementation against the open BEST-RQ implementation described in arXiv:2405.04296 and the current SpeechBrain BEST-RQ recipe.
@@ -70,6 +72,9 @@ Repository evidence:
 - ROB-91 old chunked TEDLIUM probe summary:
   - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-91/rob91-full-bilstm-10epoch-constant-20260519T0911Z/OUTCOME.md`
   - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-91/rob91-full-bilstm-10epoch-constant-20260519T0911Z/run_manifest.json`
+- ROB-130 corrected old low-mask ROB-70 probe summary:
+  - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-130/rob130-lowmask-100pct-b32-lr1e3-4epoch-20260524T140324Z/OUTCOME.md`
+  - `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-130/rob130-lowmask-100pct-b32-lr1e3-4epoch-20260524T140324Z/tedlium_test_results.csv`
 - `symphony/scripts/prepare_rob91_tedlium_manifest.py`
 - `exp/train.py`
 - `eval/tedlium/run.py`
@@ -550,3 +555,61 @@ The comparison should be labeled as TEDLIUM transfer evidence, not a direct arXi
 This has been split into ROB-130: https://linear.app/robflynn/issue/ROB-130/probe-old-low-mask-best-rq-checkpoint-with-corrected-tedlium
 
 ROB-130 should run the corrected old-mask probe rather than launching it from ROB-98. It should reuse the ROB-126 TEDLIUM utterance cache, pin the old ROB-70 source checkpoints from the ROB-91 cache, preserve ROB-129 diagnostics and final-only/pruned checkpoint retention, and report back to ROB-98 with the old-mask versus paper-mask table.
+
+## Post-ROB-130 Completion Addendum: Old Low-Mask Checkpoint Is Only Modestly Worse Under Corrected Probing
+
+ROB-130 has now run the discriminator requested after ROB-129: take the old ROB-70 low-mask checkpoint family that originally looked collapsed under ROB-91, keep the encoder fully frozen, and probe it through the same corrected TEDLIUM utterance-boundary cache and ROB-129-style weighted hidden-state recipe. The minimum useful comparison, the old `step_105360.pt` checkpoint, completed.
+
+Key ROB-130 setup:
+
+- SSL checkpoint: ROB-70 low-mask checkpoint `/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/6l_2048_1epoch_lr3e4_20260516/step_105360.pt`, locally cached at `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-91/source-checkpoints/step_105360.pt`.
+- SSL masking: legacy grouped `mask_percentage=0.1`, `frames_to_mask=5`, about `10%` actual stacked-frame masking.
+- Frozen state: `unfreeze_top_n_layers: 0`; no trainable encoder layers.
+- Trainable probe: weighted sum over six post-layer SCConformerXL hidden states from layers `0-5`, plus either a random linear CTC head or random 2-layer BiLSTM CTC head.
+- Training data: the corrected ROB-126 TEDLIUM utterance cache at `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-126/tedlium_train_utterances`, validated by `_SUCCESS.clean_stm_target_v2.json` with `56,803` utterance files.
+- Optimization: four epochs, batch size `32`, constant LR `1e-3`, final-only/pruned checkpoint retention.
+
+Key corrected old-mask results:
+
+| Probe | SSL checkpoint | Head | WER | CER | Insertions | Deletions | Substitutions | Hyp/ref words | Final loss | Final blank p |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ROB-130 random linear | ROB-70 low-mask `step_105360.pt` | weighted states + linear CTC | `70.62%` | `52.98%` | `0.79%` | `35.47%` | `34.36%` | `18,429 / 28,215` | `15.8930` | `89.02%` |
+| ROB-130 random BiLSTM | ROB-70 low-mask `step_105360.pt` | weighted states + 2-layer BiLSTM CTC | `40.86%` | `24.32%` | `3.29%` | `10.95%` | `26.62%` | `26,055 / 28,215` | `8.5135` | `83.83%` |
+
+Direct comparison to the corrected ROB-129 paper-mask baseline:
+
+| Head | ROB-130 low-mask | ROB-129 paper-mask | Difference |
+| --- | ---: | ---: | ---: |
+| Random linear WER | `70.62%` | `67.17%` | ROB-130 worse by `+3.45` absolute points |
+| Random linear deletions | `35.47%` | `27.94%` | ROB-130 worse by `+7.53` absolute points |
+| Random BiLSTM WER | `40.86%` | `38.14%` | ROB-130 worse by `+2.72` absolute points |
+| Random BiLSTM deletions | `10.95%` | `9.84%` | ROB-130 worse by `+1.11` absolute points |
+
+Interpretation:
+
+1. **The old ROB-91 deletion collapse was mostly the stale TEDLIUM probe path.** Under corrected utterance-boundary training, the same old low-mask checkpoint no longer behaves like a blank system. The BiLSTM probe emits `26,055` words against `28,215` reference words and reaches `40.86%` WER instead of the old near-`100%` WER.
+2. **Paper-style masking still looks better, but only modestly in this corrected comparison.** ROB-129 beats ROB-130 by `2.72` WER points and `1.11` deletion points for the stronger BiLSTM head. That supports the original masking fix as a quality improvement, but it no longer explains the dramatic failure alone.
+3. **The remaining quality gap is not specifically an old-mask collapse.** Both corrected frozen SSL probes are weak but usable: ROB-129 paper-mask at `38.14%` WER and ROB-130 low-mask at `40.86%` WER. The parent issue should now focus on why one-epoch local BEST-RQ transfer remains weak overall, not on why the old probes emitted almost no words.
+4. **The comparison is still not a direct arXiv:2405.04296 reproduction.** It is TEDLIUM transfer evidence with no LM, Spotify pretraining, a 6-layer SCConformerXL backbone, one local epoch, and this repo's optimizer/scheduler/checkpoint history.
+
+### Final Current Diagnosis
+
+The investigation now has a clearer split between confirmed bugs and remaining research uncertainty:
+
+1. **Confirmed and fixed SSL mismatch:** ROB-70's low actual mask density differed substantially from the open implementation. ROB-100's paper-style `mask_prob=0.12`, `mask_length=4`, self-conditioning-off run is still the cleaner recipe for future SSL work.
+2. **Confirmed and fixed probe-data bug:** TEDLIUM probe training on full-recording chunks was the dominant cause of the near-total deletion collapse in ROB-91/ROB-119. Future TEDLIUM probes should use corrected STM utterance-boundary examples, normalized labels, larger practical utterance batches, and the ROB-126 cache contract when applicable.
+3. **Refined masking interpretation:** Corrected low-mask probing is only slightly worse than corrected paper-mask probing for the strongest BiLSTM head. Masking matters, but the old result overstated its effect because the probe data path was broken.
+4. **Remaining quality question:** Both corrected frozen SSL probes are still much weaker than a supervised ASR system and not directly comparable to the SpeechBrain/MP3S LibriSpeech setup. Plausible remaining causes are training horizon, data mismatch, architecture differences, optimizer/scheduler differences, no-LM TEDLIUM transfer, and probe optimization/layer-selection details.
+
+### Final Recommended Next Checks
+
+1. **Use corrected baselines only.** Treat ROB-129 `38.14%` WER and ROB-130 `40.86%` WER as the current frozen TEDLIUM-transfer baselines. Treat ROB-91/ROB-119 near-`100%` WER as historical evidence for the broken chunked TEDLIUM setup, not as current SSL-quality evidence.
+2. **Run a full corrected-cache supervised reference probe before another SSL rerun.** ROB-128 proved one-record overfit and controls, but a full TEDLIUM corrected-cache known-good supervised encoder probe would put the `38-41%` SSL WER range on a meaningful scale.
+3. **Inspect learned hidden-state weights and layer selections.** ROB-129/130 both expose six hidden states. Compare whether the useful signal comes from the same layers for paper-mask and low-mask checkpoints before deciding whether to rerun SSL.
+4. **Only then choose between longer SSL and probe optimization.** If the supervised reference is strong, prioritize longer/more paper-like SSL training: more optimizer updates, potentially AdamW/Noam parity, explicit update-count checkpoint labels, and possibly more LibriSpeech-like data. If the supervised reference is also weak, prioritize probe recipe changes such as duration batching, LR/horizon sweeps, and LM/no-LM evaluation.
+
+### Final Conclusion
+
+ROB-98 no longer looks like a simple "BEST-RQ SSL failed" issue. The initial low-mask diagnosis was real, and the paper-style ROB-100 recipe remains the cleaner setup, but the largest observed failure came from probing on broken TEDLIUM training units. Once the TEDLIUM probe path was corrected, both the paper-mask ROB-100 checkpoint and the old low-mask ROB-70 checkpoint became CTC-usable under frozen weighted-state BiLSTM probing.
+
+The remaining poor performance is a quality/comparability problem: corrected frozen BEST-RQ transfer is around `38-41%` TEDLIUM WER, which is useful signal but still weak. Future work should stop using the old ROB-91/119 collapse as representation-quality evidence and should compare against a full corrected supervised reference before spending another long run on SSL pretraining.
