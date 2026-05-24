@@ -32,7 +32,7 @@ TEMPERATURE="${ROB127_TEMPERATURE:-1.0}"
 MAX_OUTPUT_FRAMES="${ROB127_MAX_OUTPUT_FRAMES:-}"
 REWARD_STD_MIN="${ROB127_REWARD_STD_MIN:-0.01}"
 SAMPLE_TEXT_LOG_EVERY="${ROB127_SAMPLE_TEXT_LOG_EVERY:-10}"
-LATE_WORD_TOLERANCE_SECONDS="${ROB127_LATE_WORD_TOLERANCE_SECONDS:-0.0}"
+LATE_WORD_TOLERANCE_SECONDS="${ROB127_LATE_WORD_TOLERANCE_SECONDS:-2.0}"
 LATE_WORD_PENALTY_MODE="${ROB127_LATE_WORD_PENALTY_MODE:-constant}"
 LATE_WORD_PENALTY_PER_SECOND="${ROB127_LATE_WORD_PENALTY_PER_SECOND:-0.25}"
 LATE_WORD_PENALTY_MAX="${ROB127_LATE_WORD_PENALTY_MAX:-1.0}"
@@ -65,6 +65,12 @@ fi
 mkdir -p "$RUN_DIR" "$CHECKPOINT_DIR" "$WANDB_DIR" "$TMPDIR"
 export TMPDIR
 exec > >(tee -a "$OUT_LOG") 2> >(tee -a "$ERR_LOG" >&2)
+
+if [[ "$LATE_WORD_PENALTY_MODE" == "constant" ]]; then
+  LATE_WORD_PENALTY_PER_SECOND_SUMMARY="inactive_constant_mode"
+else
+  LATE_WORD_PENALTY_PER_SECOND_SUMMARY="$LATE_WORD_PENALTY_PER_SECOND"
+fi
 
 on_exit() {
   local status=$?
@@ -99,7 +105,7 @@ on_exit() {
     echo "sample_text_log_every=${SAMPLE_TEXT_LOG_EVERY}"
     echo "late_word_tolerance_seconds=${LATE_WORD_TOLERANCE_SECONDS}"
     echo "late_word_penalty_mode=${LATE_WORD_PENALTY_MODE}"
-    echo "late_word_penalty_per_second=${LATE_WORD_PENALTY_PER_SECOND}"
+    echo "late_word_penalty_per_second=${LATE_WORD_PENALTY_PER_SECOND_SUMMARY}"
     echo "late_word_penalty_max=${LATE_WORD_PENALTY_MAX}"
     echo "use_rotary=true"
     echo "rotary_base_freq=${ROTARY_BASE_FREQ}"
@@ -186,11 +192,14 @@ prepare_args=(
   --sample-text-log-every "$SAMPLE_TEXT_LOG_EVERY"
   --late-word-tolerance-seconds "$LATE_WORD_TOLERANCE_SECONDS"
   --late-word-penalty-mode "$LATE_WORD_PENALTY_MODE"
-  --late-word-penalty-per-second "$LATE_WORD_PENALTY_PER_SECOND"
   --late-word-penalty-max "$LATE_WORD_PENALTY_MAX"
   --rotary-base-freq "$ROTARY_BASE_FREQ"
   --rotary-interpolation-factor "$ROTARY_INTERPOLATION_FACTOR"
 )
+
+if [[ "$LATE_WORD_PENALTY_MODE" != "constant" ]]; then
+  prepare_args+=(--late-word-penalty-per-second "$LATE_WORD_PENALTY_PER_SECOND")
+fi
 
 if [[ -n "$MAX_OUTPUT_FRAMES" ]]; then
   prepare_args+=(--max-output-frames "$MAX_OUTPUT_FRAMES")

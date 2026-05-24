@@ -40,7 +40,7 @@ def main():
     parser.add_argument("--sample-text-log-every", type=int, default=10)
     parser.add_argument("--reward-wer-weight", type=float, default=0.7)
     parser.add_argument("--reward-cer-weight", type=float, default=0.3)
-    parser.add_argument("--late-word-tolerance-seconds", type=float, default=0.0)
+    parser.add_argument("--late-word-tolerance-seconds", type=float, default=2.0)
     parser.add_argument("--late-word-penalty-mode", choices=["linear", "constant"], default="constant")
     parser.add_argument("--late-word-penalty-per-second", type=float, default=0.25)
     parser.add_argument("--late-word-penalty-max", type=float, default=1.0)
@@ -73,7 +73,7 @@ def main():
     config.wandb.id = args.wandb_id
     config.wandb.dir = args.wandb_dir
     config.wandb.update_config_with_wandb_id = False
-    config.rl = {
+    rl_config = {
         "algorithm": "grpo",
         "num_rollouts": args.num_rollouts,
         "microbatch_size": args.microbatch_size,
@@ -87,7 +87,6 @@ def main():
         "reward_cer_weight": args.reward_cer_weight,
         "late_word_tolerance_seconds": args.late_word_tolerance_seconds,
         "late_word_penalty_mode": args.late_word_penalty_mode,
-        "late_word_penalty_per_second": args.late_word_penalty_per_second,
         "late_word_penalty_max": args.late_word_penalty_max,
         "reward_offset": 1.0,
         "reward_scale": 1.0,
@@ -100,6 +99,9 @@ def main():
         "include_empty_references": False,
         "sample_text_log_every": args.sample_text_log_every,
     }
+    if args.late_word_penalty_mode != "constant":
+        rl_config["late_word_penalty_per_second"] = args.late_word_penalty_per_second
+    config.rl = rl_config
 
     os.makedirs(os.path.dirname(args.config_out), exist_ok=True)
     os.makedirs(args.checkpoint_dir, exist_ok=True)
@@ -133,7 +135,10 @@ def main():
     print(f"sample_text_log_every={args.sample_text_log_every}")
     print(f"late_word_tolerance_seconds={args.late_word_tolerance_seconds}")
     print(f"late_word_penalty_mode={args.late_word_penalty_mode}")
-    print(f"late_word_penalty_per_second={args.late_word_penalty_per_second}")
+    if args.late_word_penalty_mode == "constant":
+        print("late_word_penalty_per_second=inactive_constant_mode")
+    else:
+        print(f"late_word_penalty_per_second={args.late_word_penalty_per_second}")
     print(f"late_word_penalty_max={args.late_word_penalty_max}")
     print(f"use_rotary={config.model.use_rotary}")
     print(f"rotary_base_freq={config.model.rotary_base_freq}")

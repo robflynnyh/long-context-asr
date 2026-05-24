@@ -1110,8 +1110,12 @@ def train(args: argparse.Namespace) -> None:
     print(f"Reward std minimum: {config.rl.get('reward_std_min', 0.0)}")
     print(f"Max output frames: {config.rl.get('max_output_frames', None)}")
     print(f"Late word tolerance seconds: {config.rl.get('late_word_tolerance_seconds', None)}")
-    print(f"Late word penalty mode: {config.rl.get('late_word_penalty_mode', 'linear')}")
-    print(f"Late word penalty per second: {config.rl.get('late_word_penalty_per_second', 0.25)}")
+    late_word_penalty_mode = str(config.rl.get("late_word_penalty_mode", "linear"))
+    print(f"Late word penalty mode: {late_word_penalty_mode}")
+    if late_word_penalty_mode == "constant":
+        print("Late word penalty per second: inactive (constant mode)")
+    else:
+        print(f"Late word penalty per second: {config.rl.get('late_word_penalty_per_second', 0.25)}")
     print(f"Late word penalty max: {config.rl.get('late_word_penalty_max', 1.0)}")
 
     pbar = tqdm(total=max_steps, initial=step, desc="Streaming decoder RL updates")
@@ -1340,6 +1344,29 @@ def self_test() -> None:
     assert immediate_late_stats["late_correct_words"] == 1.0
     assert immediate_late_stats["late_correct_penalty"] == 1.0
     assert immediate_late_reward[0].item() < mild_late_reward[0].item()
+    tolerated_constant_reward, tolerated_constant_stats = weighted_error_rewards(
+        ["world"],
+        ["world"],
+        hypothesis_word_times=[[{"word": "world", "time": 2.9}]],
+        reference_word_times=[[{"word": "world", "time": 1.0}]],
+        late_word_tolerance_seconds=2.0,
+        late_word_penalty_mode="constant",
+        late_word_penalty_max=1.0,
+    )
+    assert tolerated_constant_stats["late_correct_words"] == 0.0
+    assert tolerated_constant_reward[0].item() == 1.0
+    over_tolerance_constant_reward, over_tolerance_constant_stats = weighted_error_rewards(
+        ["world"],
+        ["world"],
+        hypothesis_word_times=[[{"word": "world", "time": 3.05}]],
+        reference_word_times=[[{"word": "world", "time": 1.0}]],
+        late_word_tolerance_seconds=2.0,
+        late_word_penalty_mode="constant",
+        late_word_penalty_max=1.0,
+    )
+    assert over_tolerance_constant_stats["late_correct_words"] == 1.0
+    assert over_tolerance_constant_stats["late_correct_penalty"] == 1.0
+    assert over_tolerance_constant_reward[0].item() < tolerated_constant_reward[0].item()
     on_time_reward, on_time_stats = weighted_error_rewards(
         ["hello world"],
         ["hello world"],
