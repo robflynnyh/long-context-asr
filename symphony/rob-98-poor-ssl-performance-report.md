@@ -618,11 +618,13 @@ ROB-98 no longer looks like a simple "BEST-RQ SSL failed" issue. The initial low
 
 The remaining poor performance is a quality/comparability problem: corrected frozen BEST-RQ transfer is around `38-41%` TEDLIUM WER, which is useful signal but still weak. Future work should stop using the old ROB-91/119 collapse as representation-quality evidence and should compare against a full corrected supervised reference before spending another long run on SSL pretraining.
 
-## Post-ROB-131 Random-Frozen Control Plan: Measure The Probe Recipe Lower Bound
+## Post-ROB-131 Random-Frozen Control Plan: Canceled After Cleanup Decision
 
 The newest ROB-98 human follow-up asks for a comparison against the network before SSL training: keep a randomly initialized SCConformerXL backbone frozen, then train the same kind of BiLSTM CTC probe on top. This is a useful lower-bound control, but it should be split out rather than launched directly from ROB-98 because it is a new long probe run with smoke/callback/checkpoint-retention requirements.
 
 This has been split into ROB-131: https://linear.app/robflynn/issue/ROB-131/probe-random-frozen-pretraining-baseline-with-corrected-tedlium-cache
+
+May 25 update: ROB-131 was canceled before a long run completed because the investigation already had enough evidence to close the parent question. The random-frozen control remains a possible future lower-bound experiment, but it is not needed to interpret ROB-98.
 
 ### What ROB-131 Should Control
 
@@ -651,3 +653,39 @@ ROB-131 should post back to ROB-98 with:
 2. A direct comparison against ROB-129 paper-mask BiLSTM `38.14%` WER and ROB-130 low-mask BiLSTM `40.86%` WER.
 3. Exact command, artifact directory, logs, checkpoint-retention behavior, and smoke/callback validation.
 4. A clear evidence boundary: this remains a TEDLIUM transfer/probe control, not a direct LibriSpeech arXiv:2405.04296 reproduction.
+
+## May 25 Cleanup Addendum: Consolidated Parent Outcome
+
+The child issues have now converged on the core answer. The parent ROB-98 branch should be the durable handoff, rather than merging every child ablation branch into `dev`.
+
+### Consolidated Findings
+
+1. **Main cause of the original collapse:** the old ROB-91/ROB-119 TEDLIUM probes trained on the wrong training units. Full-recording chunk labels were a poor fit for this repo and produced stale near-`100%` WER/deletion evidence. Corrected STM utterance-boundary examples with normalized labels are mandatory for these probe comparisons.
+2. **Masking conclusion:** the original low-mask ROB-70 SSL setup differed from the paper/open recipe and the paper-style ROB-100 checkpoint remains the cleaner setup. Under corrected probing, however, the old low-mask checkpoint is only modestly worse than ROB-100: `40.86%` versus `38.14%` WER for the weighted-state BiLSTM probe.
+3. **Final interpretation:** poor corrected frozen TEDLIUM-transfer performance is real, but it is no longer a total SSL/probe collapse. The issue is now weak transfer/comparability under a one-epoch Spotify BEST-RQ recipe, not evidence that BEST-RQ representations are unusable.
+4. **Direct paper comparison boundary:** none of these rows is a direct arXiv:2405.04296 reproduction. The local setup still differs in pretraining data, training horizon, architecture, optimizer/scheduler, probe dataset, and LM/no-LM evaluation.
+
+### Code Consolidated Into ROB-98
+
+The parent branch now carries the reusable fixes needed to support the corrected interpretation:
+
+- `exp/train.py`: supports `data.format: utterance_folder` so TEDLIUM probe training can use prebuilt STM utterance examples instead of full-recording chunk labels; adds per-epoch utterance reshuffling, optional training diagnostics JSONL, and W&B watch gating.
+- `lcasr/models/ctc_probe.py` and `lcasr/utils/general.py`: support weighted hidden-state CTC probes, source CTC decoder initialization, configurable trainable prefixes, top-N encoder unfreezing, grouped learning-rate scaling, and trainability audits.
+- `lcasr/models/sconformer_xl.py` and `lcasr/models/enc_dec_sconformer_v2.py`: expose all hidden states and skip-vocabulary-projection outputs needed by frozen probe heads.
+- `eval/run.py`, `eval/eval_manager.py`, and `eval/tedlium/run.py`: carry the evaluation robustness/diagnostic fixes used in the corrected runs, including CER and length diagnostics, lazy dataset imports, checkpoint loading compatibility, and optional `pyctcdecode` import handling.
+- `lcasr/utils/dataloading.py` and `lcasr/utils/general.py`: include the utterance-loader and checkpoint/probe-loading compatibility fixes required by the corrected probe workflow.
+
+The issue-specific child wrappers and result scripts from ROB-125, ROB-126, ROB-128, ROB-129, ROB-130, and ROB-131 are intentionally not all consolidated. They served as experiment scaffolding and would cloud the main branch with one-off ablation machinery. Their important results and artifact paths are preserved in this report and in the Linear comments.
+
+### Child Issue Cleanup
+
+The following child PRs/branches are superseded by the parent ROB-98 handoff once this cleanup lands:
+
+- ROB-125 / PR #28: supervised encoder sanity probe.
+- ROB-126 / PR #34: top-layer-unfrozen ROB-100 probe.
+- ROB-128 / PR #33: corrected utterance-boundary supervised probe ladder.
+- ROB-129 / PR #35: corrected fully frozen ROB-100 probe.
+- ROB-130 / PR #36: corrected old low-mask probe.
+- ROB-131: random-frozen lower-bound control, canceled before it became necessary.
+
+Future work should start from the consolidated parent code and the corrected baselines (`38.14%` ROB-100 paper-mask, `40.86%` ROB-70 low-mask) rather than from the stale chunked TEDLIUM probe results.

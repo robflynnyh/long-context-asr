@@ -938,7 +938,9 @@ class EncDecSconformerV2(BaseModel):
             text_sequence = None, 
             length = None, 
             cache: Dict = None,
-            return_logits = False
+            return_logits = False,
+            skip_vocab_projection = False,
+            return_all_hidden_states = False,
         ):
 
         max_audio_length: int = audio_signal.size(-1)
@@ -992,6 +994,7 @@ class EncDecSconformerV2(BaseModel):
         pad_mask = mask 
     
         audio_signal = self.pos_enc(audio_signal)
+        all_hidden_states = []
 
         for lth, layer in enumerate(self.layers):
 
@@ -1021,6 +1024,18 @@ class EncDecSconformerV2(BaseModel):
             if lth != len(self.layers) - 1 and self.self_conditioning:
                 iterim_post = torch.nn.functional.softmax(self.ctc_decoder(x=audio_signal, logits=True), dim=-1)
                 audio_signal = self.ctc_decoder.integrate_projections(audio_signal, self.ctc_decoder.project_back(iterim_post))        
+            if return_all_hidden_states:
+                all_hidden_states.append(audio_signal)
+
+        if skip_vocab_projection:
+            output = {
+                'hidden_states': audio_signal,
+                'a_hidden': audio_signal,
+                'length': length,
+            }
+            if return_all_hidden_states:
+                output['all_hidden_states'] = all_hidden_states
+            return output
         
         final_posts_ctc = None
         if self.ctc_loss_weight > 0:
@@ -1038,13 +1053,16 @@ class EncDecSconformerV2(BaseModel):
             kv_cache = lm_out['kv_cache']
 
 
-        return {
+        output = {
             'final_posteriors_ctc': final_posts_ctc,
             'final_posteriors_lm': final_posts_lm,
             'a_hidden': audio_signal,
             'length': length,
             'kv_cache': kv_cache,
         }
+        if return_all_hidden_states:
+            output['all_hidden_states'] = all_hidden_states
+        return output
     
 
  
