@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-25
+
+- ROB-123 final Stanage evidence: full-Spotify RoPE streaming-decoder training job `10258593` completed `0:0` on `gpu31` / `gpu-h100-nvl` in `2-05:38:36` with batch MaxRSS `85987052K`. The run used `105360` Spotify records / `59434.13` hours, batch size 88, LR 3e-4, two epochs, `rotary_base_freq=1500000`, and `streaming.delay_seconds=0.5`; final progress reached epoch 1 step `272362` with displayed loss `0.3318`. The final checkpoint is `/mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob123_full_spotify_2epoch_delay0p5_rob123-rope-full-spotify-2epoch-delay0p5-20260523T091306Z/step_272362.pt`, W&B run `boki2t09`, and callback summary/logs live under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/rob123-rope-full-spotify-2epoch-delay0p5-20260523T091306Z`.
+
 ## 2026-05-23
 
 - ROB-123 delay follow-up: after the latest Linear comment changed the streaming target delay from 2.0s to 0.5s, canceled the stale pending Stanage GPU job `10255875` before start and updated the ROB-123 prep/wrappers to write `streaming.delay_seconds=0.5` into runtime configs, summaries, and callback metadata. Callback-only Stanage validation job `10258586` and CPU smoke job `10258587` both completed `0:0`; the smoke loaded the full Spotify manifest, validated 50 paths, used batch size 88, LR 3e-4, 2 epochs, RoPE theta 1500000, and completed one optimizer step. Replacement GPU job `10258593` was queued under run id `rob123-rope-full-spotify-2epoch-delay0p5-20260523T091306Z`.
