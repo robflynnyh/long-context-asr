@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=rob123-ted-cpu
 #SBATCH --partition=interactive
-#SBATCH --time=20:00:00
+#SBATCH --time=08:00:00
 #SBATCH --mem=60GB
 #SBATCH --cpus-per-task=16
 #SBATCH --output=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-ted-cpu-%j.out
