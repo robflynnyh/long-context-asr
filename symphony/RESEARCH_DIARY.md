@@ -161,6 +161,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-26
 
 - ROB-98 PR review response: replaced TEDLIUM eval's temporary `pyctcdecode` fallback with the repo `GreedyCTCDecoder`, moved weighted hidden-state probe collection from SCConformerXL/EncDec forward API additions into probe-local layer hooks, and refactored `exp/train.py` so utterance-folder and recording-manifest batches are normalized by a helper before the main training loop. Kept eval-manager passthrough diagnostics for CER and hyp/ref length fields.
+- ROB-98 second PR review response: moved the new `exp/train.py` dataloader/chunking/logging helpers into `lcasr.utils.training`, kept the main train loop focused on optimization, added an explanatory dataloader-refresh comment, and added helper tests including a synthetic `VariableBatchSimpleDataloader` recording-manifest smoke to protect the original chunking path.
 
 ## 2026-05-12
 

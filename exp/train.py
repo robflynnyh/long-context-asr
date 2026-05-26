@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import lcasr
 import torch
 import argparse
@@ -10,16 +9,20 @@ from lcasr.models.sconformer_xl import SCConformerXL
 from omegaconf.omegaconf import OmegaConf
 import traceback
 from lcasr.utils.dataloading import (
-    Utterance_Dataloader,
-    VariableBatchSimpleDataloader,
-    chunk_spectogram,
-    chunk_text_json,
     reset_seen_ids,
 )
 from lcasr.utils.hooks import add_debug_backwards_hooks
 from lcasr.utils.scheduling import CosineLRScheduler, SequenceWarmupManager
 from lcasr.utils.helpers import exists
 from lcasr.utils.general import load_model, save_model, load_checkpoint, load_optimizer, get_model_class
+from lcasr.utils.training import (
+    batch_to_chunks,
+    build_training_dataloader,
+    load_training_pairs,
+    log_training_metrics,
+    prepare_diagnostics_path,
+    refresh_dataloader_for_epoch,
+)
 from lcasr.utils.augmentation import SpecAugment
 import resource
 import time
@@ -39,13 +42,6 @@ from collections import defaultdict
 import warnings
 import random
 random.seed(1234)
-
-
-def subset_pairs(pairs, max_records):
-    if max_records is None:
-        return pairs
-    keys = sorted(pairs.keys())[:max_records]
-    return {key: pairs[key] for key in keys}
 
 
 def blank_p(logits, tokenizer):
@@ -84,99 +80,6 @@ def apply_augmentation(audio, lengths, augmentation, epoch, start_augment_after_
         return augmentation(audio, lengths)
 
 
-def refresh_dataloader_for_epoch(args, dataloader, tokenizer, batch_size:int, seen_ids:List[str], random_seed:int):
-    """Update dataloaders in place when possible, otherwise rebuild them."""
-    if hasattr(dataloader, 'update'):
-        dataloader.update(
-            batch_size=batch_size,
-            seen_ids=seen_ids,
-            random_seed=random_seed,
-        )
-        return dataloader
-
-    if args.config['data'].get('format', 'recording_manifest') == 'utterance_folder':
-        if random_seed == 'same':
-            random_seed = args.config['training'].get('random_seed', 1234)
-        return Utterance_Dataloader(
-            utterance_folder=args.config['data']['path'],
-            tokenizer=tokenizer,
-            batch_size=batch_size,
-            num_workers=args.num_workers,
-            pin_memory=args.pin_memory,
-            prefetch=args.prefetch_factor,
-            seen_ids=seen_ids,
-            random_seed=random_seed,
-            max_records=args.config['data'].get('max_records', None),
-        )
-
-    raise AttributeError(f'{type(dataloader).__name__} has no update() method')
-
-
-def batch_to_chunks(batch, tokenizer, pad_id:int, chunk_size:int, chunk_overlap:int):
-    if isinstance(batch, dict):
-        audio = batch['audio']
-        audio_lengths = batch['audio_lengths']
-        ids = list(batch['ids'])
-        cur_batch_size = audio.shape[0]
-        return [{
-            'audio': audio,
-            'txt': batch['text'],
-            'txt_lengths': batch['text_lengths'],
-            'audio_lengths': audio_lengths,
-            'selection_mask': torch.ones(cur_batch_size, dtype=torch.bool),
-            'cur_culm_lengths': torch.zeros_like(audio_lengths),
-        }], ids, cur_batch_size
-
-    audio, audio_lengths, txt, ids = batch
-    cur_batch_size = audio.shape[0]
-    audio_chunks = chunk_spectogram(spec=audio, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    txt_chunks = [
-        chunk_text_json(
-            text=el,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            spectogram_length=audio.shape[-1],
-        )
-        for el in txt
-    ]
-
-    chunks, culm_lengths_audio = [], torch.zeros_like(audio_lengths)
-    for ix, el in enumerate(audio_chunks):
-        remove_mask = ~(culm_lengths_audio > audio_lengths)
-        cur_chunks, cur_culm_lengths = el[remove_mask], culm_lengths_audio[remove_mask]
-        cur_lengths = cur_chunks.shape[-1] - (
-            cur_culm_lengths
-            + cur_chunks.shape[-1]
-            - audio_lengths[remove_mask]
-            - chunk_overlap
-        ).clamp(0)
-
-        enc_txt_chunks = [
-            torch.LongTensor(tokenizer.encode(el[ix]))
-            for i, el in enumerate(txt_chunks)
-            if remove_mask[i]
-        ]
-        enc_txt_chunks_lengths = torch.LongTensor([el.shape[0] for el in enc_txt_chunks])
-        enc_txt_chunks = torch.nn.utils.rnn.pad_sequence(
-            enc_txt_chunks,
-            batch_first=True,
-            padding_value=pad_id,
-        )
-        if enc_txt_chunks_lengths.max() == 0:
-            continue
-        chunks.append({
-            'audio': cur_chunks,
-            'txt': enc_txt_chunks,
-            'txt_lengths': enc_txt_chunks_lengths,
-            'audio_lengths': cur_lengths,
-            'selection_mask': remove_mask,
-            'cur_culm_lengths': cur_culm_lengths,
-        })
-        culm_lengths_audio[remove_mask] += cur_chunks.shape[-1] - (chunk_overlap if ix != 0 else 0)
-
-    return chunks, ids, cur_batch_size
-
-
 def get_dtype(dtype:str) -> torch.dtype:
     if dtype == 'bfloat16':
         return torch.bfloat16
@@ -204,9 +107,7 @@ def train(
     clip_value = args.config['training'].get('clip_value', 0.8) 
     random.seed(args.config['training'].get('random_seed', 12345))
     wandb_config = args.config['wandb']
-    diagnostics_path = args.config['training'].get('diagnostics_path', None)
-    if diagnostics_path is not None:
-        os.makedirs(os.path.dirname(diagnostics_path), exist_ok=True)
+    diagnostics_path = prepare_diagnostics_path(args.config)
     dtype = get_dtype(args.config['training'].get('dtype', 'bfloat16'))
     rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
     resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
@@ -255,6 +156,7 @@ def train(
             if epoch >= max_epochs:
                 finished = True
             else:
+                # Utterance-folder loaders cannot update in place, so this call may rebuild the loader for the next epoch.
                 dataloader = refresh_dataloader_for_epoch(
                     args=args,
                     dataloader=dataloader,
@@ -401,27 +303,22 @@ def train(
                     learning_rate = scheduler.get_last_lr()[0]
                  
 
-                    if wandb_config['use']:
-                        wandb.log({
-                            'loss': loss_to_log,
-                            'blank_p': blank_prob,
-                            'learning_rate': learning_rate,
-                            'sequence_length': chunk_size,
-                            'batch_size': batch_size,
-                            'epoch': epoch,
-                            'spec_augment': int(True) if start_spec_augment_after_n_epochs != -1 and epoch >= start_spec_augment_after_n_epochs and scheduler.is_warmup == False else int(False),
-                        })
-                    if diagnostics_path is not None:
-                        with open(diagnostics_path, 'a', encoding='utf-8') as handle:
-                            handle.write(json.dumps({
-                                'step': int(cur_podcast),
-                                'epoch': int(epoch),
-                                'loss': float(loss_to_log),
-                                'blank_p': float(blank_prob),
-                                'learning_rate': float(learning_rate),
-                                'sequence_length': int(chunk_size),
-                                'batch_size': int(batch_size),
-                            }) + '\n')
+                    log_training_metrics(
+                        wandb_config=wandb_config,
+                        diagnostics_path=diagnostics_path,
+                        step=cur_podcast,
+                        epoch=epoch,
+                        loss=loss_to_log,
+                        blank_prob=blank_prob,
+                        learning_rate=learning_rate,
+                        sequence_length=chunk_size,
+                        batch_size=batch_size,
+                        spec_augment_active=(
+                            start_spec_augment_after_n_epochs != -1
+                            and epoch >= start_spec_augment_after_n_epochs
+                            and scheduler.is_warmup == False
+                        ),
+                    )
                     
                     cur_tokens_in_loss, cur_loss = 0, torch.tensor(0.0, dtype=model_dtype, device=device)
                 prev_selection_mask = selection_mask.clone()
@@ -492,10 +389,7 @@ def main(args):
     torch.cuda.manual_seed(12345)
     model = load_model(args.config, tokenizer.vocab_size(), get_model_class(config = args.config))
     tparams = model.print_total_params()
-    paired_data = None
-    if args.config['data'].get('format', 'recording_manifest') != 'utterance_folder':
-        paired_data = lcasr.utils.audio_tools.load_json(args.config['data']['path'])
-        paired_data = subset_pairs(paired_data, args.config['data'].get('max_records', None))
+    paired_data = load_training_pairs(args.config)
 
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -550,32 +444,13 @@ def main(args):
     random.seed(random_seed)
     start_spec_augment_after_n_epochs = args.config['training'].get('start_spec_augment_after_n_epochs', -1)
 
-    # skip data up to step
-    if args.config['data'].get('format', 'recording_manifest') == 'utterance_folder':
-        dataloader = Utterance_Dataloader(
-            utterance_folder = args.config['data']['path'],
-            tokenizer = tokenizer,
-            batch_size = args.config['training']['batch_size'],
-            num_workers = args.num_workers,
-            pin_memory = args.pin_memory,
-            prefetch = args.prefetch_factor,
-            seen_ids = seen_ids,
-            random_seed = random_seed,
-            max_records = args.config['data'].get('max_records', None),
-        )
-    else:
-        dataloader = VariableBatchSimpleDataloader(
-            pairs = paired_data,
-            tokenizer = tokenizer,
-            batch_size = args.config['training']['batch_size'],
-            chunk_size = args.config.audio_chunking['size'],
-            chunk_overlap = args.config.audio_chunking['overlap'],
-            num_workers = args.num_workers,
-            pin_memory = args.pin_memory,
-            prefetch = args.prefetch_factor,
-            seen_ids = seen_ids,
-            random_seed = random_seed,
-        )
+    dataloader = build_training_dataloader(
+        args=args,
+        tokenizer=tokenizer,
+        seen_ids=seen_ids,
+        random_seed=random_seed,
+        paired_data=paired_data,
+    )
 
     # None if start_spec_augment_after_n_epochs == -1 or epoch < start_spec_augment_after_n_epochs else 
     augmentation = SpecAugment(**args.config['spec_augment']) if 'spec_augment' in args.config else None
