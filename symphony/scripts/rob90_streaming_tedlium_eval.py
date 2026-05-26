@@ -29,6 +29,7 @@ def parse_args():
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--max-output-frames", type=int, default=None)
     parser.add_argument("--max-tokens", type=int, default=None)
+    parser.add_argument("--use-kv-cache", action="store_true")
     parser.add_argument("--eval-dtype", default="bfloat16", choices=["float32", "bfloat16", "float16"])
     return parser.parse_args()
 
@@ -88,6 +89,7 @@ def main():
             temperature=args.temperature,
             max_output_frames=args.max_output_frames,
             max_tokens=args.max_tokens,
+            use_kv_cache=args.use_kv_cache,
             return_metadata=True,
         )
         reference = normalize(utterance["text"])
@@ -119,6 +121,7 @@ def main():
         "recording_index": args.recording_index,
         "utterances": len(records),
         "decode_mode": args.decode_mode,
+        "use_kv_cache": args.use_kv_cache,
         "eval_dtype": args.eval_dtype if device.type == "cuda" else "float32",
         "wer": wer,
         "words": words,
