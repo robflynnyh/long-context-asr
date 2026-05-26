@@ -158,6 +158,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-98 cleanup after child-issue convergence: consolidated reusable corrected-probe code into the parent branch while intentionally leaving one-off child `symphony/jobs` and ablation scripts out of the main handoff. The parent branch now carries utterance-folder training support, weighted hidden-state CTC probes, source/head initialization and top-N unfreezing controls, hidden-state exposure for SCConformerXL/EncDecSconformerV2, and eval diagnostics used by the corrected ROB-129/130 comparisons. ROB-131 was canceled before a long random-frozen run because the investigation had enough evidence: poor original performance was mostly broken TEDLIUM utterance construction; paper-style masking is still cleaner and modestly better (`38.14%` vs `40.86%` WER), but the remaining issue is weak corrected frozen TEDLIUM transfer rather than total SSL collapse.
 
+## 2026-05-26
+
+- ROB-98 PR review response: replaced TEDLIUM eval's temporary `pyctcdecode` fallback with the repo `GreedyCTCDecoder`, moved weighted hidden-state probe collection from SCConformerXL/EncDec forward API additions into probe-local layer hooks, and refactored `exp/train.py` so utterance-folder and recording-manifest batches are normalized by a helper before the main training loop. Kept eval-manager passthrough diagnostics for CER and hyp/ref length fields.
+
 ## 2026-05-12
 
 - ROB-69 eval job `10156464` completed successfully, but finalizer job `10156465` failed because appended finetuned CSV rows included an extra pandas index field. Normalized the completed remote result into `eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`, made ROB-69 summarization tolerate and normalize that output shape, and fixed eval manager CSV appends to write `index=False`. Mean WER was slightly worse for the long-only finetuned checkpoints on most dataset/window pairs, with small improvements only on `rev16` window 128, `tedlium` window 8192, and `this_american_life` windows 128 and 22500.

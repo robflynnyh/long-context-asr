@@ -80,6 +80,15 @@ class FrozenBackboneCTCProbe(nn.Module):
         self.decoder = decoder
         self.weighted_sum = weighted_sum
         self.encoder_lr_scale = encoder_lr_scale
+        self._captured_hidden_states = None
+        self._hidden_state_hook_handles = []
+        if self.weighted_sum is not None:
+            if not hasattr(acoustic_model, "layers"):
+                raise RuntimeError("hidden_state_weighted_sum requires an acoustic_model.layers stack")
+            self._hidden_state_hook_handles = [
+                layer.register_forward_hook(self._capture_hidden_state)
+                for layer in acoustic_model.layers
+            ]
         signature = inspect.signature(acoustic_model.forward)
         self._acoustic_forward_params = set(signature.parameters)
         self._acoustic_accepts_kwargs = any(
@@ -96,6 +105,13 @@ class FrozenBackboneCTCProbe(nn.Module):
         pstr = "Total trainable params: " if only_trainable else "Total params: "
         print(f"{pstr}: ", total / 1e6, "M")
         return total
+
+    def _capture_hidden_state(self, module, inputs, output):
+        if self._captured_hidden_states is None:
+            return
+        if isinstance(output, tuple):
+            output = output[0]
+        self._captured_hidden_states.append(output)
 
     def get_param_groups(self, optim_args=None):
         optim_args = optim_args or {}
@@ -122,13 +138,16 @@ class FrozenBackboneCTCProbe(nn.Module):
     def forward(self, *args, **kwargs):
         return_logits = kwargs.get("return_logits", False)
         kwargs["skip_vocab_projection"] = True
-        if self.weighted_sum is not None:
-            kwargs["return_all_hidden_states"] = True
         if not self._acoustic_accepts_kwargs:
             kwargs = {key: value for key, value in kwargs.items() if key in self._acoustic_forward_params}
-        output = self.acoustic_model(*args, **kwargs)
+        self._captured_hidden_states = [] if self.weighted_sum is not None else None
+        try:
+            output = self.acoustic_model(*args, **kwargs)
+            captured_hidden_states = self._captured_hidden_states
+        finally:
+            self._captured_hidden_states = None
         hidden_states = (
-            self.weighted_sum(output["all_hidden_states"])
+            self.weighted_sum(captured_hidden_states)
             if self.weighted_sum is not None
             else output.get("hidden_states", output.get("a_hidden"))
         )

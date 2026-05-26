@@ -64,6 +64,7 @@ def get_data_to_save(config, wers, split, dataset, model):
             'overlap_ratio': model.overlap_ratio,
             'model_class': config.args.model_class,
         }
+        # Preserve optional diagnostics such as CER and hyp/ref lengths.
         for key, value in wer_data.items():
             if key not in row:
                 row[key] = value
