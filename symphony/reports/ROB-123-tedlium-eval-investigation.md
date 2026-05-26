@@ -40,7 +40,7 @@ sub_rate=0.0004253056884635832
   the actual KV-cache frame cap from the model subsampling path, plus a
   regression test that the cache is trimmed during cached attention.
 - Training logs for the completed full-Spotify run show teacher-forced predicted non-silence fractions near target, for example final progress around `tgt_ns=0.277`, `pred_ns=0.262`, `loss=0.3318`.
-- The completed full-recording TEDLIUM CSV is not a WER arithmetic bug; it is genuinely near-all-deletion under that decode setup.
+- The uncapped full-recording TEDLIUM CSV is not a WER arithmetic bug; it is genuinely near-all-deletion under that decode setup.
 
 ## Bounded Probe
 
@@ -90,8 +90,45 @@ ref:  see also hurt useless and weak antonyms healthy strong capable
 hyp:  see also hurt useless and weak antonyms healthy strong
 ```
 
+## Corrected Full TEDLIUM Eval
+
+After the human clarification that `2048` refers to input spectrogram frames
+rather than already-subsampled KV-cache frames, the eval wrapper was rerun with:
+
+```yaml
+transcribe_kwargs:
+  use_kv_cache: true
+  max_kv_cache_spectrogram_length: 2048
+```
+
+For the ROB-123 model config, this maps to an effective decoder/KV cache cap of
+257 frames. The callback-backed Stanage CPU eval completed successfully:
+
+```text
+job=10267409
+state=COMPLETED 0:0
+elapsed=00:24:47
+batch_max_rss=10219476K
+artifact=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-cpu-kvcache-spec2048-full-20260526T114444Z
+result_csv=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-cpu-kvcache-spec2048-full-20260526T114444Z/rob123_tedlium_eval.csv
+```
+
+Aggregate TEDLIUM test metrics from the corrected CSV:
+
+```text
+wer=0.13974836080099237
+words=28215
+ins_rate=0.019812156654261916
+del_rate=0.04788233209285841
+sub_rate=0.07205387205387205
+checkpoint=/mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob123_full_spotify_2epoch_delay0p5_rob123-rope-full-spotify-2epoch-delay0p5-20260523T091306Z/step_272362.pt
+```
+
+The bounded log scan showed no traceback, OOM, or setup failure. This corrected
+result supersedes the uncapped `0.9924` WER result for ROB-123 handoff purposes.
+
 ## Conclusion
 
-The `0.9924` full-TEDLIUM WER should not be treated as the model's utterance-scale recognition quality. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses. The original KV-cache probe showed that uncapped KV-cache decoding matched no-cache decoding on the bounded utterance probe, but it did not prove that the full-recording eval used the intended 2048-spectrogram-frame context.
+The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`.
 
-The most likely issue is that the generic TEDLIUM eval decoded each full TED talk as one long streaming sequence, while this streaming decoder was trained and debugged on chunk/window-scale inputs with delayed frame targets. The full-recording path also used unbounded cached attention before the follow-up cap fix. A corrected TEDLIUM evaluation should segment by STM utterances or a comparable chunked streaming window, use `max_kv_cache_spectrogram_length: 2048` when KV caching is enabled, and then aggregate WER.
+For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check, while the corrected full TEDLIUM CPU eval is the current aggregate ROB-123 result.
