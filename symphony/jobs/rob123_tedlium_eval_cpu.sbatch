@@ -26,7 +26,7 @@ CHECKPOINT="${ROB123_CHECKPOINT:-/mnt/parscratch/users/acp21rjf/spotify/streamin
 TEDLIUM_ROOT="${ROB123_TEDLIUM_ROOT:-/mnt/parscratch/users/acp21rjf/TEDLIUM_release1}"
 BREAK_EVAL="${ROB123_EVAL_BREAK:-0}"
 INCLUDE_PER_RECORDING="${ROB123_INCLUDE_PER_RECORDING:-1}"
-MAX_KV_CACHE_LENGTH="${ROB123_MAX_KV_CACHE_LENGTH:-2048}"
+MAX_KV_CACHE_SPECTROGRAM_LENGTH="${ROB123_MAX_KV_CACHE_SPECTROGRAM_LENGTH:-2048}"
 CALLBACK_PYTHON="${ROB123_CALLBACK_PYTHON:-python3}"
 LINEAR_KEY_FILE="${ROB123_LINEAR_KEY_FILE:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/.linear_api_key}"
 
@@ -72,7 +72,7 @@ on_exit() {
     echo "eval_config=${EVAL_CONFIG}"
     echo "result_csv=${RESULT_CSV}"
     echo "use_kv_cache=true"
-    echo "max_kv_cache_length=${MAX_KV_CACHE_LENGTH}"
+    echo "max_kv_cache_spectrogram_length=${MAX_KV_CACHE_SPECTROGRAM_LENGTH}"
     echo "break_eval=${BREAK_EVAL}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB123_ENABLE_CALLBACK:-1}" == "1" ]]; then
@@ -97,7 +97,7 @@ on_exit() {
       --metadata "checkpoint=${CHECKPOINT}"
       --metadata "result_csv=${RESULT_CSV}"
       --metadata "use_kv_cache=true"
-      --metadata "max_kv_cache_length=${MAX_KV_CACHE_LENGTH}"
+      --metadata "max_kv_cache_spectrogram_length=${MAX_KV_CACHE_SPECTROGRAM_LENGTH}"
       --metadata "break_eval=${BREAK_EVAL}"
     )
     if [[ "${ROB123_CALLBACK_DRY_RUN:-0}" == "1" ]]; then
@@ -155,7 +155,7 @@ args:
   break_eval: $BREAK_EVAL
   transcribe_kwargs:
     use_kv_cache: true
-    max_kv_cache_length: $MAX_KV_CACHE_LENGTH
+    max_kv_cache_spectrogram_length: $MAX_KV_CACHE_SPECTROGRAM_LENGTH
 YAML
 
 {

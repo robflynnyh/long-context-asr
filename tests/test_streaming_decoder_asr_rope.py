@@ -92,6 +92,15 @@ class StreamingDecoderASRRoPETest(unittest.TestCase):
             self.assertLessEqual(cache.shape[1], 3)
             self.assertEqual(cache.shape[1], min(step + 1, 3))
 
+    def test_kv_cache_spectrogram_length_uses_subsampled_frame_count(self):
+        model = StreamingDecoderASR(**tiny_streaming_config())
+
+        self.assertEqual(
+            model.kv_cache_length_from_spectrogram_length(64),
+            int(model.output_lengths(torch.tensor([64]))[0].item()),
+        )
+        self.assertLess(model.kv_cache_length_from_spectrogram_length(64), 64)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -203,6 +203,13 @@ class StreamingDecoderASR(BaseModel):
             repeat_num=self.subsampling._sampling_num,
         )
 
+    def kv_cache_length_from_spectrogram_length(self, spectrogram_length: int) -> int:
+        """Convert an input spectrogram-frame window into cached decoder-frame length."""
+        if spectrogram_length <= 0:
+            raise ValueError("spectrogram_length must be positive")
+        length = torch.tensor([spectrogram_length], dtype=torch.long)
+        return int(self.output_lengths(length)[0].item())
+
     def _previous_targets(self, frame_targets: Optional[torch.Tensor], batch: int, length: int, device) -> torch.Tensor:
         """Shift teacher frame targets right to form previous-token decoder inputs."""
         if frame_targets is None:
@@ -366,6 +373,7 @@ class StreamingDecoderASR(BaseModel):
         max_frames: Optional[int] = None,
         use_kv_cache: bool = False,
         max_kv_cache_length: Optional[int] = None,
+        max_kv_cache_spectrogram_length: Optional[int] = None,
     ) -> dict:
         """Autoregressively decode by greedy two-head prediction at each output frame."""
         was_training = self.training
@@ -387,6 +395,15 @@ class StreamingDecoderASR(BaseModel):
         if use_kv_cache:
             if x.size(0) != 1:
                 raise ValueError("KV-cache greedy decoding currently supports batch size 1")
+            if max_kv_cache_length is not None and max_kv_cache_spectrogram_length is not None:
+                raise ValueError(
+                    "Pass either max_kv_cache_length or max_kv_cache_spectrogram_length, not both"
+                )
+            effective_max_kv_cache_length = max_kv_cache_length
+            if max_kv_cache_spectrogram_length is not None:
+                effective_max_kv_cache_length = self.kv_cache_length_from_spectrogram_length(
+                    max_kv_cache_spectrogram_length
+                )
             caches = [None for _ in self.layers]
             prev_id = torch.full((x.size(0),), self.silence_id, dtype=torch.long, device=x.device)
             for step in range(x.size(1)):
@@ -398,7 +415,7 @@ class StreamingDecoderASR(BaseModel):
                         rotary_emb_fn=rotary_emb_fn,
                         cached_kv=caches[layer_idx],
                         use_cache=True,
-                        max_cache_length=max_kv_cache_length,
+                        max_cache_length=effective_max_kv_cache_length,
                     )
                 step_h = self.norm(h[:, 0])
                 step_prediction = self._step_predictions(step_h, sample=False)
@@ -481,6 +498,7 @@ class StreamingDecoderASR(BaseModel):
         max_tokens: Optional[int] = None,
         use_kv_cache: bool = False,
         max_kv_cache_length: Optional[int] = None,
+        max_kv_cache_spectrogram_length: Optional[int] = None,
         return_metadata: bool = False,
         **kwargs,
     ):
@@ -501,6 +519,7 @@ class StreamingDecoderASR(BaseModel):
                     max_tokens=max_tokens,
                     use_kv_cache=use_kv_cache,
                     max_kv_cache_length=max_kv_cache_length,
+                    max_kv_cache_spectrogram_length=max_kv_cache_spectrogram_length,
                     return_metadata=return_metadata,
                 )
                 for item in audio_spec
@@ -535,6 +554,7 @@ class StreamingDecoderASR(BaseModel):
                 max_frames=max_output_frames,
                 use_kv_cache=use_kv_cache,
                 max_kv_cache_length=max_kv_cache_length,
+                max_kv_cache_spectrogram_length=max_kv_cache_spectrogram_length,
             )
         else:
             raise ValueError(f"Unsupported decode_mode: {decode_mode}")
