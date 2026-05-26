@@ -165,8 +165,38 @@ full_sample_artifact=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-1
 full_sample_result_csv=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-sample-temp0p3-full-20260526T1300Z/rob123_tedlium_eval.csv
 ```
 
+## Silence-Head Sampling Follow-up
+
+A later follow-up tested the older silence-gate sampling shape explicitly:
+sample only the binary silence/non-silence head at `temperature=0.3`, then use
+greedy argmax from the text head whenever non-silence is sampled. This mode is
+recorded as `decode_mode=sample_silence_greedy_text`.
+
+Validation and completion evidence:
+
+```text
+commit=a288118f48b4436c03603ee64e90959e9561ccd5
+callback_only_job=10267548 COMPLETED 0:0
+smoke_job=10267549 COMPLETED 0:0 elapsed=00:03:13
+smoke_decode_mode=sample_silence_greedy_text
+smoke_temperature=0.3
+smoke_use_kv_cache=true
+smoke_max_kv_cache_spectrogram_length=2048
+smoke_break_eval=1
+smoke_wer=0.12025529056096741
+smoke_words=2977
+full_silence_sample_job=10267846 COMPLETED 0:0 elapsed=00:26:00 batch_max_rss=10106356K
+full_silence_sample_wer=0.1676058833953571
+full_silence_sample_words=28215
+full_silence_sample_ins_rate=0.027786638312954103
+full_silence_sample_del_rate=0.06308701045543151
+full_silence_sample_sub_rate=0.07673223462697147
+full_silence_sample_artifact=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-silence-sample-temp0p3-full-20260526T1345Z
+full_silence_sample_result_csv=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-silence-sample-temp0p3-full-20260526T1345Z/rob123_tedlium_eval.csv
+```
+
 ## Conclusion
 
-The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`. The requested sampled eval with temperature `0.3` also completed successfully and produced aggregate WER `0.1522948786106681`.
+The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`. The requested joint sampled eval with temperature `0.3` also completed successfully and produced aggregate WER `0.1522948786106681`. The silence-head-only sampled variant completed afterward and produced aggregate WER `0.1676058833953571`.
 
-For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check. For ROB-123 handoff, the current aggregate TEDLIUM results are greedy WER `0.13974836080099237` and sampled temperature-`0.3` WER `0.1522948786106681`.
+For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check. For ROB-123 handoff, the current aggregate TEDLIUM results are greedy WER `0.13974836080099237`, joint sampled temperature-`0.3` WER `0.1522948786106681`, and silence-head sampled temperature-`0.3` WER `0.1676058833953571`.
