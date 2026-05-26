@@ -505,6 +505,26 @@ class Attention(nn.Module):
                 q, k = rotary_emb_fn.apply(q, k)
                 kv = torch.stack([k, v], dim=2)
         return q, kv
+
+    @staticmethod
+    def update_kv_cache(kv, cached_kv=None, max_cache_length=None):
+        if cached_kv is not None:
+            kv = torch.cat([cached_kv, kv], dim=1)
+        if max_cache_length is not None and max_cache_length > 0 and kv.size(1) > max_cache_length:
+            kv = kv[:, -max_cache_length:].contiguous()
+        return kv
+
+    def torch_sdpa(self, q, k, v, attn_mask=None, is_causal=False, dropout_p=None):
+        if dropout_p is None:
+            dropout_p = self.dropout_p
+        return nn.functional.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=attn_mask,
+            dropout_p=dropout_p,
+            is_causal=is_causal,
+        )
         
     def forward(
         self,
@@ -527,20 +547,10 @@ class Attention(nn.Module):
         q, kv = self.apply_rotary(q, kv, rotary_emb_fn)
 
         if use_cache:
-            if cached_kv is not None:
-                kv = torch.cat([cached_kv, kv], dim=1)
-            if max_cache_length is not None and max_cache_length > 0 and kv.size(1) > max_cache_length:
-                kv = kv[:, -max_cache_length:].contiguous()
+            kv = self.update_kv_cache(kv, cached_kv=cached_kv, max_cache_length=max_cache_length)
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
-            out = nn.functional.scaled_dot_product_attention(
-                q,
-                k,
-                v,
-                attn_mask=None,
-                dropout_p=self.dropout_p if self.training else 0.0,
-                is_causal=False,
-            )
+            out = self.torch_sdpa(q, k, v, dropout_p=self.dropout_p if self.training else 0.0)
             out = rearrange(out, "b h n d -> b n (h d)")
             if pad_mask != None:
                 out = out.masked_fill(pad_mask.unsqueeze(-1), 0)
@@ -573,7 +583,7 @@ class Attention(nn.Module):
                 attn_mask = (~attn_mask).to(dtype=q.dtype)
                 attn_mask = rearrange(attn_mask, 'b s -> b 1 1 s') * -torch.finfo(q.dtype).max
             if not self.return_attention_weights:
-                out = nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=self.causal)
+                out = self.torch_sdpa(q, k, v, attn_mask=attn_mask, is_causal=self.causal)
             else:
                 out, _ = self.return_attention_module(q, k, v, attn_mask, causal=self.causal)
             out = rearrange(out, "b h n d -> b n (h d)")
