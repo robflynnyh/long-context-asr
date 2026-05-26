@@ -4,9 +4,9 @@ from tqdm import tqdm
 from typing import List, Tuple
 from lcasr.utils.audio_tools import processing_chain, total_seconds, total_frames
 from lcasr.utils.general import load_model, get_model_class
-from lcasr.eval.utils import zero_out_spectogram, fetch_logits, decode_beams_lm
+from lcasr.eval.utils import zero_out_spectogram, fetch_logits
 from lcasr.eval.wer import word_error_rate_detail 
-from pyctcdecode import build_ctcdecoder
+from lcasr.decoding.greedy import GreedyCTCDecoder
 import time
 from functools import partial
 
@@ -127,7 +127,7 @@ def main(args):
     data_path = TEST_PATH if args.split == 'test' else DEV_PATH
 
     
-    checkpoint = torch.load(args.checkpoint, map_location='cpu')
+    checkpoint = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
     model_config = checkpoint['config']
     args.config = model_config
     
@@ -145,8 +145,8 @@ def main(args):
     model.eval()
 
 
-    vocab = [tokenizer.id_to_piece(id) for id in range(tokenizer.get_piece_size())] + [""]
-    decoder = build_ctcdecoder(vocab, kenlm_model_path=None, alpha=None, beta=None)
+    if not hasattr(model, 'transcribe'):
+        decoder = GreedyCTCDecoder(tokenizer=tokenizer, blank_id=model.decoder.num_classes - 1)
 
 
     audio_files, text_files = fetch_data(path=data_path)
@@ -172,10 +172,7 @@ def main(args):
                 all_text = all_text[:-1].strip() if all_text.endswith('.') else all_text.strip()
             else:
                 logits = fetch_logits(args, model, audio_spec, args.seq_len, args.overlap, tokenizer)
-                ds_factor = audio_spec.shape[-1] / logits.shape[0]
-                decoded, bo = decode_beams_lm([logits], decoder, beam_width=1, ds_factor=ds_factor)
-
-                all_text = normalize(decoded[0]['text']).lower()
+                all_text = normalize(decoder(torch.as_tensor(logits))).lower()
                 all_text = all_text[:-1].strip() if all_text.endswith('.') else all_text.strip()
 
             gold_text = normalize(gold_text).lower()    
@@ -205,9 +202,7 @@ def main(args):
                 out_texts = []
                 for utterance in tqdm(utterances):
                     logit = fetch_logits(args, model, utterance['spectogram'], utterance['spectogram'].shape[-1], 0, tokenizer, use_tqdm=False)
-                    ds_factor = utterance['spectogram'].shape[-1] / logit.shape[0]
-                    decoded, bo = decode_beams_lm([logit], decoder, beam_width=1, ds_factor=ds_factor)
-                    out_text = normalize(decoded[0]['text']).lower().strip()
+                    out_text = normalize(decoder(torch.as_tensor(logit))).lower().strip()
                     out_text = out_text[:-1].strip() if out_text.endswith('.') else out_text
                     out_texts.append(out_text)
 

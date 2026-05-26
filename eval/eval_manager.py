@@ -46,22 +46,29 @@ def get_args(config, split, model, dataset_config):
 
 def get_data_to_save(config, wers, split, dataset, model):
     model_metadata = get_model_metadata(model)
-    data = [{
-        'dataset': dataset,
-        'split': split,
-        'wer': wer_data['wer'],
-        'recording': wer_data['recording'],
-        'words': wer_data['words'],
-        'ins_rate': wer_data['ins_rate'],
-        'del_rate': wer_data['del_rate'],
-        'sub_rate': wer_data['sub_rate'],
-        'name': model.name,
-        'checkpoint': model.path,
-        'repeat': model.repeat,
-        'seq_len': model.seq_len,
-        'overlap_ratio': model.overlap_ratio,
-        'model_class': config.args.model_class,
-    } for wer_data in wers]
+    data = []
+    for wer_data in wers:
+        row = {
+            'dataset': dataset,
+            'split': split,
+            'wer': wer_data['wer'],
+            'recording': wer_data['recording'],
+            'words': wer_data['words'],
+            'ins_rate': wer_data['ins_rate'],
+            'del_rate': wer_data['del_rate'],
+            'sub_rate': wer_data['sub_rate'],
+            'name': model.name,
+            'checkpoint': model.path,
+            'repeat': model.repeat,
+            'seq_len': model.seq_len,
+            'overlap_ratio': model.overlap_ratio,
+            'model_class': config.args.model_class,
+        }
+        # Preserve optional diagnostics such as CER and hyp/ref lengths.
+        for key, value in wer_data.items():
+            if key not in row:
+                row[key] = value
+        data.append(row)
 
     for row in data:
         for key, value in model_metadata.items():

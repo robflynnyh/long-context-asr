@@ -938,7 +938,8 @@ class EncDecSconformerV2(BaseModel):
             text_sequence = None, 
             length = None, 
             cache: Dict = None,
-            return_logits = False
+            return_logits = False,
+            skip_vocab_projection = False,
         ):
 
         max_audio_length: int = audio_signal.size(-1)
@@ -1021,6 +1022,13 @@ class EncDecSconformerV2(BaseModel):
             if lth != len(self.layers) - 1 and self.self_conditioning:
                 iterim_post = torch.nn.functional.softmax(self.ctc_decoder(x=audio_signal, logits=True), dim=-1)
                 audio_signal = self.ctc_decoder.integrate_projections(audio_signal, self.ctc_decoder.project_back(iterim_post))        
+
+        if skip_vocab_projection:
+            return {
+                'hidden_states': audio_signal,
+                'a_hidden': audio_signal,
+                'length': length,
+            }
         
         final_posts_ctc = None
         if self.ctc_loss_weight > 0:
