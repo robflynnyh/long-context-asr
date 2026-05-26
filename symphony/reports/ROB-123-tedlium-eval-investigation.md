@@ -127,6 +127,38 @@ checkpoint=/mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m_rop
 The bounded log scan showed no traceback, OOM, or setup failure. This corrected
 result supersedes the uncapped `0.9924` WER result for ROB-123 handoff purposes.
 
+## Sampling Temperature Follow-up
+
+The sampled decode path now uses the same two-head probability semantics as
+greedy decode. It samples from the combined class distribution:
+
+```text
+P(silence)
+P(token) = P(not_silence) * P(token | not_silence)
+```
+
+Temperature is applied after that combination. This avoids the older behavior
+where sampling only drew a silence/not-silence decision and then selected text
+greedily from the text head.
+
+Validation and launch evidence:
+
+```text
+commit=402c97f44a7779684e2493d3a0ed2cdfd9b8f09c
+callback_only_job=10267465 COMPLETED 0:0
+smoke_job=10267467 COMPLETED 0:0 elapsed=00:04:47 batch_max_rss=10970248K
+smoke_decode_mode=sample
+smoke_temperature=0.3
+smoke_use_kv_cache=true
+smoke_max_kv_cache_spectrogram_length=2048
+smoke_break_eval=1
+smoke_wer=0.11219348337252268
+smoke_words=2977
+smoke_result_csv=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-sample-temp0p3-smoke-20260526T1255Z/rob123_tedlium_eval.csv
+full_sample_job=10267475
+full_sample_artifact=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-sample-temp0p3-full-20260526T1300Z
+```
+
 ## Conclusion
 
 The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`.
