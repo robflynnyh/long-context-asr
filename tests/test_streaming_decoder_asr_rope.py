@@ -138,6 +138,29 @@ class StreamingDecoderASRRoPETest(unittest.TestCase):
         self.assertEqual(observed_probs[0].shape[-1], model.num_classes)
         torch.testing.assert_close(observed_probs[0].sum(dim=-1), torch.ones(1))
 
+    def test_silence_sampling_uses_greedy_text_head(self):
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        silence_logits = torch.tensor([[[0.0, 1.0], [0.0, 1.0]]])
+        text_logits = torch.full((1, 2, model.vocab_size), -10.0)
+        text_logits[0, 0, 5] = 3.0
+        text_logits[0, 1, 7] = 4.0
+
+        def fake_multinomial(probs, num_samples):
+            self.assertEqual(probs.shape[-1], 2)
+            return torch.tensor([[1], [0]])
+
+        with mock.patch("torch.multinomial", side_effect=fake_multinomial):
+            prediction = model._predict_ids(
+                silence_logits,
+                text_logits,
+                sample=True,
+                temperature=0.3,
+                sample_silence_only=True,
+            )
+
+        expected = torch.tensor([[5, model.get_silence_id()]])
+        self.assertTrue(torch.equal(prediction, expected))
+
 
 if __name__ == "__main__":
     unittest.main()

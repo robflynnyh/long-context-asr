@@ -237,13 +237,20 @@ class StreamingDecoderASR(BaseModel):
         token_scores = text_log_probs + silence_log_probs[..., 1:2]
         return torch.cat([token_scores, silence_score], dim=-1)
 
-    def _step_predictions(self, hidden: torch.Tensor, sample: bool = False, temperature: float = 1.0) -> torch.Tensor:
+    def _step_predictions(
+        self,
+        hidden: torch.Tensor,
+        sample: bool = False,
+        temperature: float = 1.0,
+        sample_silence_only: bool = False,
+    ) -> torch.Tensor:
         """Predict the next frame ids from hidden states for one autoregressive step."""
         return self._predict_ids(
             self.silence_head(hidden),
             self.text_head(hidden),
             sample=sample,
             temperature=temperature,
+            sample_silence_only=sample_silence_only,
         )
 
     def _predict_ids(
@@ -252,8 +259,21 @@ class StreamingDecoderASR(BaseModel):
         text_logits: torch.Tensor,
         sample: bool = False,
         temperature: float = 1.0,
+        sample_silence_only: bool = False,
     ) -> torch.Tensor:
         """Return frame ids using the joint silence/text distribution."""
+        if sample_silence_only and not sample:
+            raise ValueError("sample_silence_only requires sample=True")
+        if sample_silence_only:
+            temperature = max(float(temperature), 1e-6)
+            silence_probs = (silence_logits / temperature).softmax(dim=-1)
+            silence_draw = torch.multinomial(silence_probs.reshape(-1, 2), num_samples=1).view(
+                silence_logits.shape[:-1]
+            )
+            text_prediction = text_logits.argmax(dim=-1)
+            silence_prediction = torch.full_like(text_prediction, self.silence_id)
+            return torch.where(silence_draw == 0, silence_prediction, text_prediction)
+
         combined_logits = self._combined_logits(silence_logits, text_logits)
         if not sample:
             return combined_logits.argmax(dim=-1)
@@ -448,8 +468,9 @@ class StreamingDecoderASR(BaseModel):
         use_kv_cache: bool = False,
         max_kv_cache_length: Optional[int] = None,
         max_kv_cache_spectrogram_length: Optional[int] = None,
+        sample_silence_only: bool = False,
     ) -> dict:
-        """Autoregressively decode while sampling joint silence/text frame ids."""
+        """Autoregressively decode while sampling frame ids."""
         was_training = self.training
         self.eval()
         if length is None:
@@ -496,6 +517,7 @@ class StreamingDecoderASR(BaseModel):
                     step_h,
                     sample=True,
                     temperature=temperature,
+                    sample_silence_only=sample_silence_only,
                 )
                 predictions.append(step_prediction)
                 prev_id = step_prediction
@@ -512,7 +534,12 @@ class StreamingDecoderASR(BaseModel):
             for layer in self.layers:
                 h = layer(h, rotary_emb_fn=rotary_emb_fn)
             step_h = self.norm(h[:, step])
-            step_prediction = self._step_predictions(step_h, sample=True, temperature=temperature)
+            step_prediction = self._step_predictions(
+                step_h,
+                sample=True,
+                temperature=temperature,
+                sample_silence_only=sample_silence_only,
+            )
             predictions.append(step_prediction)
             if step + 1 < x.size(1):
                 prev_ids[:, step + 1] = step_prediction
@@ -576,7 +603,7 @@ class StreamingDecoderASR(BaseModel):
         audio_signal = audio_spec.to(device=device, dtype=model_dtype).unsqueeze(0)
         length = torch.tensor([audio_signal.shape[-1]], dtype=torch.long, device=device)
 
-        if decode_mode == "sample":
+        if decode_mode in {"sample", "sample_silence_greedy_text"}:
             decoded = self.sample_decode(
                 audio_signal=audio_signal,
                 length=length,
@@ -585,6 +612,7 @@ class StreamingDecoderASR(BaseModel):
                 use_kv_cache=use_kv_cache,
                 max_kv_cache_length=max_kv_cache_length,
                 max_kv_cache_spectrogram_length=max_kv_cache_spectrogram_length,
+                sample_silence_only=decode_mode == "sample_silence_greedy_text",
             )
         elif decode_mode == "greedy":
             decoded = self.greedy_decode(

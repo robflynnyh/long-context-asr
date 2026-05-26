@@ -25,7 +25,11 @@ def parse_args():
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--max-utterances", type=int, default=8)
     parser.add_argument("--recording-index", type=int, default=0)
-    parser.add_argument("--decode-mode", default="greedy", choices=["greedy", "sample"])
+    parser.add_argument(
+        "--decode-mode",
+        default="greedy",
+        choices=["greedy", "sample", "sample_silence_greedy_text"],
+    )
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--max-output-frames", type=int, default=None)
     parser.add_argument("--max-tokens", type=int, default=None)
