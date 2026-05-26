@@ -25,10 +25,17 @@ def parse_args():
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--max-utterances", type=int, default=8)
     parser.add_argument("--recording-index", type=int, default=0)
-    parser.add_argument("--decode-mode", default="greedy", choices=["greedy", "sample"])
+    parser.add_argument(
+        "--decode-mode",
+        default="greedy",
+        choices=["greedy", "sample", "sample_silence_greedy_text"],
+    )
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--max-output-frames", type=int, default=None)
     parser.add_argument("--max-tokens", type=int, default=None)
+    parser.add_argument("--use-kv-cache", action="store_true")
+    parser.add_argument("--max-kv-cache-length", type=int, default=None)
+    parser.add_argument("--max-kv-cache-spectrogram-length", type=int, default=None)
     parser.add_argument("--eval-dtype", default="bfloat16", choices=["float32", "bfloat16", "float16"])
     return parser.parse_args()
 
@@ -88,6 +95,9 @@ def main():
             temperature=args.temperature,
             max_output_frames=args.max_output_frames,
             max_tokens=args.max_tokens,
+            use_kv_cache=args.use_kv_cache,
+            max_kv_cache_length=args.max_kv_cache_length,
+            max_kv_cache_spectrogram_length=args.max_kv_cache_spectrogram_length,
             return_metadata=True,
         )
         reference = normalize(utterance["text"])
@@ -119,6 +129,10 @@ def main():
         "recording_index": args.recording_index,
         "utterances": len(records),
         "decode_mode": args.decode_mode,
+        "temperature": args.temperature,
+        "use_kv_cache": args.use_kv_cache,
+        "max_kv_cache_length": args.max_kv_cache_length,
+        "max_kv_cache_spectrogram_length": args.max_kv_cache_spectrogram_length,
         "eval_dtype": args.eval_dtype if device.type == "cuda" else "float32",
         "wer": wer,
         "words": words,

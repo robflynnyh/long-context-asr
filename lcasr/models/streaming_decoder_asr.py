@@ -50,15 +50,31 @@ class CausalDecoderLayer(nn.Module):
             nn.Dropout(dropout_ff),
         )
 
-    def forward(self, x: torch.Tensor, rotary_emb_fn=None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        rotary_emb_fn=None,
+        cached_kv: Optional[torch.Tensor] = None,
+        use_cache: bool = False,
+        max_cache_length: Optional[int] = None,
+    ) -> torch.Tensor:
         """Apply causal self-attention and feed-forward residual updates to `[B, T, D]`."""
         x_norm = self.attn_norm(x)
-        x = x + self.attn(
+        attn_out = self.attn(
             x_norm,
             flash_attn=True,
             rotary_emb_fn=rotary_emb_fn,
+            cached_kv=cached_kv,
+            use_cache=use_cache,
+            max_cache_length=max_cache_length,
         )
+        next_cache = None
+        if use_cache:
+            attn_out, next_cache = attn_out
+        x = x + attn_out
         x = x + self.ff(self.ff_norm(x))
+        if use_cache:
+            return x, next_cache
         return x
 
 
@@ -145,11 +161,14 @@ class StreamingDecoderASR(BaseModel):
             {"inv_freq", "rotary_interpolation_factor"}
         )
 
-    def _rotary_emb_fn(self, seq_len: int, device: torch.device):
+    def _rotary_emb_fn(self, seq_len: int, device: torch.device, offset: int = 0):
         """Build the shared attention rotary callback for the current sequence length."""
         if self.rotary_pos_emb is None:
             return None
-        cos, sin = self.rotary_pos_emb(seq_len, device)
+        cos, sin = self.rotary_pos_emb(seq_len + offset, device)
+        if offset:
+            cos = cos[:, offset : offset + seq_len]
+            sin = sin[:, offset : offset + seq_len]
         return apply_rotary(cos=cos, sin=sin, learned=self.rotary_pos_emb.learned_freq)
 
     def get_silence_id(self) -> int:
@@ -184,6 +203,13 @@ class StreamingDecoderASR(BaseModel):
             repeat_num=self.subsampling._sampling_num,
         )
 
+    def kv_cache_length_from_spectrogram_length(self, spectrogram_length: int) -> int:
+        """Convert an input spectrogram-frame window into cached decoder-frame length."""
+        if spectrogram_length <= 0:
+            raise ValueError("spectrogram_length must be positive")
+        length = torch.tensor([spectrogram_length], dtype=torch.long)
+        return int(self.output_lengths(length)[0].item())
+
     def _previous_targets(self, frame_targets: Optional[torch.Tensor], batch: int, length: int, device) -> torch.Tensor:
         """Shift teacher frame targets right to form previous-token decoder inputs."""
         if frame_targets is None:
@@ -211,35 +237,50 @@ class StreamingDecoderASR(BaseModel):
         token_scores = text_log_probs + silence_log_probs[..., 1:2]
         return torch.cat([token_scores, silence_score], dim=-1)
 
-    def _step_predictions(self, hidden: torch.Tensor, sample: bool = False, temperature: float = 1.0) -> torch.Tensor:
+    def _step_predictions(
+        self,
+        hidden: torch.Tensor,
+        sample: bool = False,
+        temperature: float = 1.0,
+        sample_silence_only: bool = False,
+    ) -> torch.Tensor:
         """Predict the next frame ids from hidden states for one autoregressive step."""
         return self._predict_ids(
             self.silence_head(hidden),
             self.text_head(hidden),
-            sample_silence=sample,
-            silence_temperature=temperature,
+            sample=sample,
+            temperature=temperature,
+            sample_silence_only=sample_silence_only,
         )
 
     def _predict_ids(
         self,
         silence_logits: torch.Tensor,
         text_logits: torch.Tensor,
-        sample_silence: bool = False,
-        silence_temperature: float = 1.0,
+        sample: bool = False,
+        temperature: float = 1.0,
+        sample_silence_only: bool = False,
     ) -> torch.Tensor:
-        """Return frame ids using greedy two-head scoring or sampled silence decisions."""
-        if not sample_silence:
-            return self._combined_logits(silence_logits, text_logits).argmax(dim=-1)
-        silence_temperature = max(float(silence_temperature), 1e-6)
-        silence_pred = torch.multinomial(
-            (silence_logits / silence_temperature).softmax(dim=-1).reshape(-1, 2),
-            num_samples=1,
-        ).view(silence_logits.shape[:-1])
-        text_pred = text_logits.argmax(dim=-1)
-        return torch.where(
-            silence_pred.bool(),
-            text_pred,
-            torch.full_like(text_pred, self.silence_id),
+        """Return frame ids using the joint silence/text distribution."""
+        if sample_silence_only and not sample:
+            raise ValueError("sample_silence_only requires sample=True")
+        if sample_silence_only:
+            temperature = max(float(temperature), 1e-6)
+            silence_probs = (silence_logits / temperature).softmax(dim=-1)
+            silence_draw = torch.multinomial(silence_probs.reshape(-1, 2), num_samples=1).view(
+                silence_logits.shape[:-1]
+            )
+            text_prediction = text_logits.argmax(dim=-1)
+            silence_prediction = torch.full_like(text_prediction, self.silence_id)
+            return torch.where(silence_draw == 0, silence_prediction, text_prediction)
+
+        combined_logits = self._combined_logits(silence_logits, text_logits)
+        if not sample:
+            return combined_logits.argmax(dim=-1)
+        temperature = max(float(temperature), 1e-6)
+        probs = (combined_logits / temperature).softmax(dim=-1)
+        return torch.multinomial(probs.reshape(-1, self.num_classes), num_samples=1).view(
+            combined_logits.shape[:-1]
         )
 
     def forward(
@@ -345,6 +386,9 @@ class StreamingDecoderASR(BaseModel):
         audio_signal: torch.Tensor,
         length: Optional[torch.Tensor] = None,
         max_frames: Optional[int] = None,
+        use_kv_cache: bool = False,
+        max_kv_cache_length: Optional[int] = None,
+        max_kv_cache_spectrogram_length: Optional[int] = None,
     ) -> dict:
         """Autoregressively decode by greedy two-head prediction at each output frame."""
         was_training = self.training
@@ -362,6 +406,40 @@ class StreamingDecoderASR(BaseModel):
         key_padding_mask = key_padding_mask if key_padding_mask.any() else None
         prev_ids = torch.full((x.size(0), x.size(1)), self.silence_id, dtype=torch.long, device=x.device)
         predictions = []
+
+        if use_kv_cache:
+            if x.size(0) != 1:
+                raise ValueError("KV-cache greedy decoding currently supports batch size 1")
+            if max_kv_cache_length is not None and max_kv_cache_spectrogram_length is not None:
+                raise ValueError(
+                    "Pass either max_kv_cache_length or max_kv_cache_spectrogram_length, not both"
+                )
+            effective_max_kv_cache_length = max_kv_cache_length
+            if max_kv_cache_spectrogram_length is not None:
+                effective_max_kv_cache_length = self.kv_cache_length_from_spectrogram_length(
+                    max_kv_cache_spectrogram_length
+                )
+            caches = [None for _ in self.layers]
+            prev_id = torch.full((x.size(0),), self.silence_id, dtype=torch.long, device=x.device)
+            for step in range(x.size(1)):
+                h = x[:, step : step + 1] + self.prev_token_embedding(prev_id).unsqueeze(1)
+                rotary_emb_fn = self._rotary_emb_fn(1, h.device, offset=step)
+                for layer_idx, layer in enumerate(self.layers):
+                    h, caches[layer_idx] = layer(
+                        h,
+                        rotary_emb_fn=rotary_emb_fn,
+                        cached_kv=caches[layer_idx],
+                        use_cache=True,
+                        max_cache_length=effective_max_kv_cache_length,
+                    )
+                step_h = self.norm(h[:, 0])
+                step_prediction = self._step_predictions(step_h, sample=False)
+                predictions.append(step_prediction)
+                prev_id = step_prediction
+
+            if was_training:
+                self.train()
+            return {"predictions": torch.stack(predictions, dim=1), "length": out_lengths}
 
         for step in range(x.size(1)):
             h = x + self.prev_token_embedding(prev_ids)
@@ -387,8 +465,12 @@ class StreamingDecoderASR(BaseModel):
         length: Optional[torch.Tensor] = None,
         max_frames: Optional[int] = None,
         temperature: float = 1.0,
+        use_kv_cache: bool = False,
+        max_kv_cache_length: Optional[int] = None,
+        max_kv_cache_spectrogram_length: Optional[int] = None,
+        sample_silence_only: bool = False,
     ) -> dict:
-        """Autoregressively decode while sampling the silence gate and greedily taking text ids."""
+        """Autoregressively decode while sampling frame ids."""
         was_training = self.training
         self.eval()
         if length is None:
@@ -405,6 +487,45 @@ class StreamingDecoderASR(BaseModel):
         prev_ids = torch.full((x.size(0), x.size(1)), self.silence_id, dtype=torch.long, device=x.device)
         predictions = []
 
+        if use_kv_cache:
+            if x.size(0) != 1:
+                raise ValueError("KV-cache sampling currently supports batch size 1")
+            if max_kv_cache_length is not None and max_kv_cache_spectrogram_length is not None:
+                raise ValueError(
+                    "Pass either max_kv_cache_length or max_kv_cache_spectrogram_length, not both"
+                )
+            effective_max_kv_cache_length = max_kv_cache_length
+            if max_kv_cache_spectrogram_length is not None:
+                effective_max_kv_cache_length = self.kv_cache_length_from_spectrogram_length(
+                    max_kv_cache_spectrogram_length
+                )
+            caches = [None for _ in self.layers]
+            prev_id = torch.full((x.size(0),), self.silence_id, dtype=torch.long, device=x.device)
+            for step in range(x.size(1)):
+                h = x[:, step : step + 1] + self.prev_token_embedding(prev_id).unsqueeze(1)
+                rotary_emb_fn = self._rotary_emb_fn(1, h.device, offset=step)
+                for layer_idx, layer in enumerate(self.layers):
+                    h, caches[layer_idx] = layer(
+                        h,
+                        rotary_emb_fn=rotary_emb_fn,
+                        cached_kv=caches[layer_idx],
+                        use_cache=True,
+                        max_cache_length=effective_max_kv_cache_length,
+                    )
+                step_h = self.norm(h[:, 0])
+                step_prediction = self._step_predictions(
+                    step_h,
+                    sample=True,
+                    temperature=temperature,
+                    sample_silence_only=sample_silence_only,
+                )
+                predictions.append(step_prediction)
+                prev_id = step_prediction
+
+            if was_training:
+                self.train()
+            return {"predictions": torch.stack(predictions, dim=1), "length": out_lengths}
+
         for step in range(x.size(1)):
             h = x + self.prev_token_embedding(prev_ids)
             if key_padding_mask is not None:
@@ -413,7 +534,12 @@ class StreamingDecoderASR(BaseModel):
             for layer in self.layers:
                 h = layer(h, rotary_emb_fn=rotary_emb_fn)
             step_h = self.norm(h[:, step])
-            step_prediction = self._step_predictions(step_h, sample=True, temperature=temperature)
+            step_prediction = self._step_predictions(
+                step_h,
+                sample=True,
+                temperature=temperature,
+                sample_silence_only=sample_silence_only,
+            )
             predictions.append(step_prediction)
             if step + 1 < x.size(1):
                 prev_ids[:, step + 1] = step_prediction
@@ -433,11 +559,16 @@ class StreamingDecoderASR(BaseModel):
         max_sequence_length: Optional[int] = None,
         max_output_frames: Optional[int] = None,
         max_tokens: Optional[int] = None,
+        use_kv_cache: bool = False,
+        max_kv_cache_length: Optional[int] = None,
+        max_kv_cache_spectrogram_length: Optional[int] = None,
         return_metadata: bool = False,
         **kwargs,
     ):
         """Transcribe one spectrogram, or a list of spectrograms, through streaming decoding."""
-        del kwargs
+        kwargs.pop("verbose", None)
+        if kwargs:
+            raise TypeError(f"Unsupported StreamingDecoderASR.transcribe kwargs: {sorted(kwargs)}")
         if isinstance(audio_spec, (list, tuple)):
             return [
                 self.transcribe(
@@ -449,6 +580,9 @@ class StreamingDecoderASR(BaseModel):
                     max_sequence_length=max_sequence_length,
                     max_output_frames=max_output_frames,
                     max_tokens=max_tokens,
+                    use_kv_cache=use_kv_cache,
+                    max_kv_cache_length=max_kv_cache_length,
+                    max_kv_cache_spectrogram_length=max_kv_cache_spectrogram_length,
                     return_metadata=return_metadata,
                 )
                 for item in audio_spec
@@ -469,18 +603,25 @@ class StreamingDecoderASR(BaseModel):
         audio_signal = audio_spec.to(device=device, dtype=model_dtype).unsqueeze(0)
         length = torch.tensor([audio_signal.shape[-1]], dtype=torch.long, device=device)
 
-        if decode_mode == "sample":
+        if decode_mode in {"sample", "sample_silence_greedy_text"}:
             decoded = self.sample_decode(
                 audio_signal=audio_signal,
                 length=length,
                 max_frames=max_output_frames,
                 temperature=temperature,
+                use_kv_cache=use_kv_cache,
+                max_kv_cache_length=max_kv_cache_length,
+                max_kv_cache_spectrogram_length=max_kv_cache_spectrogram_length,
+                sample_silence_only=decode_mode == "sample_silence_greedy_text",
             )
         elif decode_mode == "greedy":
             decoded = self.greedy_decode(
                 audio_signal=audio_signal,
                 length=length,
                 max_frames=max_output_frames,
+                use_kv_cache=use_kv_cache,
+                max_kv_cache_length=max_kv_cache_length,
+                max_kv_cache_spectrogram_length=max_kv_cache_spectrogram_length,
             )
         else:
             raise ValueError(f"Unsupported decode_mode: {decode_mode}")
