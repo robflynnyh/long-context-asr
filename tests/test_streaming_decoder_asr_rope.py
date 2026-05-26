@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from lcasr.models.streaming_decoder_asr import StreamingDecoderASR
+from lcasr.models.streaming_decoder_asr import CausalDecoderLayer, StreamingDecoderASR
 
 
 def tiny_streaming_config():
@@ -79,6 +79,18 @@ class StreamingDecoderASRRoPETest(unittest.TestCase):
 
         self.assertTrue(torch.equal(uncached["length"], cached["length"]))
         self.assertTrue(torch.equal(uncached["predictions"], cached["predictions"]))
+
+    def test_cached_attention_respects_max_cache_length(self):
+        torch.manual_seed(0)
+        layer = CausalDecoderLayer(d_model=32, n_heads=4, dropout_ff=0.0, dropout_attn=0.0)
+        layer.eval()
+        cache = None
+
+        for step in range(5):
+            x = torch.randn(1, 1, 32)
+            _, cache = layer(x, cached_kv=cache, use_cache=True, max_cache_length=3)
+            self.assertLessEqual(cache.shape[1], 3)
+            self.assertEqual(cache.shape[1], min(step + 1, 3))
 
 
 if __name__ == "__main__":

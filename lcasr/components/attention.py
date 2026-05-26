@@ -516,6 +516,7 @@ class Attention(nn.Module):
         rotary_emb_fn=None,
         cached_kv=None,
         use_cache=False,
+        max_cache_length=None,
     ):
         B, N, C, H, D = *x.shape, self.n_heads, self.head_dim
         if pad_mask is not None: x = x.masked_fill(pad_mask.unsqueeze(-1), 0)
@@ -528,6 +529,8 @@ class Attention(nn.Module):
         if use_cache:
             if cached_kv is not None:
                 kv = torch.cat([cached_kv, kv], dim=1)
+            if max_cache_length is not None and max_cache_length > 0 and kv.size(1) > max_cache_length:
+                kv = kv[:, -max_cache_length:].contiguous()
             k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
             q = q.transpose(1, 2).contiguous()
             out = nn.functional.scaled_dot_product_attention(

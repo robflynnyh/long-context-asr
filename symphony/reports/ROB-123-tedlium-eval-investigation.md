@@ -15,6 +15,11 @@ transcribe_kwargs:
   use_kv_cache: true
 ```
 
+At the time of that run, `StreamingDecoderASR` did not cap the KV cache length:
+the cached attention path concatenated all prior keys/values and returned the
+full accumulated cache. That means the full-recording result used unbounded
+left context, not the intended 2048-frame training context.
+
 The aggregate error mix was deletion dominated:
 
 ```text
@@ -29,6 +34,8 @@ sub_rate=0.0004253056884635832
 
 - Current `StreamingDecoderASR` greedy scoring uses the intended two-head rule: compare `log P(silence)` against `log P(not silence) + log P(token)`.
 - The KV-cache decode path is covered by `tests/test_streaming_decoder_asr_rope.py::test_greedy_decode_kv_cache_matches_uncached_decode`.
+- A follow-up fix added `max_kv_cache_length` support and a regression test
+  that the cache is trimmed during cached attention.
 - Training logs for the completed full-Spotify run show teacher-forced predicted non-silence fractions near target, for example final progress around `tgt_ns=0.277`, `pred_ns=0.262`, `loss=0.3318`.
 - The completed full-recording TEDLIUM CSV is not a WER arithmetic bug; it is genuinely near-all-deletion under that decode setup.
 
@@ -82,6 +89,6 @@ hyp:  see also hurt useless and weak antonyms healthy strong
 
 ## Conclusion
 
-The `0.9924` full-TEDLIUM WER should not be treated as the model's utterance-scale recognition quality. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and KV-cache decoding matches no-cache decoding on the bounded probe.
+The `0.9924` full-TEDLIUM WER should not be treated as the model's utterance-scale recognition quality. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses. The original KV-cache probe showed that uncapped KV-cache decoding matched no-cache decoding on the bounded utterance probe, but it did not prove that the full-recording eval used the intended 2048-frame context.
 
-The most likely issue is that the generic TEDLIUM eval decoded each full TED talk as one long streaming sequence, while this streaming decoder was trained and debugged on chunk/window-scale inputs with delayed frame targets. The full-recording path drives the silence gate into near-all-deletion. A corrected TEDLIUM evaluation should segment by STM utterances or a comparable chunked streaming window and then aggregate WER.
+The most likely issue is that the generic TEDLIUM eval decoded each full TED talk as one long streaming sequence, while this streaming decoder was trained and debugged on chunk/window-scale inputs with delayed frame targets. The full-recording path also used unbounded cached attention before the follow-up cap fix. A corrected TEDLIUM evaluation should segment by STM utterances or a comparable chunked streaming window, use `max_kv_cache_length: 2048` when KV caching is enabled, and then aggregate WER.

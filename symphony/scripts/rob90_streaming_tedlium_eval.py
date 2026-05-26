@@ -30,6 +30,7 @@ def parse_args():
     parser.add_argument("--max-output-frames", type=int, default=None)
     parser.add_argument("--max-tokens", type=int, default=None)
     parser.add_argument("--use-kv-cache", action="store_true")
+    parser.add_argument("--max-kv-cache-length", type=int, default=None)
     parser.add_argument("--eval-dtype", default="bfloat16", choices=["float32", "bfloat16", "float16"])
     return parser.parse_args()
 
@@ -90,6 +91,7 @@ def main():
             max_output_frames=args.max_output_frames,
             max_tokens=args.max_tokens,
             use_kv_cache=args.use_kv_cache,
+            max_kv_cache_length=args.max_kv_cache_length,
             return_metadata=True,
         )
         reference = normalize(utterance["text"])
@@ -122,6 +124,7 @@ def main():
         "utterances": len(records),
         "decode_mode": args.decode_mode,
         "use_kv_cache": args.use_kv_cache,
+        "max_kv_cache_length": args.max_kv_cache_length,
         "eval_dtype": args.eval_dtype if device.type == "cuda" else "float32",
         "wer": wer,
         "words": words,

@@ -176,6 +176,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-98 PR review response: replaced TEDLIUM eval's temporary `pyctcdecode` fallback with the repo `GreedyCTCDecoder`, moved weighted hidden-state probe collection from SCConformerXL/EncDec forward API additions into probe-local layer hooks, and refactored `exp/train.py` so utterance-folder and recording-manifest batches are normalized by a helper before the main training loop. Kept eval-manager passthrough diagnostics for CER and hyp/ref length fields.
 - ROB-98 second PR review response: moved the new `exp/train.py` dataloader/chunking/logging helpers into `lcasr.utils.training`, kept the main train loop focused on optimization, added an explanatory dataloader-refresh comment, and added helper tests including a synthetic `VariableBatchSimpleDataloader` recording-manifest smoke to protect the original chunking path.
+- ROB-123 KV-cache clarification: the previous TEDLIUM KV-cache eval used unbounded accumulated attention cache, not the 2048-frame training context. Added explicit `max_kv_cache_length` support to `StreamingDecoderASR` cached greedy decode, routed the ROB-123 TEDLIUM eval/probe wrappers to default to `2048`, and documented that the prior `0.9924` full-talk WER should be reinterpreted as an uncapped full-recording decode result.
 
 ## 2026-05-12
 

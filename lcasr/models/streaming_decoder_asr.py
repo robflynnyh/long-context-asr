@@ -56,6 +56,7 @@ class CausalDecoderLayer(nn.Module):
         rotary_emb_fn=None,
         cached_kv: Optional[torch.Tensor] = None,
         use_cache: bool = False,
+        max_cache_length: Optional[int] = None,
     ) -> torch.Tensor:
         """Apply causal self-attention and feed-forward residual updates to `[B, T, D]`."""
         x_norm = self.attn_norm(x)
@@ -65,6 +66,7 @@ class CausalDecoderLayer(nn.Module):
             rotary_emb_fn=rotary_emb_fn,
             cached_kv=cached_kv,
             use_cache=use_cache,
+            max_cache_length=max_cache_length,
         )
         next_cache = None
         if use_cache:
@@ -363,6 +365,7 @@ class StreamingDecoderASR(BaseModel):
         length: Optional[torch.Tensor] = None,
         max_frames: Optional[int] = None,
         use_kv_cache: bool = False,
+        max_kv_cache_length: Optional[int] = None,
     ) -> dict:
         """Autoregressively decode by greedy two-head prediction at each output frame."""
         was_training = self.training
@@ -395,6 +398,7 @@ class StreamingDecoderASR(BaseModel):
                         rotary_emb_fn=rotary_emb_fn,
                         cached_kv=caches[layer_idx],
                         use_cache=True,
+                        max_cache_length=max_kv_cache_length,
                     )
                 step_h = self.norm(h[:, 0])
                 step_prediction = self._step_predictions(step_h, sample=False)
@@ -476,6 +480,7 @@ class StreamingDecoderASR(BaseModel):
         max_output_frames: Optional[int] = None,
         max_tokens: Optional[int] = None,
         use_kv_cache: bool = False,
+        max_kv_cache_length: Optional[int] = None,
         return_metadata: bool = False,
         **kwargs,
     ):
@@ -495,6 +500,7 @@ class StreamingDecoderASR(BaseModel):
                     max_output_frames=max_output_frames,
                     max_tokens=max_tokens,
                     use_kv_cache=use_kv_cache,
+                    max_kv_cache_length=max_kv_cache_length,
                     return_metadata=return_metadata,
                 )
                 for item in audio_spec
@@ -528,6 +534,7 @@ class StreamingDecoderASR(BaseModel):
                 length=length,
                 max_frames=max_output_frames,
                 use_kv_cache=use_kv_cache,
+                max_kv_cache_length=max_kv_cache_length,
             )
         else:
             raise ValueError(f"Unsupported decode_mode: {decode_mode}")
