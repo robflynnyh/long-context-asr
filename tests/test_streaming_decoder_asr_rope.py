@@ -67,6 +67,19 @@ class StreamingDecoderASRRoPETest(unittest.TestCase):
         self.assertFalse(model.use_rotary)
         self.assertIsNone(model.rotary_pos_emb)
 
+    def test_greedy_decode_kv_cache_matches_uncached_decode(self):
+        torch.manual_seed(0)
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        model.eval()
+        audio = torch.randn(1, 8, 64)
+        lengths = torch.full((1,), 64, dtype=torch.long)
+
+        uncached = model.greedy_decode(audio_signal=audio, length=lengths, use_kv_cache=False)
+        cached = model.greedy_decode(audio_signal=audio, length=lengths, use_kv_cache=True)
+
+        self.assertTrue(torch.equal(uncached["length"], cached["length"]))
+        self.assertTrue(torch.equal(uncached["predictions"], cached["predictions"]))
+
 
 if __name__ == "__main__":
     unittest.main()
