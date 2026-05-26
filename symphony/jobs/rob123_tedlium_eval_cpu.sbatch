@@ -27,6 +27,8 @@ TEDLIUM_ROOT="${ROB123_TEDLIUM_ROOT:-/mnt/parscratch/users/acp21rjf/TEDLIUM_rele
 BREAK_EVAL="${ROB123_EVAL_BREAK:-0}"
 INCLUDE_PER_RECORDING="${ROB123_INCLUDE_PER_RECORDING:-1}"
 MAX_KV_CACHE_SPECTROGRAM_LENGTH="${ROB123_MAX_KV_CACHE_SPECTROGRAM_LENGTH:-2048}"
+DECODE_MODE="${ROB123_DECODE_MODE:-greedy}"
+TEMPERATURE="${ROB123_TEMPERATURE:-1.0}"
 CALLBACK_PYTHON="${ROB123_CALLBACK_PYTHON:-python3}"
 LINEAR_KEY_FILE="${ROB123_LINEAR_KEY_FILE:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/.linear_api_key}"
 
@@ -71,6 +73,8 @@ on_exit() {
     echo "tedlium_root=${TEDLIUM_ROOT}"
     echo "eval_config=${EVAL_CONFIG}"
     echo "result_csv=${RESULT_CSV}"
+    echo "decode_mode=${DECODE_MODE}"
+    echo "temperature=${TEMPERATURE}"
     echo "use_kv_cache=true"
     echo "max_kv_cache_spectrogram_length=${MAX_KV_CACHE_SPECTROGRAM_LENGTH}"
     echo "break_eval=${BREAK_EVAL}"
@@ -96,6 +100,8 @@ on_exit() {
       --metadata "commit=${TARGET_COMMIT}"
       --metadata "checkpoint=${CHECKPOINT}"
       --metadata "result_csv=${RESULT_CSV}"
+      --metadata "decode_mode=${DECODE_MODE}"
+      --metadata "temperature=${TEMPERATURE}"
       --metadata "use_kv_cache=true"
       --metadata "max_kv_cache_spectrogram_length=${MAX_KV_CACHE_SPECTROGRAM_LENGTH}"
       --metadata "break_eval=${BREAK_EVAL}"
@@ -154,6 +160,8 @@ args:
   include_per_recording_evaluations: $INCLUDE_PER_RECORDING
   break_eval: $BREAK_EVAL
   transcribe_kwargs:
+    decode_mode: "$DECODE_MODE"
+    temperature: $TEMPERATURE
     use_kv_cache: true
     max_kv_cache_spectrogram_length: $MAX_KV_CACHE_SPECTROGRAM_LENGTH
 YAML
@@ -163,6 +171,8 @@ YAML
   echo "tedlium_root_exists=$(test -d "$TEDLIUM_ROOT" && echo yes || echo no)"
   echo "eval_config=${EVAL_CONFIG}"
   echo "result_csv=${RESULT_CSV}"
+  echo "decode_mode=${DECODE_MODE}"
+  echo "temperature=${TEMPERATURE}"
   echo "break_eval=${BREAK_EVAL}"
 } >> "$SUMMARY_FILE"
 

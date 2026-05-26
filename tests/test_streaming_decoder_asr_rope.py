@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 import torch
 
@@ -100,6 +101,42 @@ class StreamingDecoderASRRoPETest(unittest.TestCase):
             int(model.output_lengths(torch.tensor([64]))[0].item()),
         )
         self.assertLess(model.kv_cache_length_from_spectrogram_length(64), 64)
+
+    def test_combined_logits_are_normalized_joint_distribution(self):
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        silence_logits = torch.tensor([[[1.25, -0.5]]])
+        text_logits = torch.randn(1, 1, model.vocab_size)
+
+        combined_probs = model._combined_logits(silence_logits, text_logits).exp()
+
+        torch.testing.assert_close(combined_probs.sum(dim=-1), torch.ones(1, 1))
+        torch.testing.assert_close(
+            combined_probs[..., -1],
+            torch.softmax(silence_logits, dim=-1)[..., 0],
+        )
+
+    def test_sampling_draws_from_joint_text_and_silence_distribution(self):
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        silence_logits = torch.tensor([[[0.5, 1.0]]])
+        text_logits = torch.randn(1, 1, model.vocab_size)
+        sampled_id = torch.full((1, 1), model.get_silence_id())
+        observed_probs = []
+
+        def fake_multinomial(probs, num_samples):
+            observed_probs.append(probs.detach().clone())
+            return sampled_id.reshape(-1, 1)
+
+        with mock.patch("torch.multinomial", side_effect=fake_multinomial):
+            prediction = model._predict_ids(
+                silence_logits,
+                text_logits,
+                sample=True,
+                temperature=0.3,
+            )
+
+        self.assertTrue(torch.equal(prediction, sampled_id))
+        self.assertEqual(observed_probs[0].shape[-1], model.num_classes)
+        torch.testing.assert_close(observed_probs[0].sum(dim=-1), torch.ones(1))
 
 
 if __name__ == "__main__":

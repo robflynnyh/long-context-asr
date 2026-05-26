@@ -125,6 +125,7 @@ def main():
         "recording_index": args.recording_index,
         "utterances": len(records),
         "decode_mode": args.decode_mode,
+        "temperature": args.temperature,
         "use_kv_cache": args.use_kv_cache,
         "max_kv_cache_length": args.max_kv_cache_length,
         "max_kv_cache_spectrogram_length": args.max_kv_cache_spectrogram_length,
