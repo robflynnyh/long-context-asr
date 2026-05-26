@@ -155,12 +155,18 @@ smoke_break_eval=1
 smoke_wer=0.11219348337252268
 smoke_words=2977
 smoke_result_csv=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-sample-temp0p3-smoke-20260526T1255Z/rob123_tedlium_eval.csv
-full_sample_job=10267475
+full_sample_job=10267475 COMPLETED 0:0 elapsed=00:25:04 batch_max_rss=10181720K
+full_sample_wer=0.1522948786106681
+full_sample_words=28215
+full_sample_ins_rate=0.02130072656388446
+full_sample_del_rate=0.056636540847067166
+full_sample_sub_rate=0.07435761119971647
 full_sample_artifact=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-sample-temp0p3-full-20260526T1300Z
+full_sample_result_csv=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-sample-temp0p3-full-20260526T1300Z/rob123_tedlium_eval.csv
 ```
 
 ## Conclusion
 
-The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`.
+The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`. The requested sampled eval with temperature `0.3` also completed successfully and produced aggregate WER `0.1522948786106681`.
 
-For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check, while the corrected full TEDLIUM CPU eval is the current aggregate ROB-123 result.
+For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check. For ROB-123 handoff, the current aggregate TEDLIUM results are greedy WER `0.13974836080099237` and sampled temperature-`0.3` WER `0.1522948786106681`.
