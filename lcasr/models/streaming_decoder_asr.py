@@ -15,12 +15,6 @@ try:
 except Exception:
         from torch.nn import LayerNorm
 
-try:
-    from flash_attn.modules.mha import FlashCrossAttention
-except ImportError:
-    FlashCrossAttention = None
-
-
 class CausalDecoderLayer(nn.Module):
     """Causal self-attention plus feed-forward block for streaming decoder ASR."""
 
@@ -46,16 +40,6 @@ class CausalDecoderLayer(nn.Module):
             qkv_bias=False,
             bias=False,
         )
-        try:
-            assert FlashCrossAttention is not None
-            assert self.attn.left_window == -1 and self.attn.right_window == -1
-            self.cached_flash_attn = FlashCrossAttention(
-                softmax_scale=None,
-                attention_dropout=dropout_attn,
-                causal=False,
-            )
-        except Exception:
-            self.cached_flash_attn = None
         self.ff_norm = LayerNorm(d_model)
         hidden = d_model * expansion_factor
         self.ff = nn.Sequential(
@@ -90,31 +74,23 @@ class CausalDecoderLayer(nn.Module):
         q, kv = self.attn.apply_rotary(q, kv, rotary_emb_fn)
         kv = self._append_kv_cache(kv, cached_kv=cached_kv, max_cache_length=max_cache_length)
 
-        if x.device.type == "cuda" and self.cached_flash_attn is not None and not self.attn.return_attention_weights:
-            q, kv = q.contiguous(), kv.contiguous()
-            original_dtype = q.dtype
-            if q.dtype == torch.float32:
-                q, kv = q.half(), kv.half()
-            out = self.cached_flash_attn(q, kv).to(original_dtype)
-            out = rearrange(out, "b n h d -> b n (h d)")
-        else:
-            assert self.attn.left_window == -1 and self.attn.right_window == -1, (
-                "windowed cached attention is not supported"
+        assert self.attn.left_window == -1 and self.attn.right_window == -1, (
+            "windowed cached attention is not supported"
+        )
+        k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
+        q = q.transpose(1, 2).contiguous()
+        dropout_p = self.attn.dropout_p if self.training else 0.0
+        if not self.attn.return_attention_weights:
+            out = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                dropout_p=dropout_p,
+                is_causal=False,
             )
-            k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
-            q = q.transpose(1, 2).contiguous()
-            dropout_p = self.attn.dropout_p if self.training else 0.0
-            if not self.attn.return_attention_weights:
-                out = F.scaled_dot_product_attention(
-                    q,
-                    k,
-                    v,
-                    dropout_p=dropout_p,
-                    is_causal=False,
-                )
-            else:
-                out, _ = self.attn.return_attention_module(q, k, v, None, causal=False)
-            out = rearrange(out, "b h n d -> b n (h d)")
+        else:
+            out, _ = self.attn.return_attention_module(q, k, v, None, causal=False)
+        out = rearrange(out, "b h n d -> b n (h d)")
 
         return self.attn.out_proj(out), kv
 

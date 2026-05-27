@@ -93,6 +93,20 @@ class StreamingDecoderASRRoPETest(unittest.TestCase):
             self.assertLessEqual(cache.shape[1], 3)
             self.assertEqual(cache.shape[1], min(step + 1, 3))
 
+    def test_cached_attention_uses_torch_sdpa(self):
+        torch.manual_seed(0)
+        layer = CausalDecoderLayer(d_model=32, n_heads=4, dropout_ff=0.0, dropout_attn=0.0)
+        layer.eval()
+        x = torch.randn(1, 1, 32)
+
+        with mock.patch(
+            "lcasr.models.streaming_decoder_asr.F.scaled_dot_product_attention",
+            wraps=torch.nn.functional.scaled_dot_product_attention,
+        ) as sdpa:
+            layer(x, use_cache=True)
+
+        self.assertEqual(sdpa.call_count, 1)
+
     def test_kv_cache_spectrogram_length_uses_subsampled_frame_count(self):
         model = StreamingDecoderASR(**tiny_streaming_config())
 
