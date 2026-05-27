@@ -16,11 +16,6 @@ except ImportError:
     unpad_input, pad_input = None, None
     _get_block_size_n = None
 
-try:
-    from flash_attn.modules.mha import FlashCrossAttention
-except ImportError:
-    FlashCrossAttention = None
-
 
 ## misc flash attention stuff from: https://github.com/Dao-AILab/flash-attention/blob/main/tests/test_flash_attn.py
 def construct_local_mask(
@@ -479,16 +474,6 @@ class Attention(nn.Module):
                 alibi_slopes=None
             )
         except: self.flash_attn_fn = None
-        try:
-            assert FlashCrossAttention is not None
-            assert self.left_window == -1 and self.right_window == -1
-            self.flash_cross_attn_fn = FlashCrossAttention(
-                softmax_scale=None,
-                attention_dropout=dropout,
-                causal=False,
-            )
-        except Exception:
-            self.flash_cross_attn_fn = None
 
         self.causal = kwargs.get('causal', False)
      
@@ -520,76 +505,9 @@ class Attention(nn.Module):
                 q, k = rotary_emb_fn.apply(q, k)
                 kv = torch.stack([k, v], dim=2)
         return q, kv
-
-    @staticmethod
-    def update_kv_cache(kv, cached_kv=None, max_cache_length=None):
-        if cached_kv is not None:
-            kv = torch.cat([cached_kv, kv], dim=1)
-        if max_cache_length is not None and max_cache_length > 0 and kv.size(1) > max_cache_length:
-            kv = kv[:, -max_cache_length:].contiguous()
-        return kv
-
-    def torch_sdpa(self, q, k, v, attn_mask=None, is_causal=False, dropout_p=None):
-        if dropout_p is None:
-            dropout_p = self.dropout_p
-        return nn.functional.scaled_dot_product_attention(
-            q,
-            k,
-            v,
-            attn_mask=attn_mask,
-            dropout_p=dropout_p,
-            is_causal=is_causal,
-        )
-
-    def flash_cross_attention(self, q, kv):
-        out = self.flash_cross_attn_fn(q, kv)
-        return out.to(q.dtype)
-
-    def attention(self, q, kv, x, attn_mask=None, length=None, flash_attn=True, use_cache=False):
-        if x.device.type == 'cuda' and flash_attn and not self.return_attention_weights:
-            q, kv = q.contiguous(), kv.contiguous()
-            original_dtype = q.dtype
-            if q.dtype == torch.float32:
-                q, kv = q.half(), kv.half()
-            if use_cache and self.flash_cross_attn_fn is not None:
-                out = self.flash_cross_attention(q, kv).to(original_dtype)
-                return rearrange(out, "b n h d -> b n (h d)")
-            if not use_cache and self.flash_attn_fn is not None:
-                if length is not None and length.max() != length.min():
-                    qkv = torch.cat([q[:, :, None], kv], dim=2)
-                    qkv_unpad, qkv_indices, cu_seqlens, max_seqlen, seqused = unpad_input(qkv, attn_mask)
-                    out = self.flash_attn_fn(qkv_unpad, attn_mask, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen)
-                    out = pad_input(out, indices=qkv_indices, batch=x.shape[0], seqlen=max_seqlen).to(original_dtype)
-                    return rearrange(out, "b n h d -> b n (h d)")
-                qkv = torch.cat([q[:, :, None], kv], dim=2)
-                out = self.flash_attn_fn(qkv).to(original_dtype)
-                return rearrange(out, "b n h d -> b n (h d)")
-
-        assert self.left_window == -1 and self.right_window == -1, "windowed attention not supported in CPU mode (yet)"
-        k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
-        q = q.transpose(1, 2).contiguous()
-        if attn_mask is not None and attn_mask.dim() == 2:
-            attn_mask = (~attn_mask).to(dtype=q.dtype)
-            attn_mask = rearrange(attn_mask, 'b s -> b 1 1 s') * -torch.finfo(q.dtype).max
-        dropout_p = self.dropout_p if self.training else 0.0
-        if not self.return_attention_weights:
-            out = self.torch_sdpa(q, k, v, attn_mask=attn_mask, dropout_p=dropout_p, is_causal=self.causal and not use_cache)
-        else:
-            out, _ = self.return_attention_module(q, k, v, attn_mask, causal=self.causal and not use_cache)
-        return rearrange(out, "b h n d -> b n (h d)")
         
-    def forward(
-        self,
-        x,
-        attn_mask=None,
-        length=None,
-        pad_mask=None,
-        flash_attn=True,
-        rotary_emb_fn=None,
-        cached_kv=None,
-        use_cache=False,
-        max_cache_length=None,
-    ):
+    def forward(self, x, attn_mask=None, length=None, pad_mask=None, flash_attn = True, rotary_emb_fn = None):
+        B, N, C, H, D = *x.shape, self.n_heads, self.head_dim
         if pad_mask is not None: x = x.masked_fill(pad_mask.unsqueeze(-1), 0)
 
         q, k, v = self.qkv(x)
@@ -597,16 +515,36 @@ class Attention(nn.Module):
         
         q, kv = self.apply_rotary(q, kv, rotary_emb_fn)
 
-        if use_cache:
-            kv = self.update_kv_cache(kv, cached_kv=cached_kv, max_cache_length=max_cache_length)
-            out = self.attention(q, kv, x, flash_attn=flash_attn, use_cache=True)
-            if pad_mask != None:
-                out = out.masked_fill(pad_mask.unsqueeze(-1), 0)
-            out = self.out_proj(out)
-            return out, kv
-
         #self.return_attention_weights = True
-        out = self.attention(q, kv, x, attn_mask=attn_mask, length=length, flash_attn=flash_attn)
+        ### Flash attention stuff 
+        if x.device.type == 'cuda' and flash_attn and not self.return_attention_weights and self.flash_attn_fn is not None:
+            q, kv = q.contiguous(), kv.contiguous()
+            if q.dtype == torch.float32:
+                q, kv = q.half(), kv.half()
+
+            qkv = torch.cat([q[:,:,None], kv], dim=2)
+
+            if length is not None and length.max() != length.min(): # variable length
+                qkv_unpad, qkv_indices, cu_seqlens, max_seqlen, seqused = unpad_input(qkv, attn_mask)
+                out = self.flash_attn_fn(qkv_unpad, attn_mask, cu_seqlens=cu_seqlens, max_seqlen=max_seqlen)
+                out = pad_input(out, indices=qkv_indices, batch=B, seqlen=max_seqlen)
+            else:
+                out = self.flash_attn_fn(qkv)
+
+            out = out.to(x.dtype) 
+            out = rearrange(out, "b n h d -> b n (h d)")
+        else:
+            assert self.left_window == -1 and self.right_window == -1, "windowed attention not supported in CPU mode (yet)"
+            k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
+            q = q.transpose(1, 2).contiguous()
+            if attn_mask is not None and attn_mask.dim() == 2:
+                attn_mask = (~attn_mask).to(dtype=q.dtype)
+                attn_mask = rearrange(attn_mask, 'b s -> b 1 1 s') * -torch.finfo(q.dtype).max
+            if not self.return_attention_weights:
+                out = nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout_p, is_causal=self.causal)
+            else:
+                out, _ = self.return_attention_module(q, k, v, attn_mask, causal=self.causal)
+            out = rearrange(out, "b h n d -> b n (h d)")
       
         if pad_mask != None:
             out = out.masked_fill(pad_mask.unsqueeze(-1), 0)

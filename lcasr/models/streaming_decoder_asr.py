@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from einops import rearrange
 from typing import Iterable, Optional
 
 from lcasr.components.attention import Attention
@@ -13,6 +14,11 @@ try:
     from apex.normalization import FusedLayerNorm as LayerNorm
 except Exception:
         from torch.nn import LayerNorm
+
+try:
+    from flash_attn.modules.mha import FlashCrossAttention
+except ImportError:
+    FlashCrossAttention = None
 
 
 class CausalDecoderLayer(nn.Module):
@@ -40,6 +46,16 @@ class CausalDecoderLayer(nn.Module):
             qkv_bias=False,
             bias=False,
         )
+        try:
+            assert FlashCrossAttention is not None
+            assert self.attn.left_window == -1 and self.attn.right_window == -1
+            self.cached_flash_attn = FlashCrossAttention(
+                softmax_scale=None,
+                attention_dropout=dropout_attn,
+                causal=False,
+            )
+        except Exception:
+            self.cached_flash_attn = None
         self.ff_norm = LayerNorm(d_model)
         hidden = d_model * expansion_factor
         self.ff = nn.Sequential(
@@ -49,6 +65,58 @@ class CausalDecoderLayer(nn.Module):
             nn.Linear(hidden, d_model, bias=False),
             nn.Dropout(dropout_ff),
         )
+
+    @staticmethod
+    def _append_kv_cache(
+        kv: torch.Tensor,
+        cached_kv: Optional[torch.Tensor] = None,
+        max_cache_length: Optional[int] = None,
+    ) -> torch.Tensor:
+        if cached_kv is not None:
+            kv = torch.cat([cached_kv, kv], dim=1)
+        if max_cache_length is not None and max_cache_length > 0 and kv.size(1) > max_cache_length:
+            kv = kv[:, -max_cache_length:].contiguous()
+        return kv
+
+    def _cached_attention(
+        self,
+        x: torch.Tensor,
+        rotary_emb_fn=None,
+        cached_kv: Optional[torch.Tensor] = None,
+        max_cache_length: Optional[int] = None,
+    ):
+        q, k, v = self.attn.qkv(x)
+        kv = torch.stack([k, v], dim=2)
+        q, kv = self.attn.apply_rotary(q, kv, rotary_emb_fn)
+        kv = self._append_kv_cache(kv, cached_kv=cached_kv, max_cache_length=max_cache_length)
+
+        if x.device.type == "cuda" and self.cached_flash_attn is not None and not self.attn.return_attention_weights:
+            q, kv = q.contiguous(), kv.contiguous()
+            original_dtype = q.dtype
+            if q.dtype == torch.float32:
+                q, kv = q.half(), kv.half()
+            out = self.cached_flash_attn(q, kv).to(original_dtype)
+            out = rearrange(out, "b n h d -> b n (h d)")
+        else:
+            assert self.attn.left_window == -1 and self.attn.right_window == -1, (
+                "windowed cached attention is not supported"
+            )
+            k, v = rearrange(kv, "b n kv h d -> kv b h n d", kv=2).contiguous()
+            q = q.transpose(1, 2).contiguous()
+            dropout_p = self.attn.dropout_p if self.training else 0.0
+            if not self.attn.return_attention_weights:
+                out = F.scaled_dot_product_attention(
+                    q,
+                    k,
+                    v,
+                    dropout_p=dropout_p,
+                    is_causal=False,
+                )
+            else:
+                out, _ = self.attn.return_attention_module(q, k, v, None, causal=False)
+            out = rearrange(out, "b h n d -> b n (h d)")
+
+        return self.attn.out_proj(out), kv
 
     def forward(
         self,
@@ -60,17 +128,20 @@ class CausalDecoderLayer(nn.Module):
     ) -> torch.Tensor:
         """Apply causal self-attention and feed-forward residual updates to `[B, T, D]`."""
         x_norm = self.attn_norm(x)
-        attn_out = self.attn(
-            x_norm,
-            flash_attn=True,
-            rotary_emb_fn=rotary_emb_fn,
-            cached_kv=cached_kv,
-            use_cache=use_cache,
-            max_cache_length=max_cache_length,
-        )
-        next_cache = None
         if use_cache:
-            attn_out, next_cache = attn_out
+            attn_out, next_cache = self._cached_attention(
+                x_norm,
+                rotary_emb_fn=rotary_emb_fn,
+                cached_kv=cached_kv,
+                max_cache_length=max_cache_length,
+            )
+        else:
+            attn_out = self.attn(
+                x_norm,
+                flash_attn=True,
+                rotary_emb_fn=rotary_emb_fn,
+            )
+            next_cache = None
         x = x + attn_out
         x = x + self.ff(self.ff_norm(x))
         if use_cache:
