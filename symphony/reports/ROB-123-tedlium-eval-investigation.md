@@ -253,8 +253,43 @@ result_csv=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/ro
 This matches the earlier corrected full greedy TEDLIUM result exactly at the
 aggregate WER and error-rate fields recorded in this report.
 
+## Earnings-22 Test Eval
+
+A later Linear follow-up requested the smaller Earnings-22 `test` partition,
+not `earnings22_full`. The same final ROB-123 checkpoint and corrected
+2048-spectrogram-frame KV-cache cap were evaluated with greedy decode through
+the callback-capable Stanage CPU wrapper:
+
+```text
+job=10272085
+state=COMPLETED 0:0
+elapsed=00:49:38
+batch_max_rss=20982716K
+commit=68bbb9c0c99037c70a78bc2426f0de5a06a5b2cb
+dataset=earnings22
+split=test
+decode_mode=greedy
+temperature=1.0
+use_kv_cache=true
+max_kv_cache_spectrogram_length=2048
+break_eval=0
+rows=7
+wer=0.5014194391683516
+words=48963
+ins_rate=0.02234340216081531
+del_rate=0.35061168637542633
+sub_rate=0.12846435063210995
+artifact=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-earnings22-test-kvcache-greedy-full-20260528T150106Z
+result_csv=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-earnings22-test-kvcache-greedy-full-20260528T150106Z/rob123_earnings22_eval.csv
+```
+
+The callback summary confirmed the checkpoint, `earnings22` test/dev audio
+paths, transcript path, eval config, and result CSV path. A direct CSV read
+found one aggregate `earnings22`/`test`/`all` row with the metrics above, and
+bounded log inspection found no tracebacks or failure markers.
+
 ## Conclusion
 
-The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`. The requested joint sampled eval with temperature `0.3` also completed successfully and produced aggregate WER `0.1522948786106681`. The silence-head-only sampled variant completed afterward and produced aggregate WER `0.1676058833953571`.
+The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`. The requested joint sampled eval with temperature `0.3` also completed successfully and produced aggregate WER `0.1522948786106681`. The silence-head-only sampled variant completed afterward and produced aggregate WER `0.1676058833953571`. The later Earnings-22 `test` eval completed successfully with aggregate WER `0.5014194391683516`.
 
-For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check. For ROB-123 handoff, the current aggregate TEDLIUM results are greedy WER `0.13974836080099237`, joint sampled temperature-`0.3` WER `0.1522948786106681`, and silence-head sampled temperature-`0.3` WER `0.1676058833953571`. The latest SDPA-only cached-attention branch passed both a real final-checkpoint TEDLIUM greedy KV-cache smoke and a like-for-like full greedy TEDLIUM rerun after Stanage maintenance; the full rerun reproduced the earlier corrected WER exactly.
+For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check. For ROB-123 handoff, the current aggregate TEDLIUM results are greedy WER `0.13974836080099237`, joint sampled temperature-`0.3` WER `0.1522948786106681`, and silence-head sampled temperature-`0.3` WER `0.1676058833953571`; the current smaller Earnings-22 test result is greedy WER `0.5014194391683516`. The latest SDPA-only cached-attention branch passed both a real final-checkpoint TEDLIUM greedy KV-cache smoke and a like-for-like full greedy TEDLIUM rerun after Stanage maintenance; the full rerun reproduced the earlier corrected WER exactly.
