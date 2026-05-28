@@ -195,8 +195,38 @@ full_silence_sample_artifact=/mnt/parscratch/users/acp21rjf/symphony-job-artifac
 full_silence_sample_result_csv=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-silence-sample-temp0p3-full-20260526T1345Z/rob123_tedlium_eval.csv
 ```
 
+## Post-SDPA Cached-Attention Validation
+
+After the model-local cached-attention path was simplified to use PyTorch SDPA
+only at PR head `da623215b246d6344276b335531f4e97dca5e3d7`, Stanage was
+offline for maintenance and the real-checkpoint decode smoke could not be run.
+Once Stanage returned, the same final ROB-123 checkpoint was rerun through the
+callback-capable TEDLIUM CPU wrapper with Linear callback disabled for the
+bounded validation smoke:
+
+```text
+job=10270996
+state=COMPLETED 0:0
+elapsed=00:08:16
+batch_max_rss=11167972K
+commit=da623215b246d6344276b335531f4e97dca5e3d7
+decode_mode=greedy
+temperature=1.0
+use_kv_cache=true
+max_kv_cache_spectrogram_length=2048
+break_eval=1
+artifact=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-kvcache-spec2048-greedy-smoke-after-sdpa-20260528T1327Z
+result_csv=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-kvcache-spec2048-greedy-smoke-after-sdpa-20260528T1327Z/rob123_tedlium_eval.csv
+```
+
+The smoke produced aggregate WER `0.1128653006382264` over `2977` words
+(`ins_rate=0.017803157541148806`, `del_rate=0.026536781995297277`,
+`sub_rate=0.06852536110178031`). The wrapper summary confirmed the checkpoint
+and TEDLIUM root existed, generated the expected eval config, and exited with
+status `0`.
+
 ## Conclusion
 
 The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`. The requested joint sampled eval with temperature `0.3` also completed successfully and produced aggregate WER `0.1522948786106681`. The silence-head-only sampled variant completed afterward and produced aggregate WER `0.1676058833953571`.
 
-For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check. For ROB-123 handoff, the current aggregate TEDLIUM results are greedy WER `0.13974836080099237`, joint sampled temperature-`0.3` WER `0.1522948786106681`, and silence-head sampled temperature-`0.3` WER `0.1676058833953571`.
+For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check. For ROB-123 handoff, the current aggregate TEDLIUM results are greedy WER `0.13974836080099237`, joint sampled temperature-`0.3` WER `0.1522948786106681`, and silence-head sampled temperature-`0.3` WER `0.1676058833953571`. The latest SDPA-only cached-attention commit also passed a real final-checkpoint TEDLIUM greedy KV-cache smoke after Stanage maintenance, so local unit tests are no longer the only evidence for the final attention refactor.
