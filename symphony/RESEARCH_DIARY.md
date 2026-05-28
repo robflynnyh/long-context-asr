@@ -193,6 +193,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-05-28
 
 - ROB-123 Earnings-22 follow-up: added a callback-capable Stanage CPU eval wrapper for the smaller `earnings22` `test` split, using the final full-Spotify RoPE checkpoint, greedy decode, `use_kv_cache=true`, and `max_kv_cache_spectrogram_length=2048`. The first uncapped one-record smoke was canceled after it proved setup but was too slow for a bounded smoke; capped smoke job `10272008` completed `0:0` in `00:00:19` with `max_output_frames=2`, confirming the checkpoint, Earnings-22 paths, eval config, Slurm environment, and output/callback artifact path.
+- ROB-123 continuation setup: latest Linear feedback requested two more full-Spotify training epochs from the final RoPE checkpoint while pruning the excessive original checkpoints. The Stanage training wrappers now support a `checkpointing.pretrained` source checkpoint, guarded source-checkpoint cleanup, configurable reduced checkpoint cadence, and resumable continuation output directories.
 
 ## 2026-05-12
 

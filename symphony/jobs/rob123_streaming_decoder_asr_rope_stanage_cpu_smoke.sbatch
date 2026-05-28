@@ -25,11 +25,13 @@ BASE_CONFIG="${ROB123_BASE_CONFIG:-exp/configs/streaming_decoder_asr_100m.yaml}"
 SOURCE_PAIRS="${ROB123_SOURCE_PAIRS:-/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json}"
 RUNTIME_CONFIG="${ROB123_RUNTIME_CONFIG:-$RUN_DIR/streaming_decoder_asr_100m_rope_full_spotify_2epoch_delay0p5_smoke.yaml}"
 CHECKPOINT_DIR="${ROB123_CHECKPOINT_DIR:-$RUN_DIR/checkpoints}"
+PRETRAINED_CHECKPOINT="${ROB123_PRETRAINED_CHECKPOINT:-}"
 WANDB_DIR="${ROB123_WANDB_DIR:-$ARTIFACT_ROOT/wandb}"
 WANDB_NAME="${ROB123_WANDB_NAME:-rob123_rope_streaming_decoder_full_spotify_2epoch_smoke}"
 BATCH_SIZE="${ROB123_BATCH_SIZE:-88}"
 MAX_EPOCHS="${ROB123_MAX_EPOCHS:-2}"
 LEARNING_RATE="${ROB123_LEARNING_RATE:-3e-4}"
+SAVE_EVERY_N_STEPS="${ROB123_SAVE_EVERY_N_STEPS:-}"
 ROTARY_BASE_FREQ="${ROB123_ROTARY_BASE_FREQ:-1500000}"
 DELAY_SECONDS="${ROB123_DELAY_SECONDS:-0.5}"
 DEBUG_GENERATE_EVERY_RECORDS="${ROB123_DEBUG_GENERATE_EVERY_RECORDS:-0}"
@@ -40,6 +42,11 @@ PREFETCH="${ROB123_PREFETCH:-1}"
 PIN_MEMORY="${ROB123_PIN_MEMORY:-0}"
 MAX_RECORDS="${ROB123_MAX_RECORDS:-1}"
 MAX_STEPS="${ROB123_MAX_STEPS:-1}"
+RESET_STEP="${ROB123_RESET_STEP:-0}"
+SOURCE_CHECKPOINT_DIR="${ROB123_SOURCE_CHECKPOINT_DIR:-}"
+KEEP_CHECKPOINT="${ROB123_KEEP_CHECKPOINT:-}"
+CLEANUP_SOURCE_CHECKPOINTS="${ROB123_CLEANUP_SOURCE_CHECKPOINTS:-0}"
+CLEANUP_DRY_RUN="${ROB123_CLEANUP_DRY_RUN:-1}"
 CALLBACK_PYTHON="${ROB123_CALLBACK_PYTHON:-python3}"
 LINEAR_KEY_FILE="${ROB123_LINEAR_KEY_FILE:-$ARTIFACT_ROOT/.linear_api_key}"
 
@@ -82,15 +89,22 @@ on_exit() {
     echo "runtime_config=${RUNTIME_CONFIG}"
     echo "source_pairs=${SOURCE_PAIRS}"
     echo "checkpoint_dir=${CHECKPOINT_DIR}"
+    echo "pretrained_checkpoint=${PRETRAINED_CHECKPOINT}"
     echo "wandb_name=${WANDB_NAME}"
     echo "batch_size=${BATCH_SIZE}"
     echo "max_epochs=${MAX_EPOCHS}"
     echo "learning_rate=${LEARNING_RATE}"
+    echo "save_every_n_steps=${SAVE_EVERY_N_STEPS}"
     echo "use_rotary=true"
     echo "rotary_base_freq=${ROTARY_BASE_FREQ}"
     echo "delay_seconds=${DELAY_SECONDS}"
     echo "max_records=${MAX_RECORDS}"
     echo "max_steps=${MAX_STEPS}"
+    echo "reset_step=${RESET_STEP}"
+    echo "source_checkpoint_dir=${SOURCE_CHECKPOINT_DIR}"
+    echo "keep_checkpoint=${KEEP_CHECKPOINT}"
+    echo "cleanup_source_checkpoints=${CLEANUP_SOURCE_CHECKPOINTS}"
+    echo "cleanup_dry_run=${CLEANUP_DRY_RUN}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB123_ENABLE_CALLBACK:-1}" == "1" ]]; then
     if [[ -z "${LINEAR_API_KEY:-}" && -f "$LINEAR_KEY_FILE" ]]; then
@@ -112,6 +126,7 @@ on_exit() {
       --metadata "branch=${REMOTE_BRANCH}"
       --metadata "commit=${TARGET_COMMIT}"
       --metadata "runtime_config=${RUNTIME_CONFIG}"
+      --metadata "pretrained_checkpoint=${PRETRAINED_CHECKPOINT}"
       --metadata "delay_seconds=${DELAY_SECONDS}"
     )
     if [[ "${ROB123_CALLBACK_DRY_RUN:-1}" == "1" ]]; then
@@ -147,22 +162,43 @@ export PYTHONPATH="$PWD"
 module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main
 
-python symphony/scripts/prepare_rob123_stanage_rope_full_spotify.py \
-  --base-config "$BASE_CONFIG" \
-  --source-pairs "$SOURCE_PAIRS" \
-  --config-out "$RUNTIME_CONFIG" \
-  --summary-out "$PREP_SUMMARY" \
-  --checkpoint-dir "$CHECKPOINT_DIR" \
-  --wandb-dir "$WANDB_DIR" \
-  --wandb-name "$WANDB_NAME" \
-  --batch-size "$BATCH_SIZE" \
-  --max-epochs "$MAX_EPOCHS" \
-  --learning-rate "$LEARNING_RATE" \
-  --rotary-base-freq "$ROTARY_BASE_FREQ" \
-  --delay-seconds "$DELAY_SECONDS" \
-  --debug-generate-every-records "$DEBUG_GENERATE_EVERY_RECORDS" \
-  --debug-generate-max-frames "$DEBUG_GENERATE_MAX_FRAMES" \
+if [[ "$CLEANUP_SOURCE_CHECKPOINTS" == "1" ]]; then
+  cleanup_args=(
+    --checkpoint-dir "${SOURCE_CHECKPOINT_DIR:?ROB123_SOURCE_CHECKPOINT_DIR is required when cleanup is enabled}"
+  )
+  if [[ -n "$KEEP_CHECKPOINT" ]]; then
+    cleanup_args+=(--keep-checkpoint "$KEEP_CHECKPOINT")
+  fi
+  if [[ "$CLEANUP_DRY_RUN" == "1" ]]; then
+    cleanup_args+=(--dry-run)
+  fi
+  python symphony/scripts/cleanup_rob123_checkpoints.py "${cleanup_args[@]}" | tee -a "$SUMMARY_FILE"
+fi
+
+prep_args=(
+  --base-config "$BASE_CONFIG"
+  --source-pairs "$SOURCE_PAIRS"
+  --config-out "$RUNTIME_CONFIG"
+  --summary-out "$PREP_SUMMARY"
+  --checkpoint-dir "$CHECKPOINT_DIR"
+  --wandb-dir "$WANDB_DIR"
+  --wandb-name "$WANDB_NAME"
+  --batch-size "$BATCH_SIZE"
+  --max-epochs "$MAX_EPOCHS"
+  --learning-rate "$LEARNING_RATE"
+  --rotary-base-freq "$ROTARY_BASE_FREQ"
+  --delay-seconds "$DELAY_SECONDS"
+  --debug-generate-every-records "$DEBUG_GENERATE_EVERY_RECORDS"
+  --debug-generate-max-frames "$DEBUG_GENERATE_MAX_FRAMES"
   --validate-path-limit "$VALIDATE_PATH_LIMIT"
+)
+if [[ -n "$PRETRAINED_CHECKPOINT" ]]; then
+  prep_args+=(--pretrained-checkpoint "$PRETRAINED_CHECKPOINT")
+fi
+if [[ -n "$SAVE_EVERY_N_STEPS" ]]; then
+  prep_args+=(--save-every-n-steps "$SAVE_EVERY_N_STEPS")
+fi
+python symphony/scripts/prepare_rob123_stanage_rope_full_spotify.py "${prep_args[@]}"
 
 cat "$PREP_SUMMARY" >> "$SUMMARY_FILE"
 
@@ -170,11 +206,13 @@ train_args=(
   -config "$RUNTIME_CONFIG"
   -num_workers "$NUM_WORKERS"
   -prefetch "$PREFETCH"
-  -reset_step
   -max_records "$MAX_RECORDS"
   -max_steps "$MAX_STEPS"
   -disable_wandb
 )
+if [[ "$RESET_STEP" == "1" ]]; then
+  train_args+=(-reset_step)
+fi
 if [[ "$PIN_MEMORY" == "1" ]]; then
   train_args+=(-pin_memory)
 fi

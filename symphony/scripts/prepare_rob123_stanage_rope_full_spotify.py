@@ -40,11 +40,13 @@ def main():
     parser.add_argument("--config-out", required=True)
     parser.add_argument("--summary-out", required=True)
     parser.add_argument("--checkpoint-dir", required=True)
+    parser.add_argument("--pretrained-checkpoint", default=None)
     parser.add_argument("--wandb-dir", required=True)
     parser.add_argument("--wandb-name", default="rob123_rope_streaming_decoder_full_spotify_2epoch")
     parser.add_argument("--batch-size", type=int, default=88)
     parser.add_argument("--max-epochs", type=int, default=2)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
+    parser.add_argument("--save-every-n-steps", type=int, default=None)
     parser.add_argument("--rotary-base-freq", type=int, default=1_500_000)
     parser.add_argument("--delay-seconds", type=float, default=0.5)
     parser.add_argument("--debug-generate-every-records", type=int, default=500)
@@ -68,6 +70,14 @@ def main():
     if "max_records" in config.data:
         del config.data.max_records
     config.checkpointing.dir = args.checkpoint_dir
+    if args.pretrained_checkpoint:
+        if not os.path.exists(args.pretrained_checkpoint):
+            raise FileNotFoundError(f"pretrained checkpoint does not exist: {args.pretrained_checkpoint}")
+        config.checkpointing.pretrained = args.pretrained_checkpoint
+    elif "pretrained" in config.checkpointing:
+        del config.checkpointing.pretrained
+    if args.save_every_n_steps is not None:
+        config.checkpointing.save_every_n_steps = args.save_every_n_steps
     config.training.batch_size = args.batch_size
     config.training.max_epochs = args.max_epochs
     config.optimizer.args.lr = args.learning_rate
@@ -100,11 +110,13 @@ def main():
         f"validated_path_records={checked_paths}",
         f"runtime_config={args.config_out}",
         f"checkpoint_dir={args.checkpoint_dir}",
+        f"pretrained_checkpoint={args.pretrained_checkpoint or ''}",
         f"wandb_dir={args.wandb_dir}",
         f"wandb_name={args.wandb_name}",
         f"batch_size={args.batch_size}",
         f"max_epochs={args.max_epochs}",
         f"learning_rate={config.optimizer.args.lr}",
+        f"save_every_n_steps={config.checkpointing.save_every_n_steps}",
         f"use_rotary={config.model.use_rotary}",
         f"rotary_base_freq={config.model.rotary_base_freq}",
         f"rotary_interpolation_factor={config.model.rotary_interpolation_factor}",
