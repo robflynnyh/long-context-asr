@@ -189,6 +189,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - ROB-123 second PR review response: moved the cached streaming attention implementation back out of the shared `Attention` module and into `CausalDecoderLayer` inside `StreamingDecoderASR`. The shared attention path now has no cumulative ROB-123 diff, while cached decode still appends/trims its RoPE-rotated KV cache locally and can use `FlashCrossAttention` on CUDA with an SDPA fallback on CPU.
 - ROB-123 third PR review response: simplified the model-local cached attention path by removing the direct `flash_attn` package dependency from `StreamingDecoderASR` and always using PyTorch SDPA after appending/trimming the RoPE-rotated KV cache. Added a focused unit test that patches the cached path and verifies it calls `torch.nn.functional.scaled_dot_product_attention`.
 
+## 2026-05-28
+
+- ROB-123 Earnings-22 follow-up: added a callback-capable Stanage CPU eval wrapper for the smaller `earnings22` `test` split, using the final full-Spotify RoPE checkpoint, greedy decode, `use_kv_cache=true`, and `max_kv_cache_spectrogram_length=2048`. The first uncapped one-record smoke was canceled after it proved setup but was too slow for a bounded smoke; capped smoke job `10272008` completed `0:0` in `00:00:19` with `max_output_frames=2`, confirming the checkpoint, Earnings-22 paths, eval config, Slurm environment, and output/callback artifact path.
+
 ## 2026-05-12
 
 - ROB-69 eval job `10156464` completed successfully, but finalizer job `10156465` failed because appended finetuned CSV rows included an extra pandas index field. Normalized the completed remote result into `eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`, made ROB-69 summarization tolerate and normalize that output shape, and fixed eval manager CSV appends to write `index=False`. Mean WER was slightly worse for the long-only finetuned checkpoints on most dataset/window pairs, with small improvements only on `rev16` window 128, `tedlium` window 8192, and `this_american_life` windows 128 and 22500.
