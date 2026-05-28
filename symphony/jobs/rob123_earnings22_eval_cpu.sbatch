@@ -29,6 +29,7 @@ EARNINGS22_TEXT_PATH="${ROB123_EARNINGS22_TEXT_PATH:-/mnt/parscratch/users/acp21
 BREAK_EVAL="${ROB123_EVAL_BREAK:-0}"
 INCLUDE_PER_RECORDING="${ROB123_INCLUDE_PER_RECORDING:-1}"
 MAX_KV_CACHE_SPECTROGRAM_LENGTH="${ROB123_MAX_KV_CACHE_SPECTROGRAM_LENGTH:-2048}"
+MAX_OUTPUT_FRAMES="${ROB123_MAX_OUTPUT_FRAMES:-null}"
 DECODE_MODE="${ROB123_DECODE_MODE:-greedy}"
 TEMPERATURE="${ROB123_TEMPERATURE:-1.0}"
 CALLBACK_PYTHON="${ROB123_CALLBACK_PYTHON:-python3}"
@@ -80,6 +81,7 @@ on_exit() {
     echo "temperature=${TEMPERATURE}"
     echo "use_kv_cache=true"
     echo "max_kv_cache_spectrogram_length=${MAX_KV_CACHE_SPECTROGRAM_LENGTH}"
+    echo "max_output_frames=${MAX_OUTPUT_FRAMES}"
     echo "break_eval=${BREAK_EVAL}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB123_ENABLE_CALLBACK:-1}" == "1" ]]; then
@@ -109,6 +111,7 @@ on_exit() {
       --metadata "temperature=${TEMPERATURE}"
       --metadata "use_kv_cache=true"
       --metadata "max_kv_cache_spectrogram_length=${MAX_KV_CACHE_SPECTROGRAM_LENGTH}"
+      --metadata "max_output_frames=${MAX_OUTPUT_FRAMES}"
       --metadata "break_eval=${BREAK_EVAL}"
     )
     if [[ "${ROB123_CALLBACK_DRY_RUN:-0}" == "1" ]]; then
@@ -175,6 +178,7 @@ args:
     temperature: $TEMPERATURE
     use_kv_cache: true
     max_kv_cache_spectrogram_length: $MAX_KV_CACHE_SPECTROGRAM_LENGTH
+    max_output_frames: $MAX_OUTPUT_FRAMES
 YAML
 
 {
@@ -187,6 +191,7 @@ YAML
   echo "result_csv=${RESULT_CSV}"
   echo "decode_mode=${DECODE_MODE}"
   echo "temperature=${TEMPERATURE}"
+  echo "max_output_frames=${MAX_OUTPUT_FRAMES}"
   echo "break_eval=${BREAK_EVAL}"
 } >> "$SUMMARY_FILE"
 
