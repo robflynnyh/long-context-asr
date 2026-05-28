@@ -47,6 +47,7 @@ SOURCE_CHECKPOINT_DIR="${ROB123_SOURCE_CHECKPOINT_DIR:-}"
 KEEP_CHECKPOINT="${ROB123_KEEP_CHECKPOINT:-}"
 CLEANUP_SOURCE_CHECKPOINTS="${ROB123_CLEANUP_SOURCE_CHECKPOINTS:-0}"
 CLEANUP_DRY_RUN="${ROB123_CLEANUP_DRY_RUN:-1}"
+SKIP_GIT_UPDATE="${ROB123_SKIP_GIT_UPDATE:-0}"
 CALLBACK_PYTHON="${ROB123_CALLBACK_PYTHON:-python3}"
 LINEAR_KEY_FILE="${ROB123_LINEAR_KEY_FILE:-$ARTIFACT_ROOT/.linear_api_key}"
 
@@ -105,6 +106,7 @@ on_exit() {
     echo "keep_checkpoint=${KEEP_CHECKPOINT}"
     echo "cleanup_source_checkpoints=${CLEANUP_SOURCE_CHECKPOINTS}"
     echo "cleanup_dry_run=${CLEANUP_DRY_RUN}"
+    echo "skip_git_update=${SKIP_GIT_UPDATE}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB123_ENABLE_CALLBACK:-1}" == "1" ]]; then
     if [[ -z "${LINEAR_API_KEY:-}" && -f "$LINEAR_KEY_FILE" ]]; then
@@ -155,8 +157,16 @@ if [[ "${ROB123_CALLBACK_ONLY:-0}" == "1" ]]; then
 fi
 
 cd "$REPO_DIR"
-git fetch origin "$REMOTE_BRANCH"
-git checkout --detach "$TARGET_COMMIT"
+if [[ "$SKIP_GIT_UPDATE" == "1" ]]; then
+  current_commit="$(git rev-parse HEAD)"
+  if [[ "$current_commit" != "$TARGET_COMMIT" ]]; then
+    echo "ROB123_SKIP_GIT_UPDATE=1 but repo is at $current_commit, expected $TARGET_COMMIT" >&2
+    exit 2
+  fi
+else
+  git fetch origin "$REMOTE_BRANCH"
+  git checkout --detach "$TARGET_COMMIT"
+fi
 export PYTHONPATH="$PWD"
 
 module load Anaconda3/2022.10
