@@ -181,6 +181,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-123 extra eval/run follow-up: Earnings-22 test on the original checkpoint completed at WER `0.5014194391683516`. A later two-more-epoch Spotify continuation was run and evaluated, but because it worsened TEDLIUM it is superseded by the original checkpoint recorded above.
 
+## 2026-05-31
+
+- ROB-123 factor-4 comparison: added a parameterized Stanage full-Spotify RoPE launcher/prep path for a from-scratch `StreamingDecoderASR` run with `subsampling_factor=4`, batch size `88`, LR `3e-4`, 2 epochs, and `rotary_base_freq=1500000`. Callback-only Slurm dry run `10281504` and CPU smoke `10281506` passed; the full skip-git run is job `10281521` under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/rob123-rope-full-spotify-factor4-2epoch-delay0p5-skipgit-20260531T0934Z`.
+
 ## 2026-05-12
 
 - ROB-69 eval job `10156464` completed successfully, but finalizer job `10156465` failed because appended finetuned CSV rows included an extra pandas index field. Normalized the completed remote result into `eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`, made ROB-69 summarization tolerate and normalize that output shape, and fixed eval manager CSV appends to write `index=False`. Mean WER was slightly worse for the long-only finetuned checkpoints on most dataset/window pairs, with small improvements only on `rev16` window 128, `tedlium` window 8192, and `this_american_life` windows 128 and 22500.
