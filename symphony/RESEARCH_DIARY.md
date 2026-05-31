@@ -183,7 +183,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 ## 2026-05-31
 
-- ROB-123 factor-4 comparison: added a parameterized Stanage full-Spotify RoPE launcher/prep path for a from-scratch `StreamingDecoderASR` run with `subsampling_factor=4`, batch size `88`, LR `3e-4`, 2 epochs, and `rotary_base_freq=1500000`. Callback-only Slurm dry run `10281504` and CPU smoke `10281506` passed; the full skip-git run is job `10281521` under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/rob123-rope-full-spotify-factor4-2epoch-delay0p5-skipgit-20260531T0934Z`.
+- ROB-123 factor-4 comparison: added a parameterized Stanage full-Spotify RoPE launcher/prep path for a from-scratch `StreamingDecoderASR` run with `subsampling_factor=4`, batch size `88`, LR `3e-4`, 2 epochs, and `rotary_base_freq=1500000`. Callback-only Slurm dry run `10281504` and CPU smoke `10281506` passed; the full skip-git run `10281521` was later cancelled on request after divergence was observed (`sacct`: `CANCELLED by 261669`, elapsed `05:51:04`, `MaxRSS=85987088K`). It stopped at epoch 0 around 16% / step `2e+4`, before the configured `save_every_n_steps=50000` checkpoint interval; the artifact root is `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/rob123-rope-full-spotify-factor4-2epoch-delay0p5-skipgit-20260531T0934Z`.
 
 ## 2026-05-12
 
