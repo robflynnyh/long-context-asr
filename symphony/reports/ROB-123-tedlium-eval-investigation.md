@@ -288,8 +288,64 @@ paths, transcript path, eval config, and result CSV path. A direct CSV read
 found one aggregate `earnings22`/`test`/`all` row with the metrics above, and
 bounded log inspection found no tracebacks or failure markers.
 
+## Continuation Checkpoint Eval
+
+A later human follow-up asked for the evals to be rerun after the two-more-epoch
+full-Spotify continuation finished. The continuation training job completed
+successfully as Stanage GPU job `10272597`, using batch size 88, LR `3e-4`,
+`rotary_base_freq=1500000`, `streaming.delay_seconds=0.5`, and the original
+full-Spotify RoPE checkpoint as `checkpointing.pretrained`.
+
+The post-continuation checkpoint evaluated here is:
+
+```text
+/mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob123_full_spotify_continue2_2epoch_delay0p5_rob123-rope-full-spotify-cont2-2epoch-skipgit-20260528T1712Z/step_272362.pt
+```
+
+Both evals used greedy decode, `temperature=1.0`, `use_kv_cache=true`,
+`max_kv_cache_spectrogram_length=2048`, and `break_eval=0` on commit
+`f8e3f464e96e8919f2460db1f887ddf6675cc670`.
+
+```text
+tedlium_job=10281315
+tedlium_state=COMPLETED 0:0
+tedlium_elapsed=00:28:19
+tedlium_batch_max_rss=10160292K
+tedlium_rows=12
+tedlium_wer=0.1720361509835194
+tedlium_words=28215
+tedlium_ins_rate=0.01743753322700691
+tedlium_del_rate=0.0964735069998228
+tedlium_sub_rate=0.058125110756689705
+tedlium_artifact=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-cont2-kvcache-greedy-full-20260531T0536Z
+tedlium_result_csv=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-tedlium-cont2-kvcache-greedy-full-20260531T0536Z/rob123_tedlium_eval.csv
+
+earnings22_job=10281316
+earnings22_state=COMPLETED 0:0
+earnings22_elapsed=00:52:54
+earnings22_batch_max_rss=21441652K
+earnings22_rows=7
+earnings22_wer=0.5011539325613218
+earnings22_words=48963
+earnings22_ins_rate=0.020239772889733065
+earnings22_del_rate=0.36660335355268264
+earnings22_sub_rate=0.11431080611890611
+earnings22_artifact=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-earnings22-cont2-kvcache-greedy-full-20260531T0536Z
+earnings22_result_csv=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/eval/rob123-earnings22-cont2-kvcache-greedy-full-20260531T0536Z/rob123_earnings22_eval.csv
+
+finalizer_job=10281317
+finalizer_state=COMPLETED 0:0
+finalizer_status=success
+```
+
+Relative to the earlier pre-continuation greedy evals in this report, the
+continuation checkpoint worsened TEDLIUM test WER from `0.13974836080099237` to
+`0.1720361509835194`, while Earnings-22 test WER was essentially unchanged
+(`0.5014194391683516` before continuation versus `0.5011539325613218` after
+continuation).
+
 ## Conclusion
 
-The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`. The requested joint sampled eval with temperature `0.3` also completed successfully and produced aggregate WER `0.1522948786106681`. The silence-head-only sampled variant completed afterward and produced aggregate WER `0.1676058833953571`. The later Earnings-22 `test` eval completed successfully with aggregate WER `0.5014194391683516`.
+The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`. The requested joint sampled eval with temperature `0.3` also completed successfully and produced aggregate WER `0.1522948786106681`. The silence-head-only sampled variant completed afterward and produced aggregate WER `0.1676058833953571`. The later Earnings-22 `test` eval completed successfully with aggregate WER `0.5014194391683516`. After two more full-Spotify continuation epochs, the same greedy eval setup produced TEDLIUM WER `0.1720361509835194` and Earnings-22 test WER `0.5011539325613218`.
 
-For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check. For ROB-123 handoff, the current aggregate TEDLIUM results are greedy WER `0.13974836080099237`, joint sampled temperature-`0.3` WER `0.1522948786106681`, and silence-head sampled temperature-`0.3` WER `0.1676058833953571`; the current smaller Earnings-22 test result is greedy WER `0.5014194391683516`. The latest SDPA-only cached-attention branch passed both a real final-checkpoint TEDLIUM greedy KV-cache smoke and a like-for-like full greedy TEDLIUM rerun after Stanage maintenance; the full rerun reproduced the earlier corrected WER exactly.
+For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check. For ROB-123 handoff, the current post-continuation aggregate results are TEDLIUM greedy WER `0.1720361509835194` and smaller Earnings-22 test greedy WER `0.5011539325613218`. The latest SDPA-only cached-attention branch passed both a real final-checkpoint TEDLIUM greedy KV-cache smoke and a like-for-like full greedy TEDLIUM rerun after Stanage maintenance; the full rerun reproduced the earlier corrected WER exactly before the continuation-training follow-up.
