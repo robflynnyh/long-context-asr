@@ -288,7 +288,7 @@ paths, transcript path, eval config, and result CSV path. A direct CSV read
 found one aggregate `earnings22`/`test`/`all` row with the metrics above, and
 bounded log inspection found no tracebacks or failure markers.
 
-## Continuation Checkpoint Eval
+## Superseded Continuation Checkpoint Eval
 
 A later human follow-up asked for the evals to be rerun after the two-more-epoch
 full-Spotify continuation finished. The continuation training job completed
@@ -296,7 +296,7 @@ successfully as Stanage GPU job `10272597`, using batch size 88, LR `3e-4`,
 `rotary_base_freq=1500000`, `streaming.delay_seconds=0.5`, and the original
 full-Spotify RoPE checkpoint as `checkpointing.pretrained`.
 
-The post-continuation checkpoint evaluated here is:
+The post-continuation checkpoint evaluated here was:
 
 ```text
 /mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob123_full_spotify_continue2_2epoch_delay0p5_rob123-rope-full-spotify-cont2-2epoch-skipgit-20260528T1712Z/step_272362.pt
@@ -342,10 +342,12 @@ Relative to the earlier pre-continuation greedy evals in this report, the
 continuation checkpoint worsened TEDLIUM test WER from `0.13974836080099237` to
 `0.1720361509835194`, while Earnings-22 test WER was essentially unchanged
 (`0.5014194391683516` before continuation versus `0.5011539325613218` after
-continuation).
+continuation). Because TEDLIUM is worse, this continuation checkpoint is
+superseded for handoff; the checkpoint directory was deleted on request, and the
+original full-Spotify checkpoint remains the selected checkpoint.
 
 ## Conclusion
 
-The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`. The requested joint sampled eval with temperature `0.3` also completed successfully and produced aggregate WER `0.1522948786106681`. The silence-head-only sampled variant completed afterward and produced aggregate WER `0.1676058833953571`. The later Earnings-22 `test` eval completed successfully with aggregate WER `0.5014194391683516`. After two more full-Spotify continuation epochs, the same greedy eval setup produced TEDLIUM WER `0.1720361509835194` and Earnings-22 test WER `0.5011539325613218`.
+The `0.9924` full-TEDLIUM WER should not be treated as the model's recognition quality because it used an uncapped accumulated KV cache rather than the intended 2048-spectrogram-frame training context. The same checkpoint produces sensible utterance-level TEDLIUM hypotheses, and the corrected full TEDLIUM eval with `max_kv_cache_spectrogram_length: 2048` gives aggregate WER `0.13974836080099237`. The requested joint sampled eval with temperature `0.3` also completed successfully and produced aggregate WER `0.1522948786106681`. The silence-head-only sampled variant completed afterward and produced aggregate WER `0.1676058833953571`. The later Earnings-22 `test` eval completed successfully with aggregate WER `0.5014194391683516`. After two more full-Spotify continuation epochs, the same greedy eval setup produced TEDLIUM WER `0.1720361509835194` and Earnings-22 test WER `0.5011539325613218`, so the continuation checkpoint is not selected.
 
-For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check. For ROB-123 handoff, the current post-continuation aggregate results are TEDLIUM greedy WER `0.1720361509835194` and smaller Earnings-22 test greedy WER `0.5011539325613218`. The latest SDPA-only cached-attention branch passed both a real final-checkpoint TEDLIUM greedy KV-cache smoke and a like-for-like full greedy TEDLIUM rerun after Stanage maintenance; the full rerun reproduced the earlier corrected WER exactly before the continuation-training follow-up.
+For future evals of this decoder family, cached streaming decode should pass the spectrogram-frame context cap explicitly (`max_kv_cache_spectrogram_length: 2048` for this run). The smaller utterance-level probe remains useful as a bounded wiring check. For ROB-123 handoff, use the original full-Spotify checkpoint `/mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob123_full_spotify_2epoch_delay0p5_rob123-rope-full-spotify-2epoch-delay0p5-20260523T091306Z/step_272362.pt`, with corrected greedy TEDLIUM WER `0.13974836080099237` and smaller Earnings-22 test greedy WER `0.5014194391683516`. The latest SDPA-only cached-attention branch passed both a real final-checkpoint TEDLIUM greedy KV-cache smoke and a like-for-like full greedy TEDLIUM rerun after Stanage maintenance; the full rerun reproduced the earlier corrected WER exactly.

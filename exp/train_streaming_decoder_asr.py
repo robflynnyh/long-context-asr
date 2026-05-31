@@ -16,14 +16,7 @@ from tqdm import tqdm
 
 from lcasr.utils.dataloading import VariableBatchSimpleDataloader, reset_seen_ids
 from lcasr.utils.audio_tools import total_frames
-from lcasr.utils.general import (
-    find_latest_checkpoint,
-    get_model_class,
-    load_checkpoint,
-    load_model,
-    load_optimizer,
-    save_model,
-)
+from lcasr.utils.general import get_model_class, load_checkpoint, load_model, load_optimizer, save_model
 from lcasr.utils.streaming_targets import (
     build_streaming_frame_targets,
     filter_words_by_end_frame,
@@ -103,19 +96,6 @@ def make_dataloader(config, tokenizer, args, seen_ids):
         seen_ids=seen_ids,
         random_seed=config["training"].get("random_seed", 1234),
     )
-
-
-def load_pretrained_model_only(model, checkpoint_path: str, device):
-    if not os.path.exists(checkpoint_path):
-        raise FileNotFoundError(f"pretrained checkpoint does not exist: {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    state_dict = checkpoint["model"] if isinstance(checkpoint, dict) and "model" in checkpoint else checkpoint
-    try:
-        model.load_state_dict(state_dict)
-    except RuntimeError:
-        print("warning: loading pretrained model with strict=False", file=sys.stderr)
-        model.load_state_dict(state_dict, strict=False)
-    print(f"loaded pretrained model weights from {checkpoint_path}")
 
 
 def estimate_streaming_optimizer_steps(dataloader, chunk_size: int, chunk_overlap: int, max_epochs: int) -> int:
@@ -459,21 +439,14 @@ def main(args):
     model = model.to(device)
     optimizer, scheduler = load_optimizer(args.config, model)
 
-    checkpoint_dir = args.config["checkpointing"]["dir"]
-    pretrained_checkpoint = args.config["checkpointing"].get("pretrained", None)
-    if find_latest_checkpoint(checkpoint_dir) is not None:
-        seen_ids, step, epoch = load_checkpoint(
-            args=args,
-            model=model,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            path=checkpoint_dir,
-            device=device,
-        )
-    else:
-        seen_ids, step, epoch = [], 0, 0
-        if pretrained_checkpoint is not None:
-            load_pretrained_model_only(model, pretrained_checkpoint, device=device)
+    seen_ids, step, epoch = load_checkpoint(
+        args=args,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        path=args.config["checkpointing"]["dir"],
+        device=device,
+    )
     if args.reset_step:
         seen_ids, step, epoch = [], 0, 0
 
