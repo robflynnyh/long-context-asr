@@ -31,6 +31,7 @@ DECODE_MODE="${ROB123_DECODE_MODE:-greedy}"
 TEMPERATURE="${ROB123_TEMPERATURE:-1.0}"
 CALLBACK_PYTHON="${ROB123_CALLBACK_PYTHON:-python3}"
 LINEAR_KEY_FILE="${ROB123_LINEAR_KEY_FILE:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/.linear_api_key}"
+SKIP_GIT_UPDATE="${ROB123_SKIP_GIT_UPDATE:-0}"
 
 if [[ "${ROB123_RUN_DIR_EXEC:-0}" != "1" ]]; then
   mkdir -p "$RUN_DIR" "$ARTIFACT_ROOT"
@@ -78,6 +79,7 @@ on_exit() {
     echo "use_kv_cache=true"
     echo "max_kv_cache_spectrogram_length=${MAX_KV_CACHE_SPECTROGRAM_LENGTH}"
     echo "break_eval=${BREAK_EVAL}"
+    echo "skip_git_update=${SKIP_GIT_UPDATE}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB123_ENABLE_CALLBACK:-1}" == "1" ]]; then
     if [[ -z "${LINEAR_API_KEY:-}" && -f "$LINEAR_KEY_FILE" ]]; then
@@ -132,8 +134,16 @@ if [[ "${ROB123_CALLBACK_ONLY:-0}" == "1" ]]; then
 fi
 
 cd "$REPO_DIR"
-git fetch origin "$REMOTE_BRANCH"
-git checkout --detach "$TARGET_COMMIT"
+if [[ "$SKIP_GIT_UPDATE" == "1" ]]; then
+  current_commit="$(git rev-parse HEAD)"
+  if [[ "$current_commit" != "$TARGET_COMMIT" ]]; then
+    echo "ROB123_SKIP_GIT_UPDATE=1 but repo is at $current_commit, expected $TARGET_COMMIT" >&2
+    exit 2
+  fi
+else
+  git fetch origin "$REMOTE_BRANCH"
+  git checkout --detach "$TARGET_COMMIT"
+fi
 export PYTHONPATH="$PWD"
 export LCASR_TEDLIUM_ROOT="$TEDLIUM_ROOT"
 export CUDA_VISIBLE_DEVICES=""
