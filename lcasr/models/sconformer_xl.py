@@ -79,7 +79,7 @@ class SCConformerXL(BaseModel):
         self.sandwich_norm = sandwich_norm
         self.bias_in_ff = bias_in_ff
         self.transformer = transformer
-    
+
         self.legasee_double_norm = legasee_double_norm
 
         self.checkpoint_subsampling = kwargs.get('checkpoint_subsampling', False) # whether to perform activation checkpointing on subsampling layers
@@ -191,7 +191,7 @@ class SCConformerXL(BaseModel):
         ## create masks
         
         mask = torch.arange(max_audio_length, device=audio_signal.device).expand(audio_signal.size(0), max_audio_length) >= length.unsqueeze(1)
-    
+
         rotary_emb_fn = None
    
         full_kv_lengths = length + cached_kv_lengths if cached_kv_lengths is not None else length
@@ -394,4 +394,3 @@ if __name__ == '__main__':
     lengths = lengths.to(device)
     out = model(audio, length=lengths)
     print(out['final_posteriors'].shape)
-    

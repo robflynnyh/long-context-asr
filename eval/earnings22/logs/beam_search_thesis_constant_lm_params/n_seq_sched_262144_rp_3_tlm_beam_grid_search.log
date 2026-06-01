@@ -1,0 +1,6 @@
+Cache Length: 64, alpha: 0.42, beta: 1.95, p: 2.96, Test WER: 0.14253620080468926
+Cache Length: 128, alpha: 0.42, beta: 1.95, p: 2.96, Test WER: 0.14200518759062966
+Cache Length: 256, alpha: 0.42, beta: 1.95, p: 2.96, Test WER: 0.14088189040704205
+Cache Length: 512, alpha: 0.42, beta: 1.95, p: 2.96, Test WER: 0.1408614668218859
+Cache Length: 1024, alpha: 0.42, beta: 1.95, p: 2.96, Test WER: 0.13981986397892285
+Cache Length: 2048, alpha: 0.42, beta: 1.95, p: 2.96, Test WER: 0.13984028756407899
