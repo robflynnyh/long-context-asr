@@ -9,6 +9,18 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-05-31
+
+- ROB-123 checkpoint selection: the two-more-epoch Spotify continuation completed and was evaluated, but it worsened corrected TEDLIUM greedy WER from `0.13974836080099237` to `0.1720361509835194` while Earnings-22 test was effectively unchanged (`0.5014194391683516` to `0.5011539325613218`). The selected checkpoint for handoff remains the original full-Spotify run at `/mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob123_full_spotify_2epoch_delay0p5_rob123-rope-full-spotify-2epoch-delay0p5-20260523T091306Z/step_272362.pt`; the superseded continuation checkpoint directory ending `rob123-rope-full-spotify-cont2-2epoch-skipgit-20260528T1712Z` was deleted on request.
+
+## 2026-05-28
+
+- ROB-123 final eval checks on the original checkpoint: the SDPA-only cached-attention branch passed a real Stanage TEDLIUM smoke (`10270996`) and a full like-for-like greedy TEDLIUM rerun (`10271126`) with corrected `max_kv_cache_spectrogram_length=2048`; the full WER stayed `0.13974836080099237` over `28215` words. The smaller Earnings-22 test eval (`10272085`) completed at WER `0.5014194391683516` over `48963` words.
+
+## 2026-05-25
+
+- ROB-123 final Stanage training evidence: full-Spotify RoPE streaming-decoder job `10258593` completed `0:0` on `gpu31` / `gpu-h100-nvl` in `2-05:38:36`. It used `105360` Spotify records / `59434.13` hours, batch size 88, LR `3e-4`, two epochs, `rotary_base_freq=1500000`, and `streaming.delay_seconds=0.5`; final checkpoint is `/mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob123_full_spotify_2epoch_delay0p5_rob123-rope-full-spotify-2epoch-delay0p5-20260523T091306Z/step_272362.pt`, W&B run `boki2t09`.
+
 ## 2026-05-22
 
 - ROB-98 follow-up after ROB-119: updated `symphony/rob-98-poor-ssl-performance-report.md` with a post-ROB-119 addendum. ROB-100 fixed the strongest original masking mismatch (`mask_prob=0.12`, `mask_length=4`, about 48% actual masking, self-conditioning disabled), but ROB-119's stronger frozen weighted-state BiLSTM TEDLIUM probe still produced `99.61%` WER with `92.44%` deletions. The revised recommendation is to separate probe-path viability from frozen SSL representation quality with a known-good frozen supervised encoder sanity probe and a small top-N-unfrozen ROB-100 probe before spending another full SSL rerun.
@@ -162,6 +174,16 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-98 PR review response: replaced TEDLIUM eval's temporary `pyctcdecode` fallback with the repo `GreedyCTCDecoder`, moved weighted hidden-state probe collection from SCConformerXL/EncDec forward API additions into probe-local layer hooks, and refactored `exp/train.py` so utterance-folder and recording-manifest batches are normalized by a helper before the main training loop. Kept eval-manager passthrough diagnostics for CER and hyp/ref length fields.
 - ROB-98 second PR review response: moved the new `exp/train.py` dataloader/chunking/logging helpers into `lcasr.utils.training`, kept the main train loop focused on optimization, added an explanatory dataloader-refresh comment, and added helper tests including a synthetic `VariableBatchSimpleDataloader` recording-manifest smoke to protect the original chunking path.
+- ROB-123 cached-decode correction: added explicit `max_kv_cache_spectrogram_length` support for `StreamingDecoderASR` so the ROB-123 eval cap is derived as `2048 -> 257` decoder/KV frames, and reinterpreted the earlier uncapped TEDLIUM WER `0.9924` as a decode-setup artifact. Corrected full TEDLIUM greedy eval on the original checkpoint completed at WER `0.13974836080099237`; sampled joint decode at temperature `0.3` gave `0.1522948786106681`, and silence-head-only sampling gave `0.1676058833953571`.
+- ROB-123 PR review response: kept cached streaming attention local to `CausalDecoderLayer` in `StreamingDecoderASR`, removed the direct `flash_attn` package branch from that cached path, and covered the PyTorch SDPA path plus cache trimming with focused unit tests.
+
+## 2026-05-28
+
+- ROB-123 extra eval/run follow-up: Earnings-22 test on the original checkpoint completed at WER `0.5014194391683516`. A later two-more-epoch Spotify continuation was run and evaluated, but because it worsened TEDLIUM it is superseded by the original checkpoint recorded above.
+
+## 2026-05-31
+
+- ROB-123 factor-4 comparison: added a parameterized Stanage full-Spotify RoPE launcher/prep path for a from-scratch `StreamingDecoderASR` run with `subsampling_factor=4`, batch size `88`, LR `3e-4`, 2 epochs, and `rotary_base_freq=1500000`. Callback-only Slurm dry run `10281504` and CPU smoke `10281506` passed; the full skip-git run `10281521` was later cancelled on request after divergence was observed (`sacct`: `CANCELLED by 261669`, elapsed `05:51:04`, `MaxRSS=85987088K`). It stopped at epoch 0 around 16% / step `2e+4`, before the configured `save_every_n_steps=50000` checkpoint interval; the artifact root is `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/rob123-rope-full-spotify-factor4-2epoch-delay0p5-skipgit-20260531T0934Z`.
 
 ## 2026-05-12
 
