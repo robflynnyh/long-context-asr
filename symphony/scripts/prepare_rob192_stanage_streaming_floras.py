@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest-out", required=True)
     parser.add_argument("--text-output-dir", required=True)
     parser.add_argument("--manifest-summary-json", required=True)
+    parser.add_argument("--reuse-manifest-if-exists", action="store_true")
     parser.add_argument("--config-out", required=True)
     parser.add_argument("--summary-out", required=True)
     parser.add_argument("--checkpoint-dir", required=True)
@@ -216,7 +217,16 @@ def write_runtime_config(args: argparse.Namespace, records: Dict[str, Dict[str, 
 
 def main() -> None:
     args = parse_args()
-    records, manifest_stats = prepare_manifest(args)
+    if (
+        args.reuse_manifest_if_exists
+        and os.path.exists(args.manifest_out)
+        and os.path.exists(args.manifest_summary_json)
+    ):
+        records = load_json(args.manifest_out)
+        manifest_stats = load_json(args.manifest_summary_json)
+        manifest_stats["reused_manifest"] = True
+    else:
+        records, manifest_stats = prepare_manifest(args)
     if not records:
         raise RuntimeError(f"filtered manifest is empty: {args.manifest_out}")
 

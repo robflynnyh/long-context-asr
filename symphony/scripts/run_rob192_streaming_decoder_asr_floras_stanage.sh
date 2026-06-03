@@ -17,7 +17,7 @@ CALLBACK_SCRIPT="${ROB192_CALLBACK_SCRIPT:-$RUN_DIR/linear_stanage_callback.py}"
 BASE_CONFIG="${ROB192_BASE_CONFIG:-exp/configs/streaming_decoder_asr_100m.yaml}"
 FLORAS_MAPPING="${ROB192_FLORAS_MAPPING:-/users/acp21rjf/align_floras50/tmp/mapping.json}"
 TOKENIZER="${ROB192_TOKENIZER:-lcasr/artifacts/tokenizer.model}"
-MANIFEST_DIR="${ROB192_MANIFEST_DIR:-$RUN_DIR/manifests}"
+MANIFEST_DIR="${ROB192_MANIFEST_DIR:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-81/manifests}"
 MANIFEST_OUT="${ROB192_MANIFEST_OUT:-$MANIFEST_DIR/floras50_safe_norm_drop_oov.json}"
 NORMALIZED_TXT_DIR="${ROB192_NORMALIZED_TXT_DIR:-$MANIFEST_DIR/normalized_txt}"
 MANIFEST_SUMMARY_JSON="${ROB192_MANIFEST_SUMMARY_JSON:-$MANIFEST_DIR/floras50_safe_norm_drop_oov_summary.json}"
@@ -38,6 +38,7 @@ DEBUG_GENERATE_EVERY_RECORDS="${ROB192_DEBUG_GENERATE_EVERY_RECORDS:-500}"
 DEBUG_GENERATE_MAX_FRAMES="${ROB192_DEBUG_GENERATE_MAX_FRAMES:-0}"
 VALIDATE_PATH_LIMIT="${ROB192_VALIDATE_PATH_LIMIT:-50}"
 VALIDATE_ALL_PATHS="${ROB192_VALIDATE_ALL_PATHS:-0}"
+REUSE_MANIFEST_IF_EXISTS="${ROB192_REUSE_MANIFEST_IF_EXISTS:-1}"
 MANIFEST_LIMIT="${ROB192_MANIFEST_LIMIT:-0}"
 NUM_WORKERS="${ROB192_NUM_WORKERS:-0}"
 PREFETCH="${ROB192_PREFETCH:-1}"
@@ -68,7 +69,10 @@ if [[ "${ROB192_RUN_DIR_EXEC:-0}" != "1" ]]; then
   exec bash "$EXECUTED_SCRIPT" "$@"
 fi
 
-mkdir -p "$RUN_DIR" "$CHECKPOINT_DIR" "$WANDB_DIR" "$MANIFEST_DIR" "$NORMALIZED_TXT_DIR"
+mkdir -p "$RUN_DIR" "$CHECKPOINT_DIR" "$WANDB_DIR"
+if [[ "$REUSE_MANIFEST_IF_EXISTS" != "1" || ! -f "$MANIFEST_OUT" ]]; then
+  mkdir -p "$MANIFEST_DIR" "$NORMALIZED_TXT_DIR"
+fi
 
 on_exit() {
   local status=$?
@@ -197,6 +201,9 @@ prep_args=(
   --validate-path-limit "$VALIDATE_PATH_LIMIT"
   --manifest-limit "$MANIFEST_LIMIT"
 )
+if [[ "$REUSE_MANIFEST_IF_EXISTS" == "1" ]]; then
+  prep_args+=(--reuse-manifest-if-exists)
+fi
 if [[ "$VALIDATE_ALL_PATHS" == "1" ]]; then
   prep_args+=(--validate-all-paths)
 fi
