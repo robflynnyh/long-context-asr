@@ -1,8 +1,11 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import mock
 
 import torch
 
+from exp.train_streaming_decoder_asr import load_pretrained_model_state
 from lcasr.models.streaming_decoder_asr import CausalDecoderLayer, StreamingDecoderASR
 
 
@@ -174,6 +177,20 @@ class StreamingDecoderASRRoPETest(unittest.TestCase):
 
         expected = torch.tensor([[5, model.get_silence_id()]])
         self.assertTrue(torch.equal(prediction, expected))
+
+    def test_pretrained_loader_accepts_checkpoint_directory(self):
+        torch.manual_seed(0)
+        source_model = StreamingDecoderASR(**tiny_streaming_config())
+        target_model = StreamingDecoderASR(**tiny_streaming_config())
+        scratch_dir = Path(".tmp")
+        scratch_dir.mkdir(exist_ok=True)
+
+        with TemporaryDirectory(dir=scratch_dir) as checkpoint_dir:
+            torch.save({"model": source_model.state_dict()}, f"{checkpoint_dir}/step_7.pt")
+            load_pretrained_model_state(target_model, checkpoint_dir, torch.device("cpu"))
+
+        for key, value in source_model.state_dict().items():
+            torch.testing.assert_close(target_model.state_dict()[key], value)
 
 
 if __name__ == "__main__":

@@ -205,6 +205,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-123 factor-4 comparison: added a parameterized Stanage full-Spotify RoPE launcher/prep path for a from-scratch `StreamingDecoderASR` run with `subsampling_factor=4`, batch size `88`, LR `3e-4`, 2 epochs, and `rotary_base_freq=1500000`. Callback-only Slurm dry run `10281504` and CPU smoke `10281506` passed; the full skip-git run `10281521` was later cancelled on request after divergence was observed (`sacct`: `CANCELLED by 261669`, elapsed `05:51:04`, `MaxRSS=85987088K`). It stopped at epoch 0 around 16% / step `2e+4`, before the configured `save_every_n_steps=50000` checkpoint interval; the artifact root is `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-123/rob123-rope-full-spotify-factor4-2epoch-delay0p5-skipgit-20260531T0934Z`.
 
+## 2026-06-03
+
+- ROB-192 launch setup: added pretrained initialization support to `exp/train_streaming_decoder_asr.py` so `checkpointing.pretrained` seeds a fresh output checkpoint directory before optimizer/scheduler creation. Added ROB-192 Stanage prep/wrapper scripts to finetune the selected ROB-123 full-Spotify RoPE checkpoint on Floras-50 for 12 epochs at LR `5e-5`, using the ROB-81 safe-normalize/drop-OOV manifest policy and callback-backed CPU/GPU Slurm launchers.
+
 ## 2026-05-12
 
 - ROB-69 eval job `10156464` completed successfully, but finalizer job `10156465` failed because appended finetuned CSV rows included an extra pandas index field. Normalized the completed remote result into `eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`, made ROB-69 summarization tolerate and normalize that output shape, and fixed eval manager CSV appends to write `index=False`. Mean WER was slightly worse for the long-only finetuned checkpoints on most dataset/window pairs, with small improvements only on `rev16` window 128, `tedlium` window 8192, and `this_american_life` windows 128 and 22500.
