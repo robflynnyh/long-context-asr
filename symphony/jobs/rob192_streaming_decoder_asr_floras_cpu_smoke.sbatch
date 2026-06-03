@@ -2,7 +2,7 @@
 #SBATCH --job-name=rob192-ft-smoke
 #SBATCH --partition=interactive
 #SBATCH --time=02:00:00
-#SBATCH --mem=80GB
+#SBATCH --mem=60GB
 #SBATCH --cpus-per-task=8
 #SBATCH --output=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/rob192-floras-smoke-%j.out
 #SBATCH --error=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/rob192-floras-smoke-%j.err
