@@ -207,7 +207,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 ## 2026-06-03
 
-- ROB-192 launch setup: added pretrained initialization support to `exp/train_streaming_decoder_asr.py` so `checkpointing.pretrained` seeds a fresh output checkpoint directory before optimizer/scheduler creation. Added ROB-192 Stanage prep/wrapper scripts to finetune the selected ROB-123 full-Spotify RoPE checkpoint on Floras-50 for 12 epochs at LR `5e-5`, reusing the completed ROB-81 safe-normalize/drop-OOV manifest read-only by default and writing ROB-192 checkpoints/artifacts separately.
+- ROB-192 launch setup: added pretrained initialization support to `exp/train_streaming_decoder_asr.py` so `checkpointing.pretrained` seeds a fresh output checkpoint directory before optimizer/scheduler creation. Added ROB-192 Stanage prep/wrapper scripts to finetune the selected ROB-123 full-Spotify RoPE checkpoint on Floras-50 for 12 epochs at LR `5e-5`, reusing the completed ROB-81 safe-normalize/drop-OOV manifest read-only by default, allowing CPU smoke to override only the train data path with an issue-local short manifest, and writing ROB-192 checkpoints/artifacts separately.
 
 ## 2026-05-12
 

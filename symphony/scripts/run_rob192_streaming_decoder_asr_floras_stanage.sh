@@ -21,6 +21,7 @@ MANIFEST_DIR="${ROB192_MANIFEST_DIR:-/mnt/parscratch/users/acp21rjf/symphony-job
 MANIFEST_OUT="${ROB192_MANIFEST_OUT:-$MANIFEST_DIR/floras50_safe_norm_drop_oov.json}"
 NORMALIZED_TXT_DIR="${ROB192_NORMALIZED_TXT_DIR:-$MANIFEST_DIR/normalized_txt}"
 MANIFEST_SUMMARY_JSON="${ROB192_MANIFEST_SUMMARY_JSON:-$MANIFEST_DIR/floras50_safe_norm_drop_oov_summary.json}"
+TRAIN_DATA_PATH="${ROB192_TRAIN_DATA_PATH:-}"
 RUNTIME_CONFIG="${ROB192_RUNTIME_CONFIG:-$RUN_DIR/streaming_decoder_asr_100m_rope_floras50_lr5e-5_12ep.yaml}"
 CHECKPOINT_DIR="${ROB192_CHECKPOINT_DIR:-$ARTIFACT_ROOT/checkpoints/streaming_decoder_asr_100m_rope_floras50_lr5e-5_12ep_${RUN_ID}}"
 PRETRAINED_CHECKPOINT="${ROB192_PRETRAINED_CHECKPOINT:-/mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob123_full_spotify_2epoch_delay0p5_rob123-rope-full-spotify-2epoch-delay0p5-20260523T091306Z/step_272362.pt}"
@@ -90,6 +91,7 @@ on_exit() {
     echo "floras_mapping=${FLORAS_MAPPING}"
     echo "manifest=${MANIFEST_OUT}"
     echo "manifest_summary_json=${MANIFEST_SUMMARY_JSON}"
+    echo "train_data_path=${TRAIN_DATA_PATH:-$MANIFEST_OUT}"
     echo "checkpoint_dir=${CHECKPOINT_DIR}"
     echo "pretrained_checkpoint=${PRETRAINED_CHECKPOINT}"
     echo "wandb_dir=${WANDB_DIR}"
@@ -221,6 +223,9 @@ if [[ "$PIN_MEMORY" == "1" ]]; then
 fi
 if [[ -n "${ROB192_MAX_RECORDS:-}" ]]; then
   train_args+=(-max_records "$ROB192_MAX_RECORDS")
+fi
+if [[ -n "$TRAIN_DATA_PATH" ]]; then
+  train_args+=(-data_path "$TRAIN_DATA_PATH")
 fi
 if [[ -n "${ROB192_MAX_STEPS:-}" ]]; then
   train_args+=(-max_steps "$ROB192_MAX_STEPS")
