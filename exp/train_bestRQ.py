@@ -145,6 +145,9 @@ def train(
         batch_size = sequence_scheduler.cur_batch_size
 
     last_podcast, cur_podcast, podcasts_since_last_save = step, step, 0
+    save_every_n_steps = args.config['checkpointing'].get('save_every_n_steps', None)
+    save_every_n_epochs = args.config['checkpointing'].get('save_every_n_epochs', None)
+    last_saved_step, last_saved_epoch = None, None
     max_epochs = args.config['training'].get('max_epochs', 1)
 
     i, finished = -1, False
@@ -162,6 +165,20 @@ def train(
         except StopIteration:
             epoch += 1
             seen_ids = reset_seen_ids(seen_ids = seen_ids, epoch = epoch - 1)
+            if save_every_n_epochs is not None and epoch % save_every_n_epochs == 0:
+                torch.cuda.empty_cache()
+                save_model(
+                    model = best_rq,
+                    optimizer = optimizer,
+                    scheduler = scheduler,
+                    podcast_step = cur_podcast,
+                    config = args.config,
+                    sequence_scheduler = sequence_scheduler,
+                    seen_ids = seen_ids,
+                    epoch = epoch,
+                    other = {'acoustic_model': best_rq.model.state_dict()},
+                )
+                last_saved_step, last_saved_epoch = cur_podcast, epoch
             if epoch >= max_epochs:
                 finished = True
             else:
@@ -185,7 +202,7 @@ def train(
 
         if args.config["training"].get("max_steps", float("inf")) <= cur_podcast:
             finished = True
-        if podcasts_since_last_save > args.config['checkpointing']['save_every_n_steps']:
+        if save_every_n_steps is not None and save_every_n_steps > 0 and podcasts_since_last_save > save_every_n_steps:
             torch.cuda.empty_cache()
             save_model(
                 model = best_rq,
@@ -199,6 +216,7 @@ def train(
                 other = {'acoustic_model': best_rq.model.state_dict()},
             )
             podcasts_since_last_save = 0
+            last_saved_step, last_saved_epoch = cur_podcast, epoch
         last_podcast = cur_podcast
         ###############################
 
@@ -393,17 +411,18 @@ def train(
 
         del chunks
 
-    save_model( # save final model
-        model = best_rq,
-        optimizer = optimizer,
-        scheduler = scheduler,
-        podcast_step = cur_podcast,
-        config = args.config,
-        sequence_scheduler = sequence_scheduler,
-        seen_ids = seen_ids,
-        epoch = epoch,
-        other = {'acoustic_model': best_rq.model.state_dict()},
-    )
+    if last_saved_step != cur_podcast or last_saved_epoch != epoch:
+        save_model( # save final model
+            model = best_rq,
+            optimizer = optimizer,
+            scheduler = scheduler,
+            podcast_step = cur_podcast,
+            config = args.config,
+            sequence_scheduler = sequence_scheduler,
+            seen_ids = seen_ids,
+            epoch = epoch,
+            other = {'acoustic_model': best_rq.model.state_dict()},
+        )
     return best_rq
 
 

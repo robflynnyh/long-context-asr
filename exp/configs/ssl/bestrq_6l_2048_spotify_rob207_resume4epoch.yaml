@@ -1,0 +1,75 @@
+model_class: 'SCConformerXL'
+description: "ROB-207 BEST-RQ continuation: resume ROB-100 paper-mask Spotify SSL checkpoint for four additional epochs."
+
+model:
+  feat_in: 80
+  n_layers: 6
+  d_model: 768
+  n_heads: 6
+  head_dim: 128
+  dropout_ff: 0.0
+  dropout_attn: 0.0
+  dropout_conv: 0.0
+  subsampling_factor: 8
+  subsampling: 'dw_striding'
+  subsampling_act: 'silu'
+  subsampling_conv_channels: 256
+  self_condition_subsampling: false
+  subsampling_norm_out: false
+  conv_kernel_size: 9
+  qk_rms_norm: false
+  shift_kvs: false
+  self_conditioning: false
+  gated_sc: false
+  decoder_norm: true
+  use_rotary: true
+  encoder_mode: 'conformer'
+  default_norm: 'layer_norm'
+  sandwich_norm: false
+  bias_in_ff: false
+  checkpoint_every_n_layers: 0
+  rotary_base_freq: 1500000
+
+best_rq:
+  mask_mode: "speechbrain"
+  mask_prob: 0.12
+  mask_length: 4
+  downsampling_factor: 8
+  codebook_size: 8192
+  codebook_dim: 16
+
+optimizer:
+  name: 'madgrad'
+  args:
+    lr: 3e-4
+
+scheduler:
+  warmup_steps: 5000
+
+audio_chunking:
+  size: 2048
+  overlap: 0
+
+wandb:
+  use: true
+  project_name: "spotify_long_context_ssl"
+  name: "rob207_bestrq_6l_2048_papermask_resume4epoch_lr3e4_20260605"
+  id: ""
+  dir: '/mnt/parscratch/users/acp21rjf/wandb_log/'
+  watch_model: false
+
+checkpointing:
+  dir: '/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/rob207_papermask_p012_l4_sc_off_resume4epoch_lr3e4_20260605'
+  save_every_n_epochs: 1
+
+data:
+  path: '/mnt/parscratch/users/acp21rjf/spotify/audio_txt_pairs.json'
+
+training:
+  batch_size: 176
+  backprop_every: 1
+  backwards_every: 1
+  max_epochs: 5
+  clip_value: 0.8
+  random_seed: 1234
+  dtype: 'bfloat16'
