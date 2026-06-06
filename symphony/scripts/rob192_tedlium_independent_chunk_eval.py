@@ -123,11 +123,13 @@ def main():
     with chunk_path.open("w", encoding="utf-8") as chunk_handle:
         for recording_index, record in records:
             audio_spec, gold_text = record["process_fn"](record)
+            if audio_spec.dim() == 3 and audio_spec.size(0) == 1:
+                audio_spec = audio_spec.squeeze(0)
             gold_text = normalize(gold_text)
             chunk_predictions = []
             chunk_meta = []
             for chunk_index, (start, end) in enumerate(chunk_ranges(audio_spec.shape[-1], args.chunk_size, args.chunk_overlap)):
-                chunk = audio_spec[:, start:end]
+                chunk = audio_spec[..., start:end]
                 original_frames = int(chunk.shape[-1])
                 if original_frames < args.chunk_size:
                     chunk = torch.nn.functional.pad(chunk, (0, args.chunk_size - original_frames))
