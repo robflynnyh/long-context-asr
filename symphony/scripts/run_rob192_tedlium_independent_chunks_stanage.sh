@@ -18,6 +18,8 @@ TEDLIUM_ROOT="${ROB192_TEDLIUM_ROOT:-/mnt/parscratch/users/acp21rjf/TEDLIUM_rele
 CHUNK_SIZE="${ROB192_TED_CHUNK_SIZE:-2048}"
 CHUNK_OVERLAP="${ROB192_TED_CHUNK_OVERLAP:-0}"
 SUBSAMPLING_MODE="${ROB192_TED_CHUNK_SUBSAMPLING_MODE:-independent_chunk}"
+SUBSAMPLING_HISTORY_FRAMES="${ROB192_TED_CHUNK_SUBSAMPLING_HISTORY_FRAMES:-}"
+SUBSAMPLING_RIGHT_CONTEXT_FRAMES="${ROB192_TED_CHUNK_SUBSAMPLING_RIGHT_CONTEXT_FRAMES:-}"
 MAX_RECORDINGS="${ROB192_TED_CHUNK_MAX_RECORDINGS:-}"
 RECORDING_INDEX="${ROB192_TED_CHUNK_RECORDING_INDEX:-}"
 DECODE_MODE="${ROB192_TED_CHUNK_DECODE_MODE:-greedy}"
@@ -106,6 +108,8 @@ on_exit() {
     echo "chunk_size=${CHUNK_SIZE}"
     echo "chunk_overlap=${CHUNK_OVERLAP}"
     echo "subsampling_mode=${SUBSAMPLING_MODE}"
+    echo "subsampling_history_frames=${SUBSAMPLING_HISTORY_FRAMES:-default}"
+    echo "subsampling_right_context_frames=${SUBSAMPLING_RIGHT_CONTEXT_FRAMES:-default}"
     echo "decode_mode=${DECODE_MODE}"
     echo "max_output_frames=${MAX_OUTPUT_FRAMES:-unset}"
     echo "use_kv_cache=${USE_KV_CACHE}"
@@ -137,6 +141,8 @@ on_exit() {
       --metadata "chunk_size=${CHUNK_SIZE}"
       --metadata "chunk_overlap=${CHUNK_OVERLAP}"
       --metadata "subsampling_mode=${SUBSAMPLING_MODE}"
+      --metadata "subsampling_history_frames=${SUBSAMPLING_HISTORY_FRAMES:-default}"
+      --metadata "subsampling_right_context_frames=${SUBSAMPLING_RIGHT_CONTEXT_FRAMES:-default}"
       --metadata "decode_mode=${DECODE_MODE}"
       --metadata "max_output_frames=${MAX_OUTPUT_FRAMES:-unset}"
       --metadata "use_kv_cache=${USE_KV_CACHE}"
@@ -168,6 +174,8 @@ trap 'trap - INT TERM; exit 130' INT
   echo "chunk_size=${CHUNK_SIZE}"
   echo "chunk_overlap=${CHUNK_OVERLAP}"
   echo "subsampling_mode=${SUBSAMPLING_MODE}"
+  echo "subsampling_history_frames=${SUBSAMPLING_HISTORY_FRAMES:-default}"
+  echo "subsampling_right_context_frames=${SUBSAMPLING_RIGHT_CONTEXT_FRAMES:-default}"
   echo "max_output_frames=${MAX_OUTPUT_FRAMES:-unset}"
   echo "use_kv_cache=${USE_KV_CACHE}"
   echo "max_kv_cache_length=${MAX_KV_CACHE_LENGTH:-unset}"
@@ -214,6 +222,12 @@ args=(
   --temperature "$TEMPERATURE"
   --eval-dtype "$EVAL_DTYPE"
 )
+if [[ -n "$SUBSAMPLING_HISTORY_FRAMES" ]]; then
+  args+=(--subsampling-history-frames "$SUBSAMPLING_HISTORY_FRAMES")
+fi
+if [[ -n "$SUBSAMPLING_RIGHT_CONTEXT_FRAMES" ]]; then
+  args+=(--subsampling-right-context-frames "$SUBSAMPLING_RIGHT_CONTEXT_FRAMES")
+fi
 if [[ -n "$MAX_OUTPUT_FRAMES" ]]; then
   args+=(--max-output-frames "$MAX_OUTPUT_FRAMES")
 fi

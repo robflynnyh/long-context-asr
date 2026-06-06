@@ -36,8 +36,26 @@ def parse_args():
         choices=["independent_chunk", "full_recording_history"],
         help=(
             "independent_chunk runs subsampling separately per chunk; "
-            "full_recording_history subsamples the full recording once, then "
-            "resets decoding on chunk-aligned slices of the continuous features."
+            "full_recording_history subsamples bounded windows with neighboring "
+            "recording context, then resets decoding on chunk-aligned feature slices."
+        ),
+    )
+    parser.add_argument(
+        "--subsampling-history-frames",
+        type=int,
+        default=None,
+        help=(
+            "Left spectrogram context for full_recording_history windows. "
+            "Defaults to --chunk-size."
+        ),
+    )
+    parser.add_argument(
+        "--subsampling-right-context-frames",
+        type=int,
+        default=None,
+        help=(
+            "Right spectrogram context for full_recording_history windows. "
+            "Defaults to --subsampling-history-frames."
         ),
     )
     parser.add_argument("--max-recordings", type=int, default=None)
@@ -137,9 +155,9 @@ def decode_precomputed_features(
 
 
 @torch.no_grad()
-def full_recording_features(model, audio_spec, device):
+def prepare_features(model, audio_spec, start_frame, end_frame, device):
     model_dtype = next(model.parameters()).dtype
-    audio_signal = audio_spec.to(device=device, dtype=model_dtype).unsqueeze(0)
+    audio_signal = audio_spec[..., start_frame:end_frame].to(device=device, dtype=model_dtype).unsqueeze(0)
     length = torch.tensor([audio_signal.shape[-1]], dtype=torch.long, device=device)
     features, out_lengths, _ = model._prepare_decode_features(audio_signal=audio_signal, length=length)
     return features[:, : int(out_lengths[0].item())]
@@ -151,6 +169,40 @@ def subsampled_span(model, start_frame, end_frame, total_subsampled_frames):
     start = min(start, total_subsampled_frames)
     end = min(max(end, start), total_subsampled_frames)
     return start, end
+
+
+@torch.no_grad()
+def history_subsampled_chunk(
+    model,
+    audio_spec,
+    start_frame,
+    end_frame,
+    device,
+    history_frames,
+    right_context_frames,
+):
+    if history_frames < 0:
+        raise ValueError("--subsampling-history-frames must be non-negative")
+    if right_context_frames < 0:
+        raise ValueError("--subsampling-right-context-frames must be non-negative")
+
+    num_frames = int(audio_spec.shape[-1])
+    window_start = max(0, start_frame - history_frames)
+    window_end = min(num_frames, end_frame + right_context_frames)
+    window_features = prepare_features(model, audio_spec, window_start, window_end, device)
+    subsampled_start, subsampled_end = subsampled_span(
+        model,
+        start_frame=start_frame - window_start,
+        end_frame=end_frame - window_start,
+        total_subsampled_frames=window_features.size(1),
+    )
+    return {
+        "features": window_features[:, subsampled_start:subsampled_end],
+        "window_start": window_start,
+        "window_end": window_end,
+        "subsampled_start": subsampled_start,
+        "subsampled_end": subsampled_end,
+    }
 
 
 def load_streaming_model(checkpoint_path, eval_dtype):
@@ -181,6 +233,10 @@ def selected_recordings(data, recording_index, max_recordings):
 
 def main():
     args = parse_args()
+    if args.subsampling_history_frames is None:
+        args.subsampling_history_frames = args.chunk_size
+    if args.subsampling_right_context_frames is None:
+        args.subsampling_right_context_frames = args.subsampling_history_frames
     tedlium_run.TEST_PATH = str(Path(args.tedlium_root) / "test")
     tedlium_run.DEV_PATH = str(Path(args.tedlium_root) / "dev")
     output_dir = Path(args.output_dir)
@@ -207,14 +263,13 @@ def main():
             gold_text = normalize(gold_text)
             chunk_predictions = []
             chunk_meta = []
-            continuous_features = None
-            if args.subsampling_mode == "full_recording_history":
-                continuous_features = full_recording_features(model, audio_spec, device)
             for chunk_index, (start, end) in enumerate(chunk_ranges(audio_spec.shape[-1], args.chunk_size, args.chunk_overlap)):
                 original_frames = int(end - start)
                 decode_frames = original_frames
                 subsampled_start = ""
                 subsampled_end = ""
+                subsampling_window_start = ""
+                subsampling_window_end = ""
                 if args.subsampling_mode == "independent_chunk":
                     chunk = audio_spec[..., start:end]
                     if original_frames < args.chunk_size:
@@ -234,13 +289,20 @@ def main():
                         return_metadata=True,
                     )
                 else:
-                    subsampled_start, subsampled_end = subsampled_span(
+                    feature_info = history_subsampled_chunk(
                         model,
+                        audio_spec=audio_spec,
                         start_frame=start,
                         end_frame=end,
-                        total_subsampled_frames=continuous_features.size(1),
+                        device=device,
+                        history_frames=args.subsampling_history_frames,
+                        right_context_frames=args.subsampling_right_context_frames,
                     )
-                    feature_chunk = continuous_features[:, subsampled_start:subsampled_end]
+                    feature_chunk = feature_info["features"]
+                    subsampling_window_start = feature_info["window_start"]
+                    subsampling_window_end = feature_info["window_end"]
+                    subsampled_start = feature_info["subsampled_start"]
+                    subsampled_end = feature_info["subsampled_end"]
                     result = decode_precomputed_features(
                         model=model,
                         tokenizer=tokenizer,
@@ -264,6 +326,10 @@ def main():
                     "frames": original_frames,
                     "decode_frames": decode_frames,
                     "subsampling_mode": args.subsampling_mode,
+                    "subsampling_history_frames": args.subsampling_history_frames,
+                    "subsampling_right_context_frames": args.subsampling_right_context_frames,
+                    "subsampling_window_start": subsampling_window_start,
+                    "subsampling_window_end": subsampling_window_end,
                     "subsampled_start": subsampled_start,
                     "subsampled_end": subsampled_end,
                     "prediction": prediction,
@@ -298,6 +364,8 @@ def main():
                     "chunk_size": args.chunk_size,
                     "chunk_overlap": args.chunk_overlap,
                     "subsampling_mode": args.subsampling_mode,
+                    "subsampling_history_frames": args.subsampling_history_frames,
+                    "subsampling_right_context_frames": args.subsampling_right_context_frames,
                     "decode_mode": args.decode_mode,
                     "use_kv_cache": args.use_kv_cache,
                     "eval_dtype": str(dtype).replace("torch.", "") if dtype is not None else "float32",
@@ -329,6 +397,8 @@ def main():
             "chunk_size": args.chunk_size,
             "chunk_overlap": args.chunk_overlap,
             "subsampling_mode": args.subsampling_mode,
+            "subsampling_history_frames": args.subsampling_history_frames,
+            "subsampling_right_context_frames": args.subsampling_right_context_frames,
             "decode_mode": args.decode_mode,
             "use_kv_cache": args.use_kv_cache,
             "eval_dtype": str(dtype).replace("torch.", "") if dtype is not None else "float32",
@@ -349,6 +419,8 @@ def main():
         "chunk_size": args.chunk_size,
         "chunk_overlap": args.chunk_overlap,
         "subsampling_mode": args.subsampling_mode,
+        "subsampling_history_frames": args.subsampling_history_frames,
+        "subsampling_right_context_frames": args.subsampling_right_context_frames,
         "decode_mode": args.decode_mode,
         "use_kv_cache": args.use_kv_cache,
         "max_kv_cache_length": args.max_kv_cache_length,
