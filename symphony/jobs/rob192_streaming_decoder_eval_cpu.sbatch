@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=rob192-eval-cpu
-#SBATCH --partition=cpu
+#SBATCH --partition=hp-cpu
 #SBATCH --time=06:00:00
 #SBATCH --mem=64GB
 #SBATCH --cpus-per-task=16
