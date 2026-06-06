@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-06-06
+
+- ROB-209 on branch `symphony/ROB-209-ordered-floras-bounded-history`: added ordered Floras streaming-decoder fine-tuning with detached bounded decoder KV cache, explicit RoPE window reset after cache trimming, subsampling-history-prefixed feature slicing, and fresh `checkpointing.pretrained` loading from the selected ROB-123 full-Spotify checkpoint. Added ROB-209 Stanage callback-only, CPU-smoke, and GPU sbatch wrappers that reuse the ROB-81 filtered Floras manifest read-only. Local validation passed with `py_compile`, `bash -n`, `python3 -m unittest tests.test_streaming_decoder_ordered_chunks tests.test_streaming_decoder_asr_rope`, and `git diff --check`; Stanage callback/CPU smoke still need to run before any long GPU queue.
+
 ## 2026-05-31
 
 - ROB-123 checkpoint selection: the two-more-epoch Spotify continuation completed and was evaluated, but it worsened corrected TEDLIUM greedy WER from `0.13974836080099237` to `0.1720361509835194` while Earnings-22 test was effectively unchanged (`0.5014194391683516` to `0.5011539325613218`). The selected checkpoint for handoff remains the original full-Spotify run at `/mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob123_full_spotify_2epoch_delay0p5_rob123-rope-full-spotify-2epoch-delay0p5-20260523T091306Z/step_272362.pt`; the superseded continuation checkpoint directory ending `rob123-rope-full-spotify-cont2-2epoch-skipgit-20260528T1712Z` was deleted on request.
