@@ -23,6 +23,9 @@ DECODE_MODE="${ROB192_TED_CHUNK_DECODE_MODE:-greedy}"
 TEMPERATURE="${ROB192_TED_CHUNK_TEMPERATURE:-1.0}"
 MAX_OUTPUT_FRAMES="${ROB192_TED_CHUNK_MAX_OUTPUT_FRAMES:-}"
 EVAL_DTYPE="${ROB192_TED_CHUNK_EVAL_DTYPE:-bfloat16}"
+USE_KV_CACHE="${ROB192_TED_CHUNK_USE_KV_CACHE:-0}"
+MAX_KV_CACHE_LENGTH="${ROB192_TED_CHUNK_MAX_KV_CACHE_LENGTH:-}"
+MAX_KV_CACHE_SPECTROGRAM_LENGTH="${ROB192_TED_CHUNK_MAX_KV_CACHE_SPECTROGRAM_LENGTH:-}"
 SKIP_GIT_UPDATE="${ROB192_SKIP_GIT_UPDATE:-0}"
 LINEAR_KEY_FILE="${ROB192_LINEAR_KEY_FILE:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/.linear_api_key}"
 LINEAR_ENV_FILE="${ROB192_LINEAR_ENV_FILE:-}"
@@ -103,7 +106,9 @@ on_exit() {
     echo "chunk_overlap=${CHUNK_OVERLAP}"
     echo "decode_mode=${DECODE_MODE}"
     echo "max_output_frames=${MAX_OUTPUT_FRAMES:-unset}"
-    echo "use_kv_cache=false"
+    echo "use_kv_cache=${USE_KV_CACHE}"
+    echo "max_kv_cache_length=${MAX_KV_CACHE_LENGTH:-unset}"
+    echo "max_kv_cache_spectrogram_length=${MAX_KV_CACHE_SPECTROGRAM_LENGTH:-unset}"
     echo "max_recordings=${MAX_RECORDINGS:-all}"
     echo "recording_index=${RECORDING_INDEX:-unset}"
     echo "run_dir=${RUN_DIR}"
@@ -131,7 +136,9 @@ on_exit() {
       --metadata "chunk_overlap=${CHUNK_OVERLAP}"
       --metadata "decode_mode=${DECODE_MODE}"
       --metadata "max_output_frames=${MAX_OUTPUT_FRAMES:-unset}"
-      --metadata "use_kv_cache=false"
+      --metadata "use_kv_cache=${USE_KV_CACHE}"
+      --metadata "max_kv_cache_length=${MAX_KV_CACHE_LENGTH:-unset}"
+      --metadata "max_kv_cache_spectrogram_length=${MAX_KV_CACHE_SPECTROGRAM_LENGTH:-unset}"
       --metadata "result_csv=${RUN_DIR}/rob192_tedlium_independent_chunk_eval.csv"
     )
     if [[ "${ROB192_TED_CHUNK_CALLBACK_DRY_RUN:-0}" == "1" ]]; then
@@ -158,6 +165,9 @@ trap 'trap - INT TERM; exit 130' INT
   echo "chunk_size=${CHUNK_SIZE}"
   echo "chunk_overlap=${CHUNK_OVERLAP}"
   echo "max_output_frames=${MAX_OUTPUT_FRAMES:-unset}"
+  echo "use_kv_cache=${USE_KV_CACHE}"
+  echo "max_kv_cache_length=${MAX_KV_CACHE_LENGTH:-unset}"
+  echo "max_kv_cache_spectrogram_length=${MAX_KV_CACHE_SPECTROGRAM_LENGTH:-unset}"
 } > "$SUMMARY_FILE"
 
 if [[ "${ROB192_TED_CHUNK_CALLBACK_ONLY:-0}" == "1" ]]; then
@@ -207,6 +217,15 @@ if [[ -n "$MAX_RECORDINGS" ]]; then
 fi
 if [[ -n "$RECORDING_INDEX" ]]; then
   args+=(--recording-index "$RECORDING_INDEX")
+fi
+if [[ "$USE_KV_CACHE" == "1" ]]; then
+  args+=(--use-kv-cache)
+fi
+if [[ -n "$MAX_KV_CACHE_LENGTH" ]]; then
+  args+=(--max-kv-cache-length "$MAX_KV_CACHE_LENGTH")
+fi
+if [[ -n "$MAX_KV_CACHE_SPECTROGRAM_LENGTH" ]]; then
+  args+=(--max-kv-cache-spectrogram-length "$MAX_KV_CACHE_SPECTROGRAM_LENGTH")
 fi
 
 python "${args[@]}"
