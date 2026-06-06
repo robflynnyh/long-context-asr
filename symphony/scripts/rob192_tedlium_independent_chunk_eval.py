@@ -30,6 +30,16 @@ def parse_args():
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--chunk-size", type=int, default=2048)
     parser.add_argument("--chunk-overlap", type=int, default=0)
+    parser.add_argument(
+        "--subsampling-mode",
+        default="independent_chunk",
+        choices=["independent_chunk", "full_recording_history"],
+        help=(
+            "independent_chunk runs subsampling separately per chunk; "
+            "full_recording_history subsamples the full recording once, then "
+            "resets decoding on chunk-aligned slices of the continuous features."
+        ),
+    )
     parser.add_argument("--max-recordings", type=int, default=None)
     parser.add_argument("--recording-index", type=int, default=None)
     parser.add_argument("--decode-mode", default="greedy", choices=["greedy", "sample", "sample_silence_greedy_text"])
@@ -72,6 +82,75 @@ def chunk_ranges(num_frames, chunk_size, chunk_overlap):
         if end == num_frames:
             break
         start += step
+
+
+@torch.no_grad()
+def decode_precomputed_features(
+    model,
+    tokenizer,
+    features,
+    decode_mode,
+    temperature,
+    max_output_frames,
+    max_tokens,
+    use_kv_cache,
+    max_kv_cache_length,
+    max_kv_cache_spectrogram_length,
+):
+    """Decode a single precomputed `[1, T, D]` feature segment with fresh AR state."""
+    if features.dim() != 3 or features.size(0) != 1:
+        raise ValueError(f"Expected features with shape [1, T, D], got {tuple(features.shape)}")
+    if max_output_frames is not None and features.size(1) > max_output_frames:
+        features = features[:, :max_output_frames]
+
+    sample = decode_mode in {"sample", "sample_silence_greedy_text"}
+    sample_silence_only = decode_mode == "sample_silence_greedy_text"
+    if use_kv_cache:
+        predictions = model._decode_with_kv_cache(
+            x=features,
+            max_cache_length=model._effective_max_kv_cache_length(
+                max_kv_cache_length=max_kv_cache_length,
+                max_kv_cache_spectrogram_length=max_kv_cache_spectrogram_length,
+            ),
+            sample=sample,
+            temperature=temperature,
+            sample_silence_only=sample_silence_only,
+        )
+    else:
+        predictions = model._decode_with_full_context(
+            x=features,
+            key_padding_mask=None,
+            sample=sample,
+            temperature=temperature,
+            sample_silence_only=sample_silence_only,
+        )
+
+    prediction_ids = predictions[0].detach().cpu().tolist()
+    text = model._decode_prediction_ids(tokenizer, prediction_ids, max_tokens=max_tokens)
+    return {
+        "text": text,
+        "prediction_ids": prediction_ids,
+        "output_frames": int(features.size(1)),
+        "pred_non_silence_fraction": sum(idx != model.silence_id for idx in prediction_ids)
+        / max(len(prediction_ids), 1),
+    }
+
+
+@torch.no_grad()
+def full_recording_features(model, audio_spec, device):
+    model_dtype = next(model.parameters()).dtype
+    audio_signal = audio_spec.to(device=device, dtype=model_dtype).unsqueeze(0)
+    length = torch.tensor([audio_signal.shape[-1]], dtype=torch.long, device=device)
+    features, out_lengths, _ = model._prepare_decode_features(audio_signal=audio_signal, length=length)
+    return features[:, : int(out_lengths[0].item())]
+
+
+def subsampled_span(model, start_frame, end_frame, total_subsampled_frames):
+    start = int(model.output_lengths(torch.tensor([start_frame], dtype=torch.long))[0].item())
+    end = int(model.output_lengths(torch.tensor([end_frame], dtype=torch.long))[0].item())
+    start = min(start, total_subsampled_frames)
+    end = min(max(end, start), total_subsampled_frames)
+    return start, end
 
 
 def load_streaming_model(checkpoint_path, eval_dtype):
@@ -128,24 +207,52 @@ def main():
             gold_text = normalize(gold_text)
             chunk_predictions = []
             chunk_meta = []
+            continuous_features = None
+            if args.subsampling_mode == "full_recording_history":
+                continuous_features = full_recording_features(model, audio_spec, device)
             for chunk_index, (start, end) in enumerate(chunk_ranges(audio_spec.shape[-1], args.chunk_size, args.chunk_overlap)):
-                chunk = audio_spec[..., start:end]
-                original_frames = int(chunk.shape[-1])
-                if original_frames < args.chunk_size:
-                    chunk = torch.nn.functional.pad(chunk, (0, args.chunk_size - original_frames))
-                result = model.transcribe(
-                    chunk,
-                    tokenizer,
-                    device=device,
-                    decode_mode=args.decode_mode,
-                    temperature=args.temperature,
-                    max_output_frames=args.max_output_frames,
-                    max_tokens=args.max_tokens,
-                    use_kv_cache=args.use_kv_cache,
-                    max_kv_cache_length=args.max_kv_cache_length,
-                    max_kv_cache_spectrogram_length=args.max_kv_cache_spectrogram_length,
-                    return_metadata=True,
-                )
+                original_frames = int(end - start)
+                decode_frames = original_frames
+                subsampled_start = ""
+                subsampled_end = ""
+                if args.subsampling_mode == "independent_chunk":
+                    chunk = audio_spec[..., start:end]
+                    if original_frames < args.chunk_size:
+                        chunk = torch.nn.functional.pad(chunk, (0, args.chunk_size - original_frames))
+                    decode_frames = int(chunk.shape[-1])
+                    result = model.transcribe(
+                        chunk,
+                        tokenizer,
+                        device=device,
+                        decode_mode=args.decode_mode,
+                        temperature=args.temperature,
+                        max_output_frames=args.max_output_frames,
+                        max_tokens=args.max_tokens,
+                        use_kv_cache=args.use_kv_cache,
+                        max_kv_cache_length=args.max_kv_cache_length,
+                        max_kv_cache_spectrogram_length=args.max_kv_cache_spectrogram_length,
+                        return_metadata=True,
+                    )
+                else:
+                    subsampled_start, subsampled_end = subsampled_span(
+                        model,
+                        start_frame=start,
+                        end_frame=end,
+                        total_subsampled_frames=continuous_features.size(1),
+                    )
+                    feature_chunk = continuous_features[:, subsampled_start:subsampled_end]
+                    result = decode_precomputed_features(
+                        model=model,
+                        tokenizer=tokenizer,
+                        features=feature_chunk,
+                        decode_mode=args.decode_mode,
+                        temperature=args.temperature,
+                        max_output_frames=args.max_output_frames,
+                        max_tokens=args.max_tokens,
+                        use_kv_cache=args.use_kv_cache,
+                        max_kv_cache_length=args.max_kv_cache_length,
+                        max_kv_cache_spectrogram_length=args.max_kv_cache_spectrogram_length,
+                    )
                 prediction = normalize(result["text"])
                 chunk_predictions.append(prediction)
                 item = {
@@ -155,7 +262,10 @@ def main():
                     "start_frame": start,
                     "end_frame": end,
                     "frames": original_frames,
-                    "decode_frames": int(chunk.shape[-1]),
+                    "decode_frames": decode_frames,
+                    "subsampling_mode": args.subsampling_mode,
+                    "subsampled_start": subsampled_start,
+                    "subsampled_end": subsampled_end,
                     "prediction": prediction,
                     "output_frames": result["output_frames"],
                     "pred_non_silence_fraction": result["pred_non_silence_fraction"],
@@ -187,6 +297,7 @@ def main():
                     "frames": int(audio_spec.shape[-1]),
                     "chunk_size": args.chunk_size,
                     "chunk_overlap": args.chunk_overlap,
+                    "subsampling_mode": args.subsampling_mode,
                     "decode_mode": args.decode_mode,
                     "use_kv_cache": args.use_kv_cache,
                     "eval_dtype": str(dtype).replace("torch.", "") if dtype is not None else "float32",
@@ -217,6 +328,7 @@ def main():
             "frames": sum(int(row["frames"]) for row in rows),
             "chunk_size": args.chunk_size,
             "chunk_overlap": args.chunk_overlap,
+            "subsampling_mode": args.subsampling_mode,
             "decode_mode": args.decode_mode,
             "use_kv_cache": args.use_kv_cache,
             "eval_dtype": str(dtype).replace("torch.", "") if dtype is not None else "float32",
@@ -236,6 +348,7 @@ def main():
         "recordings": len(records),
         "chunk_size": args.chunk_size,
         "chunk_overlap": args.chunk_overlap,
+        "subsampling_mode": args.subsampling_mode,
         "decode_mode": args.decode_mode,
         "use_kv_cache": args.use_kv_cache,
         "max_kv_cache_length": args.max_kv_cache_length,
