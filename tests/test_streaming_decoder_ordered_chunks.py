@@ -9,6 +9,7 @@ from exp.train_streaming_decoder_asr import (
     chunk_starts_for_batch,
     final_targets_for_lengths,
     positive_output_length,
+    select_kv_caches_for_active,
 )
 from lcasr.models.streaming_decoder_asr import StreamingDecoderASR
 from tests.test_streaming_decoder_asr_rope import tiny_streaming_config
@@ -51,6 +52,17 @@ class StreamingDecoderOrderedChunksTest(unittest.TestCase):
         self.assertEqual(current_lengths.tolist(), [8, 5])
         torch.testing.assert_close(segment[0, 0, :8], audio[0, 0, :8])
         torch.testing.assert_close(segment[0, 0, 8:], audio[0, 0, 8:16])
+
+    def test_cache_selection_keeps_active_recording_slots(self):
+        cache = torch.tensor([0.0, 2.0, 4.0]).view(3, 1, 1, 1, 1)
+
+        selected = select_kv_caches_for_active(
+            caches=[cache],
+            cached_batch_indices=torch.tensor([0, 2, 4]),
+            active_indices=torch.tensor([2, 4]),
+        )
+
+        self.assertEqual(selected[0][:, 0, 0, 0, 0].tolist(), [2.0, 4.0])
 
     def test_loss_alignment_slices_history_prefixed_subsampled_span(self):
         model = StreamingDecoderASR(**tiny_streaming_config())
@@ -149,6 +161,87 @@ class StreamingDecoderOrderedChunksTest(unittest.TestCase):
         self.assertEqual(observed[0], (first_len, 0))
         self.assertEqual(observed[1], (first_retain_len + second_len, first_retain_len))
         self.assertFalse(second_out["cache"][0].requires_grad)
+
+    def test_chunked_decode_uses_subsampling_history_windows(self):
+        torch.manual_seed(0)
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        model.eval()
+        audio = torch.randn(1, 8, 48)
+        lengths = torch.tensor([48])
+
+        with mock.patch.object(model.subsampling, "forward", wraps=model.subsampling.forward) as subsampling:
+            model.greedy_decode(
+                audio_signal=audio,
+                length=lengths,
+                use_kv_cache=True,
+                chunked_kv_cache=True,
+                kv_cache_chunk_spectrogram_length=16,
+                subsampling_history_spectrogram_length=16,
+                decoder_history_spectrogram_length=16,
+            )
+
+        input_lengths = [call.args[0].size(1) for call in subsampling.call_args_list]
+        self.assertEqual(input_lengths, [16, 32, 32])
+
+    def test_chunked_decode_matches_cached_decode_when_audio_fits_one_chunk(self):
+        torch.manual_seed(0)
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        model.eval()
+        audio = torch.randn(1, 8, 48)
+        lengths = torch.tensor([48])
+
+        cached = model.greedy_decode(audio_signal=audio, length=lengths, use_kv_cache=True)
+        chunked = model.greedy_decode(
+            audio_signal=audio,
+            length=lengths,
+            use_kv_cache=True,
+            chunked_kv_cache=True,
+            kv_cache_chunk_spectrogram_length=96,
+            subsampling_history_spectrogram_length=96,
+            decoder_history_spectrogram_length=96,
+        )
+
+        self.assertTrue(torch.equal(cached["length"], chunked["length"]))
+        self.assertTrue(torch.equal(cached["predictions"], chunked["predictions"]))
+
+    def test_chunked_decode_resets_rope_positions_at_chunk_boundaries(self):
+        torch.manual_seed(0)
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        model.eval()
+        audio = torch.randn(1, 8, 64)
+        lengths = torch.tensor([64])
+        chunk_size = 16
+        observed_q_offsets = []
+        original_rotary = model._rotary_emb_fn
+
+        def record_rotary(seq_len, device, offset=0, q_offset=0, trim_k=False):
+            observed_q_offsets.append(q_offset)
+            return original_rotary(seq_len, device, offset=offset, q_offset=q_offset, trim_k=trim_k)
+
+        expected_q_offsets = []
+        retained_len = 0
+        cap = positive_output_length(model, chunk_size)
+        for chunk_start in range(0, int(lengths[0].item()), chunk_size):
+            history_start = max(0, chunk_start - chunk_size)
+            history_len = chunk_start - history_start
+            segment_len = min(int(lengths[0].item()), chunk_start + chunk_size) - history_start
+            current_len = positive_output_length(model, segment_len) - positive_output_length(model, history_len)
+            expected_q_offsets.extend(range(retained_len, retained_len + current_len))
+            retained_len = min(current_len, cap)
+
+        with mock.patch.object(model, "_rotary_emb_fn", side_effect=record_rotary):
+            decoded = model.greedy_decode(
+                audio_signal=audio,
+                length=lengths,
+                use_kv_cache=True,
+                chunked_kv_cache=True,
+                kv_cache_chunk_spectrogram_length=chunk_size,
+                subsampling_history_spectrogram_length=chunk_size,
+                decoder_history_spectrogram_length=chunk_size,
+            )
+
+        self.assertEqual(int(decoded["length"][0].item()), len(expected_q_offsets))
+        self.assertEqual(observed_q_offsets, expected_q_offsets)
 
 
 if __name__ == "__main__":

@@ -643,6 +643,140 @@ class StreamingDecoderASR(BaseModel):
             return max_kv_cache_length
         return self.kv_cache_length_from_spectrogram_length(max_kv_cache_spectrogram_length)
 
+    @staticmethod
+    def _require_positive_int(value: int, name: str) -> int:
+        value = int(value)
+        if value <= 0:
+            raise ValueError(f"{name} must be positive")
+        return value
+
+    @staticmethod
+    def _retain_current_chunk_cache(
+        caches: Iterable[Optional[torch.Tensor]],
+        current_chunk_cache_start: int,
+        max_current_cache_length: int,
+    ):
+        retained = []
+        for cache in caches:
+            if cache is None:
+                retained.append(None)
+                continue
+            retain_end = cache.size(1)
+            retain_start = max(int(current_chunk_cache_start), retain_end - int(max_current_cache_length))
+            retained.append(cache[:, retain_start:retain_end].contiguous())
+        return retained
+
+    def _prepare_chunked_decode_features(
+        self,
+        audio_signal: torch.Tensor,
+        length: torch.Tensor,
+        chunk_start: int,
+        chunk_size: int,
+        subsampling_history_length: int,
+    ):
+        total_frames = min(int(length[0].item()), audio_signal.size(-1))
+        chunk_end = min(total_frames, int(chunk_start) + int(chunk_size))
+        history_start = max(0, int(chunk_start) - int(subsampling_history_length))
+        history_frames = int(chunk_start) - history_start
+        segment = audio_signal[:, :, history_start:chunk_end]
+        segment_length = torch.tensor(
+            [segment.size(-1)],
+            dtype=length.dtype,
+            device=length.device,
+        )
+        x, out_lengths = self.subsampling(segment.transpose(1, 2), lengths=segment_length)
+        if history_frames > 0:
+            history_length = torch.tensor([history_frames], dtype=length.dtype, device=length.device)
+            history_output_len = int(self.output_lengths(history_length)[0].item())
+            x = x[:, history_output_len:]
+            out_lengths = (out_lengths - history_output_len).clamp(min=0)
+        return x, out_lengths
+
+    def _decode_with_chunked_kv_cache(
+        self,
+        audio_signal: torch.Tensor,
+        length: torch.Tensor,
+        raw_chunk_size: int,
+        subsampling_history_length: int,
+        decoder_history_length: int,
+        max_output_frames: Optional[int],
+        sample: bool,
+        temperature: float,
+        sample_silence_only: bool,
+        max_kv_cache_length: Optional[int] = None,
+    ) -> torch.Tensor:
+        if audio_signal.size(0) != 1:
+            raise ValueError("chunked KV-cache streaming decoding currently supports batch size 1")
+        raw_chunk_size = self._require_positive_int(raw_chunk_size, "raw_chunk_size")
+        subsampling_history_length = self._require_positive_int(
+            subsampling_history_length,
+            "subsampling_history_length",
+        )
+        decoder_history_length = self._require_positive_int(
+            decoder_history_length,
+            "decoder_history_length",
+        )
+        decoder_cache_cap = (
+            int(max_kv_cache_length)
+            if max_kv_cache_length is not None
+            else self.kv_cache_length_from_spectrogram_length(decoder_history_length)
+        )
+        decoder_cache_cap = self._require_positive_int(decoder_cache_cap, "decoder_cache_cap")
+
+        caches = [None for _ in self.layers]
+        prev_id = torch.full((audio_signal.size(0),), self.silence_id, dtype=torch.long, device=audio_signal.device)
+        predictions = []
+        total_frames = min(int(length[0].item()), audio_signal.size(-1))
+        max_output_frames = None if max_output_frames is None or max_output_frames <= 0 else int(max_output_frames)
+
+        for chunk_start in range(0, total_frames, raw_chunk_size):
+            x, out_lengths = self._prepare_chunked_decode_features(
+                audio_signal=audio_signal,
+                length=length,
+                chunk_start=chunk_start,
+                chunk_size=raw_chunk_size,
+                subsampling_history_length=subsampling_history_length,
+            )
+            current_output_len = int(out_lengths[0].item())
+            if max_output_frames is not None:
+                remaining = max_output_frames - len(predictions)
+                if remaining <= 0:
+                    break
+                current_output_len = min(current_output_len, remaining)
+            if current_output_len <= 0:
+                continue
+
+            current_chunk_cache_start = 0 if caches[0] is None else caches[0].size(1)
+            for step in range(current_output_len):
+                h = x[:, step : step + 1] + self.prev_token_embedding(prev_id).unsqueeze(1)
+                cached_len = 0 if caches[0] is None else caches[0].size(1)
+                rotary_emb_fn = self._rotary_emb_fn(cached_len + 1, h.device, q_offset=cached_len)
+                for layer_idx, layer in enumerate(self.layers):
+                    h, caches[layer_idx] = layer(
+                        h,
+                        rotary_emb_fn=rotary_emb_fn,
+                        cached_kv=caches[layer_idx],
+                        use_cache=True,
+                    )
+                step_h = self.norm(h[:, 0])
+                prev_id = self._step_predictions(
+                    step_h,
+                    sample=sample,
+                    temperature=temperature,
+                    sample_silence_only=sample_silence_only,
+                )
+                predictions.append(prev_id)
+
+            caches = self._retain_current_chunk_cache(
+                caches,
+                current_chunk_cache_start=current_chunk_cache_start,
+                max_current_cache_length=decoder_cache_cap,
+            )
+
+        if not predictions:
+            return torch.empty((audio_signal.size(0), 0), dtype=torch.long, device=audio_signal.device)
+        return torch.stack(predictions, dim=1)
+
     def _decode_with_kv_cache(
         self,
         x: torch.Tensor,
@@ -723,12 +857,48 @@ class StreamingDecoderASR(BaseModel):
         use_kv_cache: bool = False,
         max_kv_cache_length: Optional[int] = None,
         max_kv_cache_spectrogram_length: Optional[int] = None,
+        chunked_kv_cache: bool = False,
+        kv_cache_chunk_spectrogram_length: Optional[int] = None,
+        subsampling_history_spectrogram_length: Optional[int] = None,
+        decoder_history_spectrogram_length: Optional[int] = None,
         sample_silence_only: bool = False,
     ) -> dict:
         """Shared inference-only autoregressive decode path for transcribe helpers."""
         was_training = self.training
         self.eval()
         try:
+            if chunked_kv_cache:
+                if not use_kv_cache:
+                    raise ValueError("chunked_kv_cache requires use_kv_cache=True")
+                raw_chunk_size = (
+                    kv_cache_chunk_spectrogram_length
+                    or max_kv_cache_spectrogram_length
+                    or 2048
+                )
+                subsampling_history_length = subsampling_history_spectrogram_length or raw_chunk_size
+                decoder_history_length = decoder_history_spectrogram_length or raw_chunk_size
+                if length is None:
+                    length = torch.full((audio_signal.size(0),), audio_signal.size(-1), device=audio_signal.device)
+                predictions = self._decode_with_chunked_kv_cache(
+                    audio_signal=audio_signal,
+                    length=length,
+                    raw_chunk_size=raw_chunk_size,
+                    subsampling_history_length=subsampling_history_length,
+                    decoder_history_length=decoder_history_length,
+                    max_output_frames=max_frames,
+                    sample=sample,
+                    temperature=temperature,
+                    sample_silence_only=sample_silence_only,
+                    max_kv_cache_length=max_kv_cache_length,
+                )
+                out_lengths = torch.full(
+                    (audio_signal.size(0),),
+                    predictions.size(1),
+                    dtype=torch.long,
+                    device=audio_signal.device,
+                )
+                return {"predictions": predictions, "length": out_lengths}
+
             x, out_lengths, key_padding_mask = self._prepare_decode_features(
                 audio_signal=audio_signal,
                 length=length,
@@ -767,6 +937,10 @@ class StreamingDecoderASR(BaseModel):
         use_kv_cache: bool = False,
         max_kv_cache_length: Optional[int] = None,
         max_kv_cache_spectrogram_length: Optional[int] = None,
+        chunked_kv_cache: bool = False,
+        kv_cache_chunk_spectrogram_length: Optional[int] = None,
+        subsampling_history_spectrogram_length: Optional[int] = None,
+        decoder_history_spectrogram_length: Optional[int] = None,
     ) -> dict:
         """Autoregressively decode by greedy two-head prediction at each output frame."""
         return self._autoregressive_decode(
@@ -777,6 +951,10 @@ class StreamingDecoderASR(BaseModel):
             use_kv_cache=use_kv_cache,
             max_kv_cache_length=max_kv_cache_length,
             max_kv_cache_spectrogram_length=max_kv_cache_spectrogram_length,
+            chunked_kv_cache=chunked_kv_cache,
+            kv_cache_chunk_spectrogram_length=kv_cache_chunk_spectrogram_length,
+            subsampling_history_spectrogram_length=subsampling_history_spectrogram_length,
+            decoder_history_spectrogram_length=decoder_history_spectrogram_length,
         )
 
     @torch.no_grad()
@@ -789,6 +967,10 @@ class StreamingDecoderASR(BaseModel):
         use_kv_cache: bool = False,
         max_kv_cache_length: Optional[int] = None,
         max_kv_cache_spectrogram_length: Optional[int] = None,
+        chunked_kv_cache: bool = False,
+        kv_cache_chunk_spectrogram_length: Optional[int] = None,
+        subsampling_history_spectrogram_length: Optional[int] = None,
+        decoder_history_spectrogram_length: Optional[int] = None,
         sample_silence_only: bool = False,
     ) -> dict:
         """Autoregressively decode while sampling frame ids."""
@@ -801,6 +983,10 @@ class StreamingDecoderASR(BaseModel):
             use_kv_cache=use_kv_cache,
             max_kv_cache_length=max_kv_cache_length,
             max_kv_cache_spectrogram_length=max_kv_cache_spectrogram_length,
+            chunked_kv_cache=chunked_kv_cache,
+            kv_cache_chunk_spectrogram_length=kv_cache_chunk_spectrogram_length,
+            subsampling_history_spectrogram_length=subsampling_history_spectrogram_length,
+            decoder_history_spectrogram_length=decoder_history_spectrogram_length,
             sample_silence_only=sample_silence_only,
         )
 
@@ -818,6 +1004,10 @@ class StreamingDecoderASR(BaseModel):
         use_kv_cache: bool = False,
         max_kv_cache_length: Optional[int] = None,
         max_kv_cache_spectrogram_length: Optional[int] = None,
+        chunked_kv_cache: bool = False,
+        kv_cache_chunk_spectrogram_length: Optional[int] = None,
+        subsampling_history_spectrogram_length: Optional[int] = None,
+        decoder_history_spectrogram_length: Optional[int] = None,
         return_metadata: bool = False,
         **kwargs,
     ):
@@ -839,6 +1029,10 @@ class StreamingDecoderASR(BaseModel):
                     use_kv_cache=use_kv_cache,
                     max_kv_cache_length=max_kv_cache_length,
                     max_kv_cache_spectrogram_length=max_kv_cache_spectrogram_length,
+                    chunked_kv_cache=chunked_kv_cache,
+                    kv_cache_chunk_spectrogram_length=kv_cache_chunk_spectrogram_length,
+                    subsampling_history_spectrogram_length=subsampling_history_spectrogram_length,
+                    decoder_history_spectrogram_length=decoder_history_spectrogram_length,
                     return_metadata=return_metadata,
                 )
                 for item in audio_spec
@@ -868,6 +1062,10 @@ class StreamingDecoderASR(BaseModel):
                 use_kv_cache=use_kv_cache,
                 max_kv_cache_length=max_kv_cache_length,
                 max_kv_cache_spectrogram_length=max_kv_cache_spectrogram_length,
+                chunked_kv_cache=chunked_kv_cache,
+                kv_cache_chunk_spectrogram_length=kv_cache_chunk_spectrogram_length,
+                subsampling_history_spectrogram_length=subsampling_history_spectrogram_length,
+                decoder_history_spectrogram_length=decoder_history_spectrogram_length,
                 sample_silence_only=decode_mode == "sample_silence_greedy_text",
             )
         elif decode_mode == "greedy":
@@ -878,6 +1076,10 @@ class StreamingDecoderASR(BaseModel):
                 use_kv_cache=use_kv_cache,
                 max_kv_cache_length=max_kv_cache_length,
                 max_kv_cache_spectrogram_length=max_kv_cache_spectrogram_length,
+                chunked_kv_cache=chunked_kv_cache,
+                kv_cache_chunk_spectrogram_length=kv_cache_chunk_spectrogram_length,
+                subsampling_history_spectrogram_length=subsampling_history_spectrogram_length,
+                decoder_history_spectrogram_length=decoder_history_spectrogram_length,
             )
         else:
             raise ValueError(f"Unsupported decode_mode: {decode_mode}")
