@@ -128,6 +128,9 @@ def main():
             chunk_meta = []
             for chunk_index, (start, end) in enumerate(chunk_ranges(audio_spec.shape[-1], args.chunk_size, args.chunk_overlap)):
                 chunk = audio_spec[:, start:end]
+                original_frames = int(chunk.shape[-1])
+                if original_frames < args.chunk_size:
+                    chunk = torch.nn.functional.pad(chunk, (0, args.chunk_size - original_frames))
                 result = model.transcribe(
                     chunk,
                     tokenizer,
@@ -149,7 +152,8 @@ def main():
                     "chunk_index": chunk_index,
                     "start_frame": start,
                     "end_frame": end,
-                    "frames": end - start,
+                    "frames": original_frames,
+                    "decode_frames": int(chunk.shape[-1]),
                     "prediction": prediction,
                     "output_frames": result["output_frames"],
                     "pred_non_silence_fraction": result["pred_non_silence_fraction"],
