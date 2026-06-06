@@ -214,6 +214,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 
 - ROB-192 launch setup: added pretrained initialization support to `exp/train_streaming_decoder_asr.py` so `checkpointing.pretrained` seeds a fresh output checkpoint directory before optimizer/scheduler creation. Added ROB-192 Stanage prep/wrapper scripts to finetune the selected ROB-123 full-Spotify RoPE checkpoint on Floras-50 for 12 epochs at LR `5e-5`, reusing the completed ROB-81 safe-normalize/drop-OOV manifest read-only by default, allowing CPU smoke to override only the train data path with an issue-local short manifest, and writing ROB-192 checkpoints/artifacts separately.
 
+## 2026-06-06
+
+- ROB-192 completion: Stanage Floras finetune job `10311112` completed 12 epochs from the selected ROB-123 RoPE streaming-decoder checkpoint with LR `5e-5`, producing final checkpoint `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/checkpoints/streaming_decoder_asr_100m_rope_floras50_lr5e-5_12ep_rob192-rope-streaming-floras50-lr5e-5-12ep-10311112/step_321132.pt`. Full TEDLIUM cached-streaming eval first returned WER `27.65%`, so the Earnings run was canceled and the requested TEDLIUM independent 2048-frame chunk diagnostic ran without KV caching as job `10328125`; it completed with WER `13.96%` over `28,215` words across `546` chunks.
+
 ## 2026-05-12
 
 - ROB-69 eval job `10156464` completed successfully, but finalizer job `10156465` failed because appended finetuned CSV rows included an extra pandas index field. Normalized the completed remote result into `eval/results/thesis/rob69_18l_long_context_finetune_vs_baseline.csv`, made ROB-69 summarization tolerate and normalize that output shape, and fixed eval manager CSV appends to write `index=False`. Mean WER was slightly worse for the long-only finetuned checkpoints on most dataset/window pairs, with small improvements only on `rev16` window 128, `tedlium` window 8192, and `this_american_life` windows 128 and 22500.
