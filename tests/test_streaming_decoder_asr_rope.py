@@ -7,6 +7,7 @@ import torch
 
 from exp.train_streaming_decoder_asr import load_pretrained_model_state
 from lcasr.models.streaming_decoder_asr import CausalDecoderLayer, StreamingDecoderASR
+from symphony.scripts.rob192_tedlium_independent_chunk_eval import subsampled_span
 
 
 def tiny_streaming_config():
@@ -118,6 +119,16 @@ class StreamingDecoderASRRoPETest(unittest.TestCase):
             int(model.output_lengths(torch.tensor([64]))[0].item()),
         )
         self.assertLess(model.kv_cache_length_from_spectrogram_length(64), 64)
+
+    def test_history_subsampled_span_keeps_first_chunk_start(self):
+        class OffsetLengthModel:
+            def output_lengths(self, lengths):
+                return torch.div(lengths, 8, rounding_mode="floor") + 1
+
+        model = OffsetLengthModel()
+
+        self.assertEqual(subsampled_span(model, 0, 2048, 513), (0, 257))
+        self.assertEqual(subsampled_span(model, 2048, 4096, 769), (256, 513))
 
     def test_combined_logits_are_normalized_joint_distribution(self):
         model = StreamingDecoderASR(**tiny_streaming_config())

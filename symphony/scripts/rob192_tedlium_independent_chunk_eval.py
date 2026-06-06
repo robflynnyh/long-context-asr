@@ -164,9 +164,10 @@ def prepare_features(model, audio_spec, start_frame, end_frame, device):
 
 
 def subsampled_span(model, start_frame, end_frame, total_subsampled_frames):
-    start = int(model.output_lengths(torch.tensor([start_frame], dtype=torch.long))[0].item())
+    first_frame_offset = int(model.output_lengths(torch.tensor([0], dtype=torch.long))[0].item())
+    start = int(model.output_lengths(torch.tensor([start_frame], dtype=torch.long))[0].item()) - first_frame_offset
     end = int(model.output_lengths(torch.tensor([end_frame], dtype=torch.long))[0].item())
-    start = min(start, total_subsampled_frames)
+    start = min(max(start, 0), total_subsampled_frames)
     end = min(max(end, start), total_subsampled_frames)
     return start, end
 
