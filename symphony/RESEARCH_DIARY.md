@@ -217,6 +217,7 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 ## 2026-06-06
 
 - ROB-192 completion: Stanage Floras finetune job `10311112` completed 12 epochs from the selected ROB-123 RoPE streaming-decoder checkpoint with LR `5e-5`, producing final checkpoint `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/checkpoints/streaming_decoder_asr_100m_rope_floras50_lr5e-5_12ep_rob192-rope-streaming-floras50-lr5e-5-12ep-10311112/step_321132.pt`. Full TEDLIUM cached-streaming eval first returned WER `27.65%`, so the Earnings run was canceled and the requested TEDLIUM independent 2048-frame chunk diagnostic ran without KV caching as job `10328125`; it completed with WER `13.96%` over `28,215` words across `546` chunks.
+- ROB-192 cache-diagnostic follow-up: after the better independent no-cache chunk result, exposed `ROB192_TED_CHUNK_USE_KV_CACHE`, `ROB192_TED_CHUNK_MAX_KV_CACHE_LENGTH`, and `ROB192_TED_CHUNK_MAX_KV_CACHE_SPECTROGRAM_LENGTH` in the TEDLIUM independent-chunk Stanage wrapper so cache behavior can be isolated without changing the 2048-frame reset policy. Validation passed locally with `bash -n`, `py_compile`, and `git diff --check`, then on Stanage with callback-only dry run `10328153` and capped one-record CPU smoke `10328154` using `use_kv_cache=1`.
 
 ## 2026-05-12
 
