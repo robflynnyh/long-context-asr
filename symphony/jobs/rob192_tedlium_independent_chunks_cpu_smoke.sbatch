@@ -17,6 +17,7 @@ export ROB192_TED_CHUNK_RUN_ID="${ROB192_TED_CHUNK_RUN_ID:-rob192-tedlium-indepe
 export ROB192_TED_CHUNK_OUT_LOG="${ROB192_TED_CHUNK_OUT_LOG:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/eval/rob192-ted-chunk-smoke-${SLURM_JOB_ID}.out}"
 export ROB192_TED_CHUNK_ERR_LOG="${ROB192_TED_CHUNK_ERR_LOG:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/eval/rob192-ted-chunk-smoke-${SLURM_JOB_ID}.err}"
 export ROB192_TED_CHUNK_MAX_RECORDINGS="${ROB192_TED_CHUNK_MAX_RECORDINGS:-1}"
+export ROB192_TED_CHUNK_MAX_OUTPUT_FRAMES="${ROB192_TED_CHUNK_MAX_OUTPUT_FRAMES:-8}"
 export ROB192_TED_CHUNK_FORCE_CPU=1
 export ROB192_TED_CHUNK_CALLBACK_DRY_RUN="${ROB192_TED_CHUNK_CALLBACK_DRY_RUN:-1}"
 

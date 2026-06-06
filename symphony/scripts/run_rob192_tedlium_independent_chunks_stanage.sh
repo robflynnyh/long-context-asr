@@ -21,6 +21,7 @@ MAX_RECORDINGS="${ROB192_TED_CHUNK_MAX_RECORDINGS:-}"
 RECORDING_INDEX="${ROB192_TED_CHUNK_RECORDING_INDEX:-}"
 DECODE_MODE="${ROB192_TED_CHUNK_DECODE_MODE:-greedy}"
 TEMPERATURE="${ROB192_TED_CHUNK_TEMPERATURE:-1.0}"
+MAX_OUTPUT_FRAMES="${ROB192_TED_CHUNK_MAX_OUTPUT_FRAMES:-}"
 EVAL_DTYPE="${ROB192_TED_CHUNK_EVAL_DTYPE:-bfloat16}"
 SKIP_GIT_UPDATE="${ROB192_SKIP_GIT_UPDATE:-0}"
 LINEAR_KEY_FILE="${ROB192_LINEAR_KEY_FILE:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/.linear_api_key}"
@@ -101,6 +102,7 @@ on_exit() {
     echo "chunk_size=${CHUNK_SIZE}"
     echo "chunk_overlap=${CHUNK_OVERLAP}"
     echo "decode_mode=${DECODE_MODE}"
+    echo "max_output_frames=${MAX_OUTPUT_FRAMES:-unset}"
     echo "use_kv_cache=false"
     echo "max_recordings=${MAX_RECORDINGS:-all}"
     echo "recording_index=${RECORDING_INDEX:-unset}"
@@ -128,6 +130,7 @@ on_exit() {
       --metadata "chunk_size=${CHUNK_SIZE}"
       --metadata "chunk_overlap=${CHUNK_OVERLAP}"
       --metadata "decode_mode=${DECODE_MODE}"
+      --metadata "max_output_frames=${MAX_OUTPUT_FRAMES:-unset}"
       --metadata "use_kv_cache=false"
       --metadata "result_csv=${RUN_DIR}/rob192_tedlium_independent_chunk_eval.csv"
     )
@@ -154,6 +157,7 @@ trap 'trap - INT TERM; exit 130' INT
   echo "tedlium_root=${TEDLIUM_ROOT}"
   echo "chunk_size=${CHUNK_SIZE}"
   echo "chunk_overlap=${CHUNK_OVERLAP}"
+  echo "max_output_frames=${MAX_OUTPUT_FRAMES:-unset}"
 } > "$SUMMARY_FILE"
 
 if [[ "${ROB192_TED_CHUNK_CALLBACK_ONLY:-0}" == "1" ]]; then
@@ -195,6 +199,9 @@ args=(
   --temperature "$TEMPERATURE"
   --eval-dtype "$EVAL_DTYPE"
 )
+if [[ -n "$MAX_OUTPUT_FRAMES" ]]; then
+  args+=(--max-output-frames "$MAX_OUTPUT_FRAMES")
+fi
 if [[ -n "$MAX_RECORDINGS" ]]; then
   args+=(--max-recordings "$MAX_RECORDINGS")
 fi
