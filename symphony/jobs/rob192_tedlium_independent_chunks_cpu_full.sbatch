@@ -2,7 +2,7 @@
 #SBATCH --job-name=rob192-ted-chunks-cpu
 #SBATCH --partition=interactive
 #SBATCH --time=08:00:00
-#SBATCH --mem=96GB
+#SBATCH --mem=64GB
 #SBATCH --cpus-per-task=16
 #SBATCH --output=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/eval/rob192-ted-chunks-cpu-%j.out
 #SBATCH --error=/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/eval/rob192-ted-chunks-cpu-%j.err
