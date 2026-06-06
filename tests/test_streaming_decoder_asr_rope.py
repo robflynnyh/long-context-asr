@@ -7,7 +7,7 @@ import torch
 
 from exp.train_streaming_decoder_asr import load_pretrained_model_state
 from lcasr.models.streaming_decoder_asr import CausalDecoderLayer, StreamingDecoderASR
-from symphony.scripts.rob192_tedlium_independent_chunk_eval import subsampled_span
+from symphony.scripts.rob192_tedlium_independent_chunk_eval import decode_with_kv_cache_state, subsampled_span
 
 
 def tiny_streaming_config():
@@ -110,6 +110,39 @@ class StreamingDecoderASRRoPETest(unittest.TestCase):
             layer(x, use_cache=True)
 
         self.assertEqual(sdpa.call_count, 1)
+
+    def test_carried_kv_decode_matches_single_sequence_decode(self):
+        torch.manual_seed(0)
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        model.eval()
+        features = torch.randn(1, 7, 32)
+
+        full = model._decode_with_kv_cache(
+            x=features,
+            max_cache_length=None,
+            sample=False,
+            temperature=1.0,
+            sample_silence_only=False,
+        )
+        first, state = decode_with_kv_cache_state(
+            model=model,
+            x=features[:, :3],
+            max_cache_length=None,
+            sample=False,
+            temperature=1.0,
+            sample_silence_only=False,
+        )
+        second, _ = decode_with_kv_cache_state(
+            model=model,
+            x=features[:, 3:],
+            max_cache_length=None,
+            sample=False,
+            temperature=1.0,
+            sample_silence_only=False,
+            decoder_state=state,
+        )
+
+        self.assertTrue(torch.equal(full, torch.cat([first, second], dim=1)))
 
     def test_kv_cache_spectrogram_length_uses_subsampled_frame_count(self):
         model = StreamingDecoderASR(**tiny_streaming_config())
