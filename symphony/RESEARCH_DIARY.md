@@ -9,6 +9,10 @@ This diary is for concise, durable notes from Symphony-managed work on this repo
 - Summarize repeated attempts as a single entry that says what was tried and what decision followed. Move detailed Slurm behavior, commands, or extraction snippets to focused notes such as `symphony/slurm-notes.md`, `symphony/training-notes.md`, or `symphony/eval-notes.md`.
 - Keep credentials, raw data, checkpoints, large logs, generated CSVs, and bulky output out of the diary. Reference parscratch paths instead.
 
+## 2026-06-06
+
+- ROB-192 Floras finetune job `10311112` completed successfully (`COMPLETED 0:0`, elapsed `1-14:01:35`) but its Linear callback failed because no ROB-192 callback key file was visible in the Slurm environment. The 12-epoch LR `5e-5` final checkpoint is `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/checkpoints/streaming_decoder_asr_100m_rope_floras50_lr5e-5_12ep_rob192-rope-streaming-floras50-lr5e-5-12ep-10311112/step_321132.pt`. Hardened ROB-192 callback key discovery to use issue key files, local-only `symphony/.env`, or configured user env files, and added a Stanage CPU eval wrapper for full TEDLIUM test plus smaller Earnings-22 test using cached greedy `StreamingDecoderASR` decode with `max_kv_cache_spectrogram_length=2048`. Eval artifacts should live under `/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/eval/`.
+
 ## 2026-05-31
 
 - ROB-123 checkpoint selection: the two-more-epoch Spotify continuation completed and was evaluated, but it worsened corrected TEDLIUM greedy WER from `0.13974836080099237` to `0.1720361509835194` while Earnings-22 test was effectively unchanged (`0.5014194391683516` to `0.5011539325613218`). The selected checkpoint for handoff remains the original full-Spotify run at `/mnt/parscratch/users/acp21rjf/spotify/streaming_decoder_asr_100m_rope_rob123_full_spotify_2epoch_delay0p5_rob123-rope-full-spotify-2epoch-delay0p5-20260523T091306Z/step_272362.pt`; the superseded continuation checkpoint directory ending `rob123-rope-full-spotify-cont2-2epoch-skipgit-20260528T1712Z` was deleted on request.

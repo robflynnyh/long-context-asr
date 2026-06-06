@@ -47,6 +47,39 @@ PIN_MEMORY="${ROB192_PIN_MEMORY:-0}"
 SKIP_GIT_UPDATE="${ROB192_SKIP_GIT_UPDATE:-0}"
 CALLBACK_PYTHON="${ROB192_CALLBACK_PYTHON:-python3}"
 LINEAR_KEY_FILE="${ROB192_LINEAR_KEY_FILE:-$ARTIFACT_ROOT/.linear_api_key}"
+LINEAR_ENV_FILE="${ROB192_LINEAR_ENV_FILE:-}"
+
+load_linear_api_key() {
+  if [[ -n "${LINEAR_API_KEY:-}" ]]; then
+    return 0
+  fi
+  if [[ -f "$LINEAR_KEY_FILE" ]]; then
+    export LINEAR_API_KEY
+    LINEAR_API_KEY="$(cat "$LINEAR_KEY_FILE")"
+    return 0
+  fi
+
+  local env_file
+  for env_file in \
+    "$LINEAR_ENV_FILE" \
+    "$REPO_DIR/symphony/.env" \
+    "$HOME/.config/long-context-asr/linear.env" \
+    "$HOME/.config/sap-longcontext/linear.env"
+  do
+    if [[ -n "$env_file" && -f "$env_file" ]]; then
+      set +u
+      set -a
+      # shellcheck disable=SC1090
+      source "$env_file"
+      set +a
+      set -u
+      if [[ -n "${LINEAR_API_KEY:-}" ]]; then
+        export LINEAR_API_KEY
+        return 0
+      fi
+    fi
+  done
+}
 
 if [[ "${ROB192_RUN_DIR_EXEC:-0}" != "1" ]]; then
   mkdir -p "$RUN_DIR"
@@ -110,10 +143,7 @@ on_exit() {
     echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-unset}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB192_ENABLE_CALLBACK:-1}" == "1" ]]; then
-    if [[ -z "${LINEAR_API_KEY:-}" && -f "$LINEAR_KEY_FILE" ]]; then
-      export LINEAR_API_KEY
-      LINEAR_API_KEY="$(cat "$LINEAR_KEY_FILE")"
-    fi
+    load_linear_api_key
     callback_args=(
       "$CALLBACK_SCRIPT"
       --issue-id ROB-192
