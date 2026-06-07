@@ -1,5 +1,5 @@
 import math
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import torch
 
@@ -76,12 +76,15 @@ def build_streaming_frame_targets(
     transcripts: Sequence[Any],
     output_lengths: torch.Tensor,
     tokenizer: Any,
-    subsampling_factor: int,
+    subsampling_factor: Optional[int],
     delay_seconds: float = 2.0,
     chunk_start_frames: Optional[torch.Tensor] = None,
+    output_length_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     silence_id: Optional[int] = None,
     ignore_id: int = IGNORE_ID,
 ) -> torch.Tensor:
+    if output_length_fn is None and subsampling_factor is None:
+        raise ValueError("build_streaming_frame_targets requires subsampling_factor or output_length_fn")
     silence_id = tokenizer.vocab_size() if silence_id is None else silence_id
     device = output_lengths.device
     batch_size = len(transcripts)
@@ -99,16 +102,28 @@ def build_streaming_frame_targets(
         chunk_start_frames = chunk_start_frames.to(device=device, dtype=torch.long)
 
     delayed_frame_offset = total_frames(delay_seconds)
+    output_position_cache: Dict[int, int] = {}
+
+    def frame_to_output_position(frame: int) -> int:
+        frame = max(0, int(frame))
+        if output_length_fn is None:
+            return frame // int(subsampling_factor)
+        if frame == 0:
+            return 0
+        if frame not in output_position_cache:
+            frame_tensor = torch.tensor([frame], dtype=torch.long, device=device)
+            output_position_cache[frame] = int(output_length_fn(frame_tensor).reshape(-1)[0].item())
+        return output_position_cache[frame]
 
     for batch_idx, text in enumerate(transcripts):
         cursor = 0
         start_frame = int(chunk_start_frames[batch_idx].item())
-        chunk_start_output = start_frame // subsampling_factor
+        chunk_start_output = frame_to_output_position(start_frame)
         out_len = int(output_lengths[batch_idx].item())
         for word in resolve_timed_words(text):
             _, end_time, surface = _word_fields(word)
             delayed_frame = total_frames(end_time) + delayed_frame_offset
-            delayed_output = delayed_frame // subsampling_factor
+            delayed_output = frame_to_output_position(delayed_frame)
 
             out_pos = max(cursor, delayed_output)
 

@@ -109,6 +109,53 @@ class StreamingDecoderOrderedChunksTest(unittest.TestCase):
         self.assertTrue(torch.equal(first_chunk_targets, torch.full((1, 4), silence_id)))
         self.assertEqual(second_chunk_targets.tolist(), [[silence_id, 5, silence_id, silence_id]])
 
+    def test_real_subsampling_mapping_moves_boundary_delay_to_next_chunk(self):
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        tokenizer = ToyTokenizer()
+        transcript = [[{"start": 0.07, "end": 0.08, "text": "cross"}]]
+        silence_id = tokenizer.vocab_size()
+        chunk_size = 16
+        delay_seconds = 0.08
+        first_len = positive_output_length(model, chunk_size)
+        history_output_len = positive_output_length(model, chunk_size)
+        second_len = positive_output_length(model, chunk_size * 2) - history_output_len
+
+        floor_division_targets = build_streaming_frame_targets(
+            transcripts=transcript,
+            output_lengths=torch.tensor([first_len]),
+            tokenizer=tokenizer,
+            subsampling_factor=model.subsampling_factor,
+            delay_seconds=delay_seconds,
+            chunk_start_frames=torch.tensor([0]),
+            silence_id=silence_id,
+        )
+        first_chunk_targets = build_streaming_frame_targets(
+            transcripts=transcript,
+            output_lengths=torch.tensor([first_len]),
+            tokenizer=tokenizer,
+            subsampling_factor=model.subsampling_factor,
+            output_length_fn=model.output_lengths,
+            delay_seconds=delay_seconds,
+            chunk_start_frames=torch.tensor([0]),
+            silence_id=silence_id,
+        )
+        second_chunk_targets = build_streaming_frame_targets(
+            transcripts=transcript,
+            output_lengths=torch.tensor([second_len]),
+            tokenizer=tokenizer,
+            subsampling_factor=model.subsampling_factor,
+            output_length_fn=model.output_lengths,
+            delay_seconds=delay_seconds,
+            chunk_start_frames=torch.tensor([chunk_size]),
+            silence_id=silence_id,
+        )
+        expected_second_pos = positive_output_length(model, chunk_size) - history_output_len
+
+        self.assertEqual(floor_division_targets[0, first_len - 1].item(), 5)
+        self.assertTrue(torch.equal(first_chunk_targets, torch.full((1, first_len), silence_id)))
+        self.assertEqual(expected_second_pos, 0)
+        self.assertEqual(second_chunk_targets[0, expected_second_pos].item(), 5)
+
     def test_continuous_delayed_timeline_spills_tokens_across_chunks(self):
         tokenizer = ToyTokenizer()
         transcript = [[{"start": 0.02, "end": 0.04, "text": "pair"}]]
@@ -135,6 +182,46 @@ class StreamingDecoderOrderedChunksTest(unittest.TestCase):
 
         self.assertEqual(first_chunk_targets.tolist(), [[silence_id, silence_id, silence_id, 6]])
         self.assertEqual(second_chunk_targets.tolist(), [[7, silence_id, silence_id, silence_id]])
+
+    def test_real_subsampling_mapping_places_final_word_in_flush_region(self):
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        tokenizer = ToyTokenizer()
+        transcript = [[{"start": 0.15, "end": 0.16, "text": "cross"}]]
+        silence_id = tokenizer.vocab_size()
+        chunk_start = 16
+        current_raw_frames = 8
+        final_flush_frames = 8
+        delay_seconds = 0.08
+        history_output_len = positive_output_length(model, chunk_start)
+        raw_output_len = positive_output_length(model, chunk_start + current_raw_frames) - history_output_len
+        flush_output_len = (
+            positive_output_length(model, chunk_start + current_raw_frames + final_flush_frames) - history_output_len
+        )
+
+        raw_targets = build_streaming_frame_targets(
+            transcripts=transcript,
+            output_lengths=torch.tensor([raw_output_len]),
+            tokenizer=tokenizer,
+            subsampling_factor=model.subsampling_factor,
+            output_length_fn=model.output_lengths,
+            delay_seconds=delay_seconds,
+            chunk_start_frames=torch.tensor([chunk_start]),
+            silence_id=silence_id,
+        )
+        flush_targets = build_streaming_frame_targets(
+            transcripts=transcript,
+            output_lengths=torch.tensor([flush_output_len]),
+            tokenizer=tokenizer,
+            subsampling_factor=model.subsampling_factor,
+            output_length_fn=model.output_lengths,
+            delay_seconds=delay_seconds,
+            chunk_start_frames=torch.tensor([chunk_start]),
+            silence_id=silence_id,
+        )
+
+        self.assertTrue(torch.equal(raw_targets, torch.full((1, raw_output_len), silence_id)))
+        self.assertGreater(flush_output_len, raw_output_len)
+        self.assertEqual(flush_targets[0, raw_output_len].item(), 5)
 
     def test_cache_selection_keeps_active_recording_slots(self):
         cache = torch.tensor([0.0, 2.0, 4.0]).view(3, 1, 1, 1, 1)

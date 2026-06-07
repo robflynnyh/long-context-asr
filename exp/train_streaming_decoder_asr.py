@@ -469,6 +469,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                     output_lengths=output_lengths.cpu(),
                     tokenizer=dataloader.tokenizer,
                     subsampling_factor=model.subsampling_factor,
+                    output_length_fn=model.output_lengths,
                     delay_seconds=delay_seconds,
                     chunk_start_frames=chunk_starts,
                     silence_id=model.get_silence_id(),

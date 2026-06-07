@@ -4,12 +4,19 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${ROB209_REPO_DIR:-/users/acp21rjf/long-context-asr}"
 REMOTE_BRANCH="${ROB209_REMOTE_BRANCH:-symphony/ROB-209-ordered-floras-bounded-history}"
-TARGET_COMMIT="${ROB209_TARGET_COMMIT:?ROB209_TARGET_COMMIT must pin the code revision}"
+TARGET_COMMIT="${ROB209_TARGET_COMMIT:-}"
+if [[ -z "$TARGET_COMMIT" ]]; then
+  TARGET_COMMIT="$(git -C "$REPO_DIR" ls-remote origin "refs/heads/${REMOTE_BRANCH}" 2>/dev/null | awk '{print $1}' || true)"
+fi
+if [[ -z "$TARGET_COMMIT" ]]; then
+  TARGET_COMMIT="$(git -C "$REPO_DIR" rev-parse HEAD)"
+fi
 RUN_ID="${ROB209_RUN_ID:-rob209-ordered-floras-bounded-history-$(date -u +%Y%m%dT%H%M%SZ)}"
 ARTIFACT_ROOT="${ROB209_ARTIFACT_ROOT:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-209}"
 RUN_DIR="${ROB209_RUN_DIR:-$ARTIFACT_ROOT/$RUN_ID}"
-OUT_LOG="${ROB209_OUT_LOG:-$ARTIFACT_ROOT/rob209-ordered-floras-${SLURM_JOB_ID:-manual}.out}"
-ERR_LOG="${ROB209_ERR_LOG:-$ARTIFACT_ROOT/rob209-ordered-floras-${SLURM_JOB_ID:-manual}.err}"
+LOG_PREFIX="${ROB209_LOG_PREFIX:-${SLURM_JOB_NAME:-rob209-ordered-floras}}"
+OUT_LOG="${ROB209_OUT_LOG:-$ARTIFACT_ROOT/${LOG_PREFIX}-${SLURM_JOB_ID:-manual}.out}"
+ERR_LOG="${ROB209_ERR_LOG:-$ARTIFACT_ROOT/${LOG_PREFIX}-${SLURM_JOB_ID:-manual}.err}"
 SUMMARY_FILE="${ROB209_SUMMARY_FILE:-$RUN_DIR/${RUN_ID}.summary.txt}"
 PREP_SUMMARY="${ROB209_PREP_SUMMARY:-$RUN_DIR/${RUN_ID}.prep.txt}"
 EXECUTED_SCRIPT="${ROB209_EXECUTED_SCRIPT:-$RUN_DIR/$(basename "$0")}"

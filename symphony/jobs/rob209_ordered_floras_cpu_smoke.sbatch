@@ -8,6 +8,9 @@
 
 set -Eeuo pipefail
 
+export ROB209_REPO_DIR="${ROB209_REPO_DIR:-/users/acp21rjf/long-context-asr}"
+export ROB209_REMOTE_BRANCH="${ROB209_REMOTE_BRANCH:-symphony/ROB-209-ordered-floras-bounded-history}"
+export ROB209_TARGET_COMMIT="${ROB209_TARGET_COMMIT:-$(git -C "$ROB209_REPO_DIR" ls-remote origin "refs/heads/${ROB209_REMOTE_BRANCH}" | awk '{print $1}')}"
 export ROB209_RUN_ID="${ROB209_RUN_ID:-rob209-ordered-floras-cpu-smoke-$(date -u +%Y%m%dT%H%M%SZ)}"
 export ROB209_SOURCE_PAIRS="${ROB209_SOURCE_PAIRS:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/manifests/floras50_safe_norm_drop_oov_short2.json}"
 export ROB209_CHECKPOINT_DIR="${ROB209_CHECKPOINT_DIR:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-209/checkpoints/${ROB209_RUN_ID}}"
@@ -21,4 +24,4 @@ export ROB209_DEBUG_GENERATE_EVERY_RECORDS="${ROB209_DEBUG_GENERATE_EVERY_RECORD
 export ROB209_VALIDATE_PATH_LIMIT="${ROB209_VALIDATE_PATH_LIMIT:-2}"
 export ROB209_CALLBACK_DRY_RUN="${ROB209_CALLBACK_DRY_RUN:-1}"
 
-bash "${ROB209_REPO_DIR:-/users/acp21rjf/long-context-asr}/symphony/scripts/run_rob209_ordered_floras_stanage.sh"
+bash "$ROB209_REPO_DIR/symphony/scripts/run_rob209_ordered_floras_stanage.sh"
