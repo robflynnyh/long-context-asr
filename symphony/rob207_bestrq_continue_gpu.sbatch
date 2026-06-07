@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=rob207-bestrq-4epoch
+#SBATCH --job-name=rob207-bestrq-fixmask
 #SBATCH --partition=gpu-h100
 #SBATCH --gres=gpu:1
 #SBATCH --qos=gpu
@@ -15,8 +15,8 @@ REPO_DIR="${REPO_DIR:-/mnt/parscratch/users/acp21rjf/symphony-workspaces-long-co
 ARTIFACT_DIR="${ARTIFACT_DIR:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-207}"
 CONFIG_PATH="${ROB207_CONFIG:-exp/configs/ssl/bestrq_6l_2048_spotify_rob207_resume4epoch.yaml}"
 SOURCE_CHECKPOINT="${ROB207_SOURCE_CHECKPOINT:-/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/rob100_papermask_p012_l4_sc_off_20260520/step_105360.pt}"
-CHECKPOINT_DIR="${ROB207_CHECKPOINT_DIR:-/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/rob207_papermask_p012_l4_sc_off_resume4epoch_lr3e4_20260605}"
-WANDB_NAME="rob207_bestrq_6l_2048_papermask_resume4epoch_lr3e4_20260605"
+CHECKPOINT_DIR="${ROB207_CHECKPOINT_DIR:-/mnt/parscratch/users/acp21rjf/spotify/bestrq_ssl/rob207_papermask_p012_l4_sc_off_resume4epoch_lr3e4_peritemmask_20260607}"
+WANDB_NAME="rob207_bestrq_6l_2048_papermask_resume4epoch_lr3e4_peritemmask_20260607"
 TRAIN_LOG="${ARTIFACT_DIR}/train-${SLURM_JOB_ID:-manual}.log"
 SUMMARY_FILE="${ARTIFACT_DIR}/summary-${SLURM_JOB_ID:-manual}.txt"
 STDOUT_LOG="${ARTIFACT_DIR}/gpu-${SLURM_JOB_ID:-manual}.out"
@@ -34,7 +34,7 @@ fi
 
 write_summary() {
   {
-    echo "ROB-207 BEST-RQ four-epoch continuation"
+    echo "ROB-207 BEST-RQ four-epoch continuation with per-sample mask selection"
     echo "Slurm job: ${SLURM_JOB_ID:-manual}"
     echo "Exit code: $1"
     echo "Repo: $REPO_DIR"
@@ -44,6 +44,7 @@ write_summary() {
     echo "Checkpoint dir: $CHECKPOINT_DIR"
     echo "Checkpoint cadence: save_every_n_epochs=1"
     echo "Learning rate: 3e-4"
+    echo "Mask sampling: SpeechBrain-style blocks sampled independently per batch item from each valid stacked length"
     echo "W&B run name: $WANDB_NAME"
     echo "Train log: $TRAIN_LOG"
     echo
@@ -69,13 +70,14 @@ on_exit() {
     --checkpoint-path "$CHECKPOINT_DIR"
     --artifact-path "$ARTIFACT_DIR"
     --summary-file "$SUMMARY_FILE"
-    --title "ROB-207 BEST-RQ continuation finished"
+    --title "ROB-207 BEST-RQ corrected-mask continuation finished"
     --job-label "Stanage GPU job"
     --metadata "branch=symphony/ROB-207-more-bestrq-training"
     --metadata "config=$CONFIG_PATH"
     --metadata "source_checkpoint=$SOURCE_CHECKPOINT"
     --metadata "learning_rate=3e-4"
     --metadata "checkpoint_cadence=1 per epoch"
+    --metadata "mask_sampling=per-sample valid stacked length"
   )
   if [[ "${ROB207_CALLBACK_DRY_RUN:-0}" == "1" ]]; then
     callback_args+=(--dry-run)

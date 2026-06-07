@@ -1,5 +1,5 @@
 model_class: 'SCConformerXL'
-description: "ROB-207 BEST-RQ continuation CPU smoke: load the ROB-100 checkpoint and run one small update."
+description: "ROB-207 BEST-RQ continuation CPU smoke: load the ROB-100 checkpoint and run one small update with per-sample SpeechBrain masking."
 
 model:
   feat_in: 80
@@ -53,13 +53,13 @@ audio_chunking:
 wandb:
   use: false
   project_name: "spotify_long_context_ssl"
-  name: "rob207_bestrq_resume_smoke"
+  name: "rob207_bestrq_resume_peritemmask_smoke"
   id: ""
   dir: '/mnt/parscratch/users/acp21rjf/wandb_log/'
   watch_model: false
 
 checkpointing:
-  dir: '/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-207/smoke-checkpoints'
+  dir: '/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-207/smoke-checkpoints-peritemmask-20260607'
   save_every_n_epochs: 1
 
 data:
