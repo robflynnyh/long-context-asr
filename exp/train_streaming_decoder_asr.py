@@ -9,6 +9,7 @@ from typing import Any, Iterable, List, Optional, Tuple, Union
 
 import lcasr
 import torch
+import torch.nn.functional as F
 import wandb
 from contextlib import nullcontext
 from omegaconf import OmegaConf
@@ -29,6 +30,7 @@ from lcasr.utils.streaming_targets import (
     build_streaming_frame_targets,
     filter_words_by_end_frame,
     pad_audio_for_streaming_delay,
+    streaming_padding_frames,
 )
 
 
@@ -168,6 +170,23 @@ def build_chunk_with_subsampling_history(
     segment_lengths = torch.clamp(active_lengths - history_start, min=0, max=segment.size(-1))
     current_lengths = torch.clamp(active_lengths - int(chunk_start), min=0, max=int(chunk_size))
     return segment, segment_lengths, current_lengths, history_len
+
+
+def add_final_flush_padding(
+    chunk: torch.Tensor,
+    chunk_lengths: torch.Tensor,
+    final_chunks: torch.Tensor,
+    flush_frames: int,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    flush_frames = int(flush_frames)
+    if flush_frames <= 0:
+        return chunk, chunk_lengths
+    final_chunks = final_chunks.to(device=chunk_lengths.device, dtype=torch.bool)
+    if not bool(final_chunks.any().item()):
+        return chunk, chunk_lengths
+    chunk = F.pad(chunk, (0, flush_frames), value=0.0)
+    chunk_lengths = chunk_lengths + final_chunks.to(dtype=chunk_lengths.dtype) * flush_frames
+    return chunk, chunk_lengths
 
 
 def select_kv_caches_for_active(
@@ -330,6 +349,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     backprop_every = args.config["training"].get("backprop_every", 1)
     delay_seconds = args.config["streaming"].get("delay_seconds", 2.0)
     buffer_seconds = args.config["streaming"].get("buffer_seconds", 0.25)
+    final_flush_frames = streaming_padding_frames(delay_seconds, buffer_seconds)
     chunk_size = args.config["audio_chunking"]["size"]
     chunk_overlap = args.config["audio_chunking"].get("overlap", 0)
     shuffle_chunks = bool(args.config["training"].get("shuffle_chunks", True))
@@ -368,7 +388,8 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
         print(
             "Ordered chunk training: enabled "
             f"(subsampling_history_frames={subsampling_history_frames}, "
-            f"decoder_history_frames={decoder_history_frames}, detach_cache={detach_decoder_cache})"
+            f"decoder_history_frames={decoder_history_frames}, detach_cache={detach_decoder_cache}, "
+            f"final_flush_frames={final_flush_frames})"
         )
     else:
         print("Ordered chunk training: disabled")
@@ -401,11 +422,14 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                     continue
                 processed_chunk = True
                 active_indices = active.nonzero(as_tuple=False).flatten()
-                chunk_transcripts = [
-                    filter_words_by_end_frame(transcripts[i], chunk_start, chunk_start + chunk_size)
-                    for i, keep in enumerate(active.tolist())
-                    if keep
-                ]
+                if ordered_history_enabled:
+                    chunk_transcripts = [transcripts[i] for i, keep in enumerate(active.tolist()) if keep]
+                else:
+                    chunk_transcripts = [
+                        filter_words_by_end_frame(transcripts[i], chunk_start, chunk_start + chunk_size)
+                        for i, keep in enumerate(active.tolist())
+                        if keep
+                    ]
                 chunk_starts = torch.full((active.sum().item(),), chunk_start, dtype=torch.long)
                 if ordered_history_enabled:
                     chunk, chunk_lengths, current_raw_lengths, history_frames = build_chunk_with_subsampling_history(
@@ -417,11 +441,12 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                         history_frames=subsampling_history_frames,
                     )
                     raw_chunk_lengths = chunk_lengths.clone()
-                    chunk, chunk_lengths = pad_audio_for_streaming_delay(
+                    final_chunks = audio_lengths[active] <= chunk_start + chunk_size
+                    chunk, chunk_lengths = add_final_flush_padding(
                         chunk,
                         chunk_lengths,
-                        delay_seconds=delay_seconds,
-                        buffer_seconds=buffer_seconds,
+                        final_chunks=final_chunks,
+                        flush_frames=final_flush_frames,
                     )
                     history_output_len = positive_output_length(model, history_frames)
                     output_lengths = torch.clamp(model.output_lengths(chunk_lengths) - history_output_len, min=0)

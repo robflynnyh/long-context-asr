@@ -5,6 +5,8 @@ import os
 
 from omegaconf import OmegaConf
 
+from lcasr.utils.streaming_targets import streaming_padding_frames
+
 
 ROB123_PRETRAINED_CHECKPOINT = (
     "/mnt/parscratch/users/acp21rjf/spotify/"
@@ -119,6 +121,7 @@ def main():
 
     durations = [float(record.get("duration", 0.0)) for record in pairs.values()]
     total_hours = sum(durations) / 3600.0
+    final_flush_frames = streaming_padding_frames(config.streaming.delay_seconds, config.streaming.buffer_seconds)
     lines = [
         f"records={len(pairs)}",
         f"total_duration_hours={total_hours:.2f}",
@@ -144,6 +147,7 @@ def main():
         f"rotary_interpolation_factor={config.model.rotary_interpolation_factor}",
         f"delay_seconds={config.streaming.delay_seconds}",
         f"buffer_seconds={config.streaming.buffer_seconds}",
+        f"final_flush_frames={final_flush_frames}",
         f"debug_generate_every_records={args.debug_generate_every_records}",
         f"debug_generate_max_frames={args.debug_generate_max_frames}",
     ]

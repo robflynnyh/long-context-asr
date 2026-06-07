@@ -103,24 +103,24 @@ def build_streaming_frame_targets(
     for batch_idx, text in enumerate(transcripts):
         cursor = 0
         start_frame = int(chunk_start_frames[batch_idx].item())
+        chunk_start_output = start_frame // subsampling_factor
         out_len = int(output_lengths[batch_idx].item())
         for word in resolve_timed_words(text):
             _, end_time, surface = _word_fields(word)
-            delayed_frame = total_frames(end_time) + delayed_frame_offset - start_frame
-            if delayed_frame < 0:
-                continue
+            delayed_frame = total_frames(end_time) + delayed_frame_offset
+            delayed_output = delayed_frame // subsampling_factor
 
-            out_pos = max(cursor, delayed_frame // subsampling_factor)
-            if out_pos >= out_len:
-                continue
+            out_pos = max(cursor, delayed_output)
 
             token_ids = tokenizer.encode(surface)
-            for token_id in token_ids:
-                if out_pos >= out_len:
+            for token_offset, token_id in enumerate(token_ids):
+                local_pos = out_pos + token_offset - chunk_start_output
+                if local_pos < 0:
+                    continue
+                if local_pos >= out_len:
                     break
-                targets[batch_idx, out_pos] = int(token_id)
-                out_pos += 1
-            cursor = max(cursor, out_pos)
+                targets[batch_idx, local_pos] = int(token_id)
+            cursor = max(cursor, out_pos + len(token_ids))
 
     padding_mask = torch.arange(max_output_length, device=device).expand(batch_size, -1)
     targets = targets.masked_fill(padding_mask >= output_lengths.unsqueeze(1), ignore_id)

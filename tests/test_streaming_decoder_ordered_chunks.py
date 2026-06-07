@@ -5,6 +5,7 @@ from unittest import mock
 import torch
 
 from exp.train_streaming_decoder_asr import (
+    add_final_flush_padding,
     build_chunk_with_subsampling_history,
     chunk_starts_for_batch,
     final_targets_for_lengths,
@@ -12,7 +13,19 @@ from exp.train_streaming_decoder_asr import (
     select_kv_caches_for_active,
 )
 from lcasr.models.streaming_decoder_asr import StreamingDecoderASR
+from lcasr.utils.streaming_targets import build_streaming_frame_targets
 from tests.test_streaming_decoder_asr_rope import tiny_streaming_config
+
+
+class ToyTokenizer:
+    def __init__(self):
+        self.tokens = {"cross": [5], "pair": [6, 7]}
+
+    def vocab_size(self):
+        return 16
+
+    def encode(self, surface):
+        return self.tokens[surface]
 
 
 class StreamingDecoderOrderedChunksTest(unittest.TestCase):
@@ -52,6 +65,76 @@ class StreamingDecoderOrderedChunksTest(unittest.TestCase):
         self.assertEqual(current_lengths.tolist(), [8, 5])
         torch.testing.assert_close(segment[0, 0, :8], audio[0, 0, :8])
         torch.testing.assert_close(segment[0, 0, 8:], audio[0, 0, 8:16])
+
+    def test_final_flush_padding_only_extends_final_chunk_lengths(self):
+        chunk = torch.ones(2, 1, 8)
+        lengths = torch.tensor([8, 5])
+
+        padded, padded_lengths = add_final_flush_padding(
+            chunk=chunk,
+            chunk_lengths=lengths,
+            final_chunks=torch.tensor([False, True]),
+            flush_frames=4,
+        )
+
+        self.assertEqual(padded.shape, (2, 1, 12))
+        self.assertEqual(padded_lengths.tolist(), [8, 9])
+        torch.testing.assert_close(padded[:, :, :8], chunk)
+        torch.testing.assert_close(padded[:, :, 8:], torch.zeros(2, 1, 4))
+
+    def test_delayed_boundary_crossing_target_is_owned_by_next_chunk(self):
+        tokenizer = ToyTokenizer()
+        transcript = [[{"start": 0.10, "end": 0.12, "text": "cross"}]]
+        silence_id = tokenizer.vocab_size()
+
+        first_chunk_targets = build_streaming_frame_targets(
+            transcripts=transcript,
+            output_lengths=torch.tensor([4]),
+            tokenizer=tokenizer,
+            subsampling_factor=4,
+            delay_seconds=0.08,
+            chunk_start_frames=torch.tensor([0]),
+            silence_id=silence_id,
+        )
+        second_chunk_targets = build_streaming_frame_targets(
+            transcripts=transcript,
+            output_lengths=torch.tensor([4]),
+            tokenizer=tokenizer,
+            subsampling_factor=4,
+            delay_seconds=0.08,
+            chunk_start_frames=torch.tensor([16]),
+            silence_id=silence_id,
+        )
+
+        self.assertTrue(torch.equal(first_chunk_targets, torch.full((1, 4), silence_id)))
+        self.assertEqual(second_chunk_targets.tolist(), [[silence_id, 5, silence_id, silence_id]])
+
+    def test_continuous_delayed_timeline_spills_tokens_across_chunks(self):
+        tokenizer = ToyTokenizer()
+        transcript = [[{"start": 0.02, "end": 0.04, "text": "pair"}]]
+        silence_id = tokenizer.vocab_size()
+
+        first_chunk_targets = build_streaming_frame_targets(
+            transcripts=transcript,
+            output_lengths=torch.tensor([4]),
+            tokenizer=tokenizer,
+            subsampling_factor=4,
+            delay_seconds=0.08,
+            chunk_start_frames=torch.tensor([0]),
+            silence_id=silence_id,
+        )
+        second_chunk_targets = build_streaming_frame_targets(
+            transcripts=transcript,
+            output_lengths=torch.tensor([4]),
+            tokenizer=tokenizer,
+            subsampling_factor=4,
+            delay_seconds=0.08,
+            chunk_start_frames=torch.tensor([16]),
+            silence_id=silence_id,
+        )
+
+        self.assertEqual(first_chunk_targets.tolist(), [[silence_id, silence_id, silence_id, 6]])
+        self.assertEqual(second_chunk_targets.tolist(), [[7, silence_id, silence_id, silence_id]])
 
     def test_cache_selection_keeps_active_recording_slots(self):
         cache = torch.tensor([0.0, 2.0, 4.0]).view(3, 1, 1, 1, 1)
@@ -182,6 +265,42 @@ class StreamingDecoderOrderedChunksTest(unittest.TestCase):
 
         input_lengths = [call.args[0].size(1) for call in subsampling.call_args_list]
         self.assertEqual(input_lengths, [16, 32, 32])
+
+    def test_chunked_decode_adds_flush_only_to_final_chunk(self):
+        torch.manual_seed(0)
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        model.eval()
+        audio = torch.randn(1, 8, 32)
+        lengths = torch.tensor([32])
+
+        with mock.patch.object(model.subsampling, "forward", wraps=model.subsampling.forward) as subsampling:
+            no_flush = model.greedy_decode(
+                audio_signal=audio,
+                length=lengths,
+                use_kv_cache=True,
+                chunked_kv_cache=True,
+                kv_cache_chunk_spectrogram_length=16,
+                subsampling_history_spectrogram_length=16,
+                decoder_history_spectrogram_length=16,
+            )
+        no_flush_input_lengths = [call.args[0].size(1) for call in subsampling.call_args_list]
+
+        with mock.patch.object(model.subsampling, "forward", wraps=model.subsampling.forward) as subsampling:
+            with_flush = model.greedy_decode(
+                audio_signal=audio,
+                length=lengths,
+                use_kv_cache=True,
+                chunked_kv_cache=True,
+                kv_cache_chunk_spectrogram_length=16,
+                subsampling_history_spectrogram_length=16,
+                decoder_history_spectrogram_length=16,
+                final_flush_spectrogram_length=8,
+            )
+        flush_input_lengths = [call.args[0].size(1) for call in subsampling.call_args_list]
+
+        self.assertEqual(no_flush_input_lengths, [16, 32])
+        self.assertEqual(flush_input_lengths, [16, 40])
+        self.assertGreater(int(with_flush["length"][0].item()), int(no_flush["length"][0].item()))
 
     def test_chunked_decode_matches_cached_decode_when_audio_fits_one_chunk(self):
         torch.manual_seed(0)
