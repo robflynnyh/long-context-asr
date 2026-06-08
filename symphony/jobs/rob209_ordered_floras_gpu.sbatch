@@ -37,6 +37,7 @@ export ROB209_RUN_ID="${ROB209_RUN_ID:-rob209-ordered-floras-bounded-history-$(d
 export ROB209_CHECKPOINT_DIR="${ROB209_CHECKPOINT_DIR:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-209/checkpoints/${ROB209_RUN_ID}}"
 export ROB209_WANDB_NAME="${ROB209_WANDB_NAME:-rob209_ordered_floras_bounded_history}"
 export ROB209_BATCH_SIZE="${ROB209_BATCH_SIZE:-88}"
+export ROB209_SUBGROUP_SHUFFLE_SIZE="${ROB209_SUBGROUP_SHUFFLE_SIZE:-0}"
 export ROB209_MAX_EPOCHS="${ROB209_MAX_EPOCHS:-12}"
 export ROB209_LEARNING_RATE="${ROB209_LEARNING_RATE:-5e-5}"
 export ROB209_SAVE_EVERY_N_STEPS="${ROB209_SAVE_EVERY_N_STEPS:-2000}"

@@ -56,6 +56,7 @@ def main():
     parser.add_argument("--wandb-dir", required=True)
     parser.add_argument("--wandb-name", default="rob209_ordered_floras_bounded_history")
     parser.add_argument("--batch-size", type=int, default=88)
+    parser.add_argument("--subgroup-shuffle-size", type=int, default=0)
     parser.add_argument("--max-epochs", type=int, default=12)
     parser.add_argument("--learning-rate", type=float, default=5e-5)
     parser.add_argument("--save-every-n-steps", type=int, default=2000)
@@ -89,6 +90,8 @@ def main():
     config.audio_chunking.size = args.chunk_size
     config.audio_chunking.overlap = 0
     config.training.batch_size = args.batch_size
+    subgroup_shuffle_size = args.subgroup_shuffle_size if args.subgroup_shuffle_size > 0 else args.batch_size
+    config.training.subgroup_shuffle_size = int(subgroup_shuffle_size)
     config.training.max_epochs = args.max_epochs
     config.training.shuffle_chunks = False
     config.training.random_seed = args.random_seed if args.random_seed == "random" else int(args.random_seed)
@@ -133,6 +136,7 @@ def main():
         f"wandb_dir={args.wandb_dir}",
         f"wandb_name={args.wandb_name}",
         f"batch_size={config.training.batch_size}",
+        f"subgroup_shuffle_size={config.training.subgroup_shuffle_size}",
         f"max_epochs={config.training.max_epochs}",
         f"learning_rate={config.optimizer.args.lr}",
         f"save_every_n_steps={config.checkpointing.save_every_n_steps}",

@@ -14,8 +14,13 @@ from exp.train_streaming_decoder_asr import (
     select_kv_caches_for_active,
     train,
 )
+from lcasr.utils.dataloading import SimpleDataset
 from lcasr.models.streaming_decoder_asr import StreamingDecoderASR
-from lcasr.utils.streaming_targets import build_streaming_frame_targets
+from lcasr.utils.streaming_targets import (
+    build_streaming_frame_targets,
+    build_streaming_frame_targets_from_events,
+    build_streaming_target_events,
+)
 from tests.test_streaming_decoder_asr_rope import tiny_streaming_config
 
 
@@ -204,6 +209,62 @@ class StreamingDecoderOrderedChunksTest(unittest.TestCase):
         self.assertEqual(first_chunk_targets.tolist(), [[silence_id, silence_id, silence_id, 6]])
         self.assertEqual(second_chunk_targets.tolist(), [[7, silence_id, silence_id, silence_id]])
 
+    def test_precomputed_target_events_match_delayed_timeline_chunks(self):
+        tokenizer = ToyTokenizer()
+        transcript = [[{"start": 0.02, "end": 0.04, "text": "pair"}]]
+        silence_id = tokenizer.vocab_size()
+        events = [
+            build_streaming_target_events(
+                transcript[0],
+                tokenizer=tokenizer,
+                subsampling_factor=4,
+                delay_seconds=0.08,
+            )
+        ]
+
+        first_expected = build_streaming_frame_targets(
+            transcripts=transcript,
+            output_lengths=torch.tensor([4]),
+            tokenizer=tokenizer,
+            subsampling_factor=4,
+            delay_seconds=0.08,
+            chunk_start_frames=torch.tensor([0]),
+            silence_id=silence_id,
+        )
+        second_expected = build_streaming_frame_targets(
+            transcripts=transcript,
+            output_lengths=torch.tensor([4]),
+            tokenizer=tokenizer,
+            subsampling_factor=4,
+            delay_seconds=0.08,
+            chunk_start_frames=torch.tensor([16]),
+            silence_id=silence_id,
+        )
+
+        first_targets, offsets = build_streaming_frame_targets_from_events(
+            event_sequences=events,
+            output_lengths=torch.tensor([4]),
+            chunk_start_frames=torch.tensor([0]),
+            tokenizer=tokenizer,
+            subsampling_factor=4,
+            delay_seconds=0.08,
+            silence_id=silence_id,
+            return_event_offsets=True,
+        )
+        second_targets = build_streaming_frame_targets_from_events(
+            event_sequences=events,
+            output_lengths=torch.tensor([4]),
+            chunk_start_frames=torch.tensor([16]),
+            tokenizer=tokenizer,
+            subsampling_factor=4,
+            delay_seconds=0.08,
+            silence_id=silence_id,
+            event_offsets=offsets,
+        )
+
+        torch.testing.assert_close(first_targets, first_expected)
+        torch.testing.assert_close(second_targets, second_expected)
+
     def test_real_subsampling_mapping_places_final_word_in_flush_region(self):
         model = StreamingDecoderASR(**tiny_streaming_config())
         tokenizer = ToyTokenizer()
@@ -243,6 +304,24 @@ class StreamingDecoderOrderedChunksTest(unittest.TestCase):
         self.assertTrue(torch.equal(raw_targets, torch.full((1, raw_output_len), silence_id)))
         self.assertGreater(flush_output_len, raw_output_len)
         self.assertEqual(flush_targets[0, raw_output_len].item(), 5)
+
+    def test_subgroup_shuffle_size_equal_batch_size_keeps_duration_tight_batches(self):
+        pairs = {
+            f"sample-{idx}": {"duration": duration, "audio": "unused.pt", "txt": "unused.json"}
+            for idx, duration in enumerate([1.0, 2.0, 100.0, 101.0, 200.0, 201.0])
+        }
+
+        dataset = SimpleDataset(
+            pairs,
+            batch_size=2,
+            subgroup_shuffle_size=2,
+            random_seed=3,
+        )
+
+        durations = [float(value) for value in dataset.pairs["duration"].tolist()]
+        for start in range(0, len(durations), 2):
+            batch_durations = durations[start : start + 2]
+            self.assertLessEqual(max(batch_durations) - min(batch_durations), 1.0)
 
     def test_cache_selection_keeps_active_recording_slots(self):
         cache = torch.tensor([0.0, 2.0, 4.0]).view(3, 1, 1, 1, 1)

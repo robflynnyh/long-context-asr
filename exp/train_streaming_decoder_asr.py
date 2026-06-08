@@ -28,6 +28,8 @@ from lcasr.utils.general import (
 )
 from lcasr.utils.streaming_targets import (
     build_streaming_frame_targets,
+    build_streaming_frame_targets_from_events,
+    build_streaming_target_events,
     filter_words_by_end_frame,
     pad_audio_for_streaming_delay,
     streaming_padding_frames,
@@ -93,6 +95,12 @@ def make_dataloader(config, tokenizer, args, seen_ids):
     max_records = config["data"].get("max_records", None)
     if max_records is not None:
         paired_data = dict(list(paired_data.items())[: int(max_records)])
+    subgroup_shuffle_size = int(
+        config["training"].get(
+            "subgroup_shuffle_size",
+            config["data"].get("subgroup_shuffle_size", 2000),
+        )
+    )
 
     return VariableBatchSimpleDataloader(
         pairs=paired_data,
@@ -103,6 +111,7 @@ def make_dataloader(config, tokenizer, args, seen_ids):
         num_workers=args.num_workers,
         pin_memory=args.pin_memory,
         prefetch=args.prefetch_factor,
+        subgroup_shuffle_size=subgroup_shuffle_size,
         seen_ids=seen_ids,
         random_seed=config["training"].get("random_seed", 1234),
     )
@@ -397,6 +406,9 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
         print(f"Checkpoint save interval: {checkpoint_every_records} recordings")
     else:
         print("Checkpoint save interval: disabled")
+    subgroup_shuffle_size = args.config["training"].get("subgroup_shuffle_size", None)
+    if subgroup_shuffle_size is not None:
+        print(f"Duration subgroup shuffle size: {int(subgroup_shuffle_size)}")
 
     for cur_epoch in range(epoch, max_epochs):
         pbar = tqdm(dataloader, desc=f"Streaming decoder training - Epoch {cur_epoch}")
@@ -416,6 +428,20 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
             decoder_caches = None
             decoder_cache_indices = None
             previous_frame_targets = torch.full((audio.size(0),), model.get_silence_id(), dtype=torch.long)
+            target_events = None
+            target_event_offsets = None
+            if ordered_history_enabled:
+                target_events = [
+                    build_streaming_target_events(
+                        transcript,
+                        tokenizer=dataloader.tokenizer,
+                        subsampling_factor=model.subsampling_factor,
+                        output_length_fn=model.output_lengths,
+                        delay_seconds=delay_seconds,
+                    )
+                    for transcript in transcripts
+                ]
+                target_event_offsets = [0] * len(target_events)
             for chunk_start in batch_chunk_starts:
                 active = audio_lengths > chunk_start
                 if active.sum().item() == 0:
@@ -464,16 +490,34 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                     raw_output_lengths = output_lengths
                     history_output_len = 0
 
-                frame_targets = build_streaming_frame_targets(
-                    transcripts=chunk_transcripts,
-                    output_lengths=output_lengths.cpu(),
-                    tokenizer=dataloader.tokenizer,
-                    subsampling_factor=model.subsampling_factor,
-                    output_length_fn=model.output_lengths,
-                    delay_seconds=delay_seconds,
-                    chunk_start_frames=chunk_starts,
-                    silence_id=model.get_silence_id(),
-                ).to(device)
+                if ordered_history_enabled:
+                    active_event_offsets = [target_event_offsets[int(i)] for i in active_indices.tolist()]
+                    frame_targets, updated_event_offsets = build_streaming_frame_targets_from_events(
+                        event_sequences=[target_events[int(i)] for i in active_indices.tolist()],
+                        output_lengths=output_lengths.cpu(),
+                        chunk_start_frames=chunk_starts,
+                        tokenizer=dataloader.tokenizer,
+                        subsampling_factor=model.subsampling_factor,
+                        output_length_fn=model.output_lengths,
+                        delay_seconds=delay_seconds,
+                        silence_id=model.get_silence_id(),
+                        event_offsets=active_event_offsets,
+                        return_event_offsets=True,
+                    )
+                    for batch_idx, event_offset in zip(active_indices.tolist(), updated_event_offsets):
+                        target_event_offsets[int(batch_idx)] = int(event_offset)
+                    frame_targets = frame_targets.to(device)
+                else:
+                    frame_targets = build_streaming_frame_targets(
+                        transcripts=chunk_transcripts,
+                        output_lengths=output_lengths.cpu(),
+                        tokenizer=dataloader.tokenizer,
+                        subsampling_factor=model.subsampling_factor,
+                        output_length_fn=model.output_lengths,
+                        delay_seconds=delay_seconds,
+                        chunk_start_frames=chunk_starts,
+                        silence_id=model.get_silence_id(),
+                    ).to(device)
 
                 chunk = chunk.to(device=device, dtype=model_dtype)
                 chunk_lengths = chunk_lengths.to(device)
