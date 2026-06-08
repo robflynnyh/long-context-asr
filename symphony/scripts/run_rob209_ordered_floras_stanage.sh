@@ -49,6 +49,48 @@ RESET_STEP="${ROB209_RESET_STEP:-0}"
 SKIP_GIT_UPDATE="${ROB209_SKIP_GIT_UPDATE:-0}"
 CALLBACK_PYTHON="${ROB209_CALLBACK_PYTHON:-python3}"
 LINEAR_KEY_FILE="${ROB209_LINEAR_KEY_FILE:-$ARTIFACT_ROOT/.linear_api_key}"
+LINEAR_ENV_FILE="${ROB209_LINEAR_ENV_FILE:-}"
+
+load_linear_api_key() {
+  if [[ -n "${LINEAR_API_KEY:-}" ]]; then
+    return 0
+  fi
+  if [[ -f "$LINEAR_KEY_FILE" ]]; then
+    export LINEAR_API_KEY
+    LINEAR_API_KEY="$(cat "$LINEAR_KEY_FILE")"
+    echo "linear_key_source=${LINEAR_KEY_FILE}" >> "$SUMMARY_FILE"
+    return 0
+  fi
+
+  local env_file
+  local env_candidates=()
+  if [[ -n "$LINEAR_ENV_FILE" ]]; then
+    env_candidates+=("$LINEAR_ENV_FILE")
+  fi
+  env_candidates+=(
+    "$RUN_DIR/linear.env"
+    "$REPO_DIR/symphony/.env"
+    "$HOME/.config/long-context-asr/linear.env"
+    "$HOME/.config/sap-longcontext/linear.env"
+  )
+  for env_file in "${env_candidates[@]}"; do
+    if [[ -f "$env_file" ]]; then
+      set +u
+      set -a
+      # shellcheck disable=SC1090
+      source "$env_file"
+      set +a
+      set -u
+      if [[ -n "${LINEAR_API_KEY:-}" ]]; then
+        echo "linear_key_source=${env_file}" >> "$SUMMARY_FILE"
+        return 0
+      fi
+    fi
+  done
+
+  echo "linear_key_source=missing" >> "$SUMMARY_FILE"
+  return 1
+}
 
 if [[ "${ROB209_RUN_DIR_EXEC:-0}" != "1" ]]; then
   mkdir -p "$RUN_DIR"
@@ -76,6 +118,7 @@ mkdir -p "$RUN_DIR" "$CHECKPOINT_DIR" "$WANDB_DIR"
 
 on_exit() {
   local status=$?
+  trap - EXIT
   set +e
   {
     echo "ended_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -106,10 +149,7 @@ on_exit() {
     echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-unset}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB209_ENABLE_CALLBACK:-1}" == "1" ]]; then
-    if [[ -z "${LINEAR_API_KEY:-}" && -f "$LINEAR_KEY_FILE" ]]; then
-      export LINEAR_API_KEY
-      LINEAR_API_KEY="$(cat "$LINEAR_KEY_FILE")"
-    fi
+    load_linear_api_key || true
     callback_args=(
       "$CALLBACK_SCRIPT"
       --issue-id ROB-209
@@ -137,8 +177,13 @@ on_exit() {
       callback_args+=(--dry-run)
     fi
     "$CALLBACK_PYTHON" "${callback_args[@]}" >> "$SUMMARY_FILE" 2>&1
+    callback_status=$?
+    echo "callback_exit_code=${callback_status}" >> "$SUMMARY_FILE"
+    if [[ "$callback_status" -ne 0 ]]; then
+      echo "ROB-209 Linear callback failed with exit status ${callback_status}" >&2
+    fi
   fi
-  return "$status"
+  exit "$status"
 }
 trap on_exit EXIT
 trap 'trap - TERM INT; exit 143' TERM
@@ -159,14 +204,18 @@ if [[ "${ROB209_CALLBACK_ONLY:-0}" == "1" ]]; then
 fi
 
 cd "$REPO_DIR"
-if [[ "$SKIP_GIT_UPDATE" == "1" ]]; then
-  current_commit="$(git rev-parse HEAD)"
+current_commit="$(git rev-parse HEAD)"
+if [[ "$current_commit" == "$TARGET_COMMIT" ]]; then
+  echo "repo_update=already_at_target" >> "$SUMMARY_FILE"
+elif [[ "$SKIP_GIT_UPDATE" == "1" ]]; then
   if [[ "$current_commit" != "$TARGET_COMMIT" ]]; then
     echo "ROB209_SKIP_GIT_UPDATE=1 but repo is at $current_commit, expected $TARGET_COMMIT" >&2
     exit 2
   fi
 else
-  git fetch origin "$REMOTE_BRANCH"
+  if ! git cat-file -e "${TARGET_COMMIT}^{commit}" 2>/dev/null; then
+    git fetch origin "$REMOTE_BRANCH"
+  fi
   git checkout --detach "$TARGET_COMMIT"
 fi
 export PYTHONPATH="$PWD"

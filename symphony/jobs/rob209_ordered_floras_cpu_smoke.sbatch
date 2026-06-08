@@ -10,7 +10,26 @@ set -Eeuo pipefail
 
 export ROB209_REPO_DIR="${ROB209_REPO_DIR:-/users/acp21rjf/long-context-asr}"
 export ROB209_REMOTE_BRANCH="${ROB209_REMOTE_BRANCH:-symphony/ROB-209-ordered-floras-bounded-history}"
-export ROB209_TARGET_COMMIT="${ROB209_TARGET_COMMIT:-$(git -C "$ROB209_REPO_DIR" ls-remote origin "refs/heads/${ROB209_REMOTE_BRANCH}" | awk '{print $1}')}"
+
+resolve_rob209_target_commit() {
+  local target="${ROB209_TARGET_COMMIT:-}"
+  if [[ -z "$target" ]]; then
+    target="$(git -C "$ROB209_REPO_DIR" rev-parse "origin/${ROB209_REMOTE_BRANCH}" 2>/dev/null || true)"
+  fi
+  if [[ -z "$target" ]]; then
+    target="$(git -C "$ROB209_REPO_DIR" rev-parse HEAD 2>/dev/null || true)"
+  fi
+  if [[ -z "$target" ]]; then
+    target="$(git -C "$ROB209_REPO_DIR" ls-remote origin "refs/heads/${ROB209_REMOTE_BRANCH}" 2>/dev/null | awk '{print $1}' || true)"
+  fi
+  if [[ -z "$target" ]]; then
+    echo "Unable to resolve ROB209_TARGET_COMMIT for ${ROB209_REMOTE_BRANCH}" >&2
+    exit 2
+  fi
+  printf '%s\n' "$target"
+}
+
+export ROB209_TARGET_COMMIT="$(resolve_rob209_target_commit)"
 export ROB209_RUN_ID="${ROB209_RUN_ID:-rob209-ordered-floras-cpu-smoke-$(date -u +%Y%m%dT%H%M%SZ)}"
 export ROB209_SOURCE_PAIRS="${ROB209_SOURCE_PAIRS:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-192/manifests/floras50_safe_norm_drop_oov_short2.json}"
 export ROB209_CHECKPOINT_DIR="${ROB209_CHECKPOINT_DIR:-/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-209/checkpoints/${ROB209_RUN_ID}}"
