@@ -440,6 +440,55 @@ class StreamingDecoderOrderedChunksTest(unittest.TestCase):
         feature_lengths = [call.kwargs.get("feature_length") for call in cached_loss.call_args_list]
         self.assertIn(expected_feature_length, feature_lengths)
 
+    def test_ordered_training_logs_debug_generation_when_record_threshold_crosses(self):
+        torch.manual_seed(0)
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        tokenizer = ToyTokenizer()
+        audio = torch.randn(1, 8, 32)
+        audio_lengths = torch.tensor([32])
+        transcripts = [[{"start": 0.02, "end": 0.04, "text": "cross"}]]
+        ids = ["recording-0"]
+        dataloader = OneBatchLoader((audio, audio_lengths, transcripts, ids), tokenizer)
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.0)
+        args = SimpleNamespace(
+            config={
+                "training": {
+                    "dtype": "bfloat16",
+                    "clip_value": 0.0,
+                    "max_epochs": 1,
+                    "max_steps": 2,
+                    "backprop_every": 1,
+                    "shuffle_chunks": False,
+                    "scheduler_total_steps": 2,
+                    "ordered_chunk_training": {
+                        "enabled": True,
+                        "subsampling_history_frames": 16,
+                        "decoder_history_frames": 16,
+                        "detach_cache": True,
+                    },
+                    "debug_generation": {"enabled": True, "every_records": 1, "max_frames": 4},
+                },
+                "streaming": {"delay_seconds": 0.08, "buffer_seconds": 0.0},
+                "audio_chunking": {"size": 16, "overlap": 0},
+                "checkpointing": {"save_every_n_steps": 0, "dir": ".tmp/rob209-test-checkpoints"},
+                "wandb": {"use": False},
+            }
+        )
+
+        with mock.patch("torch.cuda.is_available", return_value=False), mock.patch(
+            "exp.train_streaming_decoder_asr.save_model"
+        ), mock.patch("exp.train_streaming_decoder_asr.maybe_log_debug_generation") as debug_generation:
+            train(args, model, dataloader, optimizer, NoopScheduler(), torch.device("cpu"))
+
+        self.assertEqual(debug_generation.call_count, 1)
+        call_kwargs = debug_generation.call_args.kwargs
+        self.assertEqual(call_kwargs["ids"], ids)
+        self.assertEqual(call_kwargs["records_seen"], 1)
+        self.assertEqual(call_kwargs["global_step"], 0)
+        self.assertEqual(tuple(call_kwargs["chunk"].shape), (1, 8, 16))
+        self.assertEqual(call_kwargs["chunk_lengths"].tolist(), [16])
+        self.assertEqual(call_kwargs["chunk_transcripts"], transcripts)
+
     def test_cached_training_path_matches_uncached_without_previous_cache(self):
         torch.manual_seed(0)
         model = StreamingDecoderASR(**tiny_streaming_config())

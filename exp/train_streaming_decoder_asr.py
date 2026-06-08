@@ -448,14 +448,11 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                     continue
                 processed_chunk = True
                 active_indices = active.nonzero(as_tuple=False).flatten()
-                if ordered_history_enabled:
-                    chunk_transcripts = [transcripts[i] for i, keep in enumerate(active.tolist()) if keep]
-                else:
-                    chunk_transcripts = [
-                        filter_words_by_end_frame(transcripts[i], chunk_start, chunk_start + chunk_size)
-                        for i, keep in enumerate(active.tolist())
-                        if keep
-                    ]
+                chunk_transcripts = [
+                    filter_words_by_end_frame(transcripts[i], chunk_start, chunk_start + chunk_size)
+                    for i, keep in enumerate(active.tolist())
+                    if keep
+                ]
                 chunk_starts = torch.full((active.sum().item(),), chunk_start, dtype=torch.long)
                 if ordered_history_enabled:
                     chunk, chunk_lengths, current_raw_lengths, history_frames = build_chunk_with_subsampling_history(
@@ -522,23 +519,32 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                 chunk = chunk.to(device=device, dtype=model_dtype)
                 chunk_lengths = chunk_lengths.to(device)
 
-                if should_log_generation and not ordered_history_enabled:
+                if should_log_generation:
+                    debug_chunk = chunk
+                    debug_chunk_lengths = chunk_lengths
+                    if ordered_history_enabled:
+                        debug_chunk = audio[active, :, chunk_start : chunk_start + chunk_size]
+                        debug_chunk_lengths = current_raw_lengths.clone()
+                        debug_chunk, debug_chunk_lengths = add_final_flush_padding(
+                            debug_chunk,
+                            debug_chunk_lengths,
+                            final_chunks=final_chunks,
+                            flush_frames=final_flush_frames,
+                        )
+                        debug_chunk = debug_chunk.to(device=device, dtype=model_dtype)
+                        debug_chunk_lengths = debug_chunk_lengths.to(device)
                     maybe_log_debug_generation(
                         args=args,
                         model=model,
                         tokenizer=dataloader.tokenizer,
-                        chunk=chunk,
-                        chunk_lengths=chunk_lengths,
+                        chunk=debug_chunk,
+                        chunk_lengths=debug_chunk_lengths,
                         chunk_transcripts=chunk_transcripts,
                         frame_targets=frame_targets,
                         ids=[ids[i] for i, keep in enumerate(active.tolist()) if keep],
                         global_step=global_step,
                         records_seen=records_seen,
                     )
-                    while next_debug_record <= records_seen:
-                        next_debug_record += debug_every_records
-                    should_log_generation = False
-                elif should_log_generation and ordered_history_enabled:
                     while next_debug_record <= records_seen:
                         next_debug_record += debug_every_records
                     should_log_generation = False
