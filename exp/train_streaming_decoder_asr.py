@@ -516,6 +516,7 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                             frame_targets=frame_targets,
                             cached_kvs=selected_caches,
                             feature_start=history_output_len,
+                            feature_length=frame_targets.size(1),
                             initial_frame_targets=previous_frame_targets[active].to(device),
                             return_cache_slice=(retain_start, retain_end),
                             detach_cache=detach_decoder_cache,

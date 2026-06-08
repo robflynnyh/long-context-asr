@@ -1,5 +1,6 @@
 import random
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 import torch
@@ -11,6 +12,7 @@ from exp.train_streaming_decoder_asr import (
     final_targets_for_lengths,
     positive_output_length,
     select_kv_caches_for_active,
+    train,
 )
 from lcasr.models.streaming_decoder_asr import StreamingDecoderASR
 from lcasr.utils.streaming_targets import build_streaming_frame_targets
@@ -26,6 +28,25 @@ class ToyTokenizer:
 
     def encode(self, surface):
         return self.tokens[surface]
+
+
+class OneBatchLoader:
+    def __init__(self, batch, tokenizer):
+        self.batch = batch
+        self.tokenizer = tokenizer
+
+    def __iter__(self):
+        yield self.batch
+
+
+class NoopScheduler:
+    is_warmup = False
+
+    def step(self, epoch=None):
+        pass
+
+    def get_last_lr(self):
+        return [0.0]
 
 
 class StreamingDecoderOrderedChunksTest(unittest.TestCase):
@@ -257,6 +278,88 @@ class StreamingDecoderOrderedChunksTest(unittest.TestCase):
         self.assertEqual(int(out["length"][0].item()), current_output_len)
         self.assertEqual(out["cache"][0].shape[1], current_output_len)
         self.assertFalse(out["cache"][0].requires_grad)
+
+    def test_cached_loss_pads_previous_targets_for_ignored_tail_features(self):
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        model.eval()
+        audio = torch.randn(2, 8, 40)
+        lengths = torch.tensor([32, 37])
+        history_output_len = positive_output_length(model, 16)
+        target_len = int((model.output_lengths(lengths) - history_output_len).max().item())
+        physical_feature_len = positive_output_length(model, 40) - history_output_len
+        frame_targets = torch.full((2, target_len), model.get_silence_id(), dtype=torch.long)
+
+        self.assertGreater(physical_feature_len, target_len)
+
+        out = model.calc_loss_with_cache(
+            audio_signal=audio,
+            length=lengths,
+            frame_targets=frame_targets,
+            feature_start=history_output_len,
+            return_cache_slice=(0, target_len),
+            detach_cache=True,
+        )
+
+        self.assertEqual(out["logits"].shape[1], physical_feature_len)
+        self.assertEqual(out["length"].tolist(), [4, 5])
+        self.assertTrue(torch.isfinite(out["loss"]))
+
+    def test_ordered_training_caps_feature_span_for_mixed_final_flush_batch(self):
+        torch.manual_seed(0)
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        tokenizer = ToyTokenizer()
+        audio = torch.randn(2, 8, 48)
+        audio_lengths = torch.tensor([48, 29])
+        transcripts = [[], []]
+        ids = ["continues", "final"]
+        dataloader = OneBatchLoader((audio, audio_lengths, transcripts, ids), tokenizer)
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.0)
+        args = SimpleNamespace(
+            config={
+                "training": {
+                    "dtype": "bfloat16",
+                    "clip_value": 0.0,
+                    "max_epochs": 1,
+                    "max_steps": 2,
+                    "backprop_every": 1,
+                    "shuffle_chunks": False,
+                    "scheduler_total_steps": 2,
+                    "ordered_chunk_training": {
+                        "enabled": True,
+                        "subsampling_history_frames": 16,
+                        "decoder_history_frames": 16,
+                        "detach_cache": True,
+                    },
+                    "debug_generation": {"enabled": False},
+                },
+                "streaming": {"delay_seconds": 0.08, "buffer_seconds": 0.0},
+                "audio_chunking": {"size": 16, "overlap": 0},
+                "checkpointing": {"save_every_n_steps": 0, "dir": ".tmp/rob209-test-checkpoints"},
+                "wandb": {"use": False},
+            }
+        )
+
+        expected_history_len = positive_output_length(model, 16)
+        expected_feature_length = int(
+            (
+                model.output_lengths(torch.tensor([32, 37]))
+                - expected_history_len
+            ).max().item()
+        )
+        physical_feature_length = positive_output_length(model, 40) - expected_history_len
+        self.assertGreater(physical_feature_length, expected_feature_length)
+
+        with mock.patch("torch.cuda.is_available", return_value=False), mock.patch(
+            "exp.train_streaming_decoder_asr.save_model"
+        ), mock.patch.object(
+            model,
+            "calc_loss_with_cache",
+            wraps=model.calc_loss_with_cache,
+        ) as cached_loss:
+            train(args, model, dataloader, optimizer, NoopScheduler(), torch.device("cpu"))
+
+        feature_lengths = [call.kwargs.get("feature_length") for call in cached_loss.call_args_list]
+        self.assertIn(expected_feature_length, feature_lengths)
 
     def test_cached_training_path_matches_uncached_without_previous_cache(self):
         torch.manual_seed(0)

@@ -302,6 +302,8 @@ class StreamingDecoderASR(BaseModel):
                 prev[:, 0] = initial_targets.to(device=device, dtype=torch.long)
             return prev
 
+        if frame_targets.size(1) < length:
+            frame_targets = F.pad(frame_targets, (0, length - frame_targets.size(1)), value=-100)
         prev = frame_targets[:, :length].clone()
         prev = prev.masked_fill(prev < 0, self.silence_id)
         if initial_targets is None:
