@@ -39,6 +39,7 @@ CHECKPOINT_STEP="${ROB209_EVAL_CHECKPOINT_STEP:-}"
 DATASET="${ROB209_EVAL_DATASET:-floras50}"
 SPLIT="${ROB209_EVAL_SPLIT:-test}"
 FLORAS50_ROOT="${ROB209_FLORAS50_ROOT:-/mnt/parscratch/users/acp21rjf/floras50_eval}"
+TEDLIUM_ROOT="${ROB209_TEDLIUM_ROOT:-/mnt/parscratch/users/acp21rjf/TEDLIUM_release1}"
 MODEL_NAME="${ROB209_EVAL_MODEL_NAME:-rob209_step_${CHECKPOINT_STEP:-unknown}_online_chunked_kv}"
 MAX_SEQUENCE_LENGTH="${ROB209_EVAL_MAX_SEQUENCE_LENGTH:--1}"
 MAX_OUTPUT_FRAMES="${ROB209_EVAL_MAX_OUTPUT_FRAMES:-0}"
@@ -144,6 +145,8 @@ on_exit() {
     echo "checkpoint_step=${CHECKPOINT_STEP}"
     echo "dataset=${DATASET}"
     echo "split=${SPLIT}"
+    echo "floras50_root=${FLORAS50_ROOT}"
+    echo "tedlium_root=${TEDLIUM_ROOT}"
     echo "eval_config=${EVAL_CONFIG}"
     echo "result_csv=${RESULT_CSV}"
     echo "decode_mode=${DECODE_MODE}"
@@ -178,6 +181,7 @@ on_exit() {
       --metadata "checkpoint=${CHECKPOINT}"
       --metadata "dataset=${DATASET}"
       --metadata "split=${SPLIT}"
+      --metadata "tedlium_root=${TEDLIUM_ROOT}"
       --metadata "result_csv=${RESULT_CSV}"
       --metadata "decode_mode=${DECODE_MODE}"
       --metadata "chunked_kv_cache=true"
@@ -242,6 +246,12 @@ if [[ "$DATASET" == "floras50" ]]; then
     echo "missing Floras50 $SPLIT audio/text directories under $FLORAS50_ROOT" >&2
     exit 2
   fi
+elif [[ "$DATASET" == "tedlium" ]]; then
+  if [[ ! -d "$TEDLIUM_ROOT/$SPLIT/sph" || ! -d "$TEDLIUM_ROOT/$SPLIT/stm" ]]; then
+    echo "missing TEDLIUM $SPLIT sph/stm directories under $TEDLIUM_ROOT" >&2
+    exit 2
+  fi
+  export LCASR_TEDLIUM_ROOT="$TEDLIUM_ROOT"
 fi
 
 if [[ -z "$CHECKPOINT_STEP" ]]; then
@@ -324,6 +334,7 @@ PY
 {
   echo "checkpoint_exists=yes"
   echo "floras50_root=${FLORAS50_ROOT}"
+  echo "tedlium_root=${TEDLIUM_ROOT}"
   echo "eval_config=${EVAL_CONFIG}"
   echo "result_csv=${RESULT_CSV}"
   echo "model_name=${MODEL_NAME}"
