@@ -348,7 +348,7 @@ def maybe_log_debug_generation(
         )
 
 
-def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_ids=None, epoch=0):
+def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_ids=None, epoch=0, dataloader_factory=None):
     seen_ids = [] if seen_ids is None else seen_ids
     scaler = GradScaler(enabled=torch.cuda.is_available())
     dtype = get_dtype(args.config["training"].get("dtype", "bfloat16"))
@@ -410,8 +410,9 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     if subgroup_shuffle_size is not None:
         print(f"Duration subgroup shuffle size: {int(subgroup_shuffle_size)}")
 
+    current_dataloader = dataloader
     for cur_epoch in range(epoch, max_epochs):
-        pbar = tqdm(dataloader, desc=f"Streaming decoder training - Epoch {cur_epoch}")
+        pbar = tqdm(current_dataloader, desc=f"Streaming decoder training - Epoch {cur_epoch}")
         for batch in pbar:
             audio, audio_lengths, transcripts, ids = batch
             seen_ids.extend(ids)
@@ -628,6 +629,8 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                 while next_checkpoint_record <= records_seen:
                     next_checkpoint_record += checkpoint_every_records
         seen_ids = reset_seen_ids(seen_ids, epoch=cur_epoch)
+        if dataloader_factory is not None and cur_epoch + 1 < max_epochs:
+            current_dataloader = dataloader_factory(seen_ids)
 
     if last_saved_step != global_step:
         save_model(model, optimizer, scheduler, global_step, args.config, seen_ids=seen_ids, epoch=max_epochs)
@@ -701,10 +704,22 @@ def main(args):
     if args.reset_step:
         seen_ids, step, epoch = [], 0, 0
 
-    dataloader = make_dataloader(args.config, tokenizer, args, seen_ids)
+    dataloader_factory = lambda filtered_seen_ids: make_dataloader(args.config, tokenizer, args, filtered_seen_ids)
+    dataloader = dataloader_factory(seen_ids)
     print(f"Streaming decoder ASR params: {total_params / 1e6:.2f}M")
     print(f"Starting from step: {step}")
-    train(args, model, dataloader, optimizer, scheduler, device, step=step, seen_ids=seen_ids, epoch=epoch)
+    train(
+        args,
+        model,
+        dataloader,
+        optimizer,
+        scheduler,
+        device,
+        step=step,
+        seen_ids=seen_ids,
+        epoch=epoch,
+        dataloader_factory=dataloader_factory,
+    )
 
 
 if __name__ == "__main__":

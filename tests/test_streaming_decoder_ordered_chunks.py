@@ -489,6 +489,60 @@ class StreamingDecoderOrderedChunksTest(unittest.TestCase):
         self.assertEqual(call_kwargs["chunk_lengths"].tolist(), [16])
         self.assertEqual(call_kwargs["chunk_transcripts"], transcripts)
 
+    def test_resume_rebuilds_full_dataloader_after_partial_epoch(self):
+        torch.manual_seed(0)
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        tokenizer = ToyTokenizer()
+        tail_audio = torch.randn(1, 8, 16)
+        full_audio = torch.randn(2, 8, 16)
+        tail_loader = OneBatchLoader((tail_audio, torch.tensor([16]), [[]], ["tail"]), tokenizer)
+        full_loader = OneBatchLoader((full_audio, torch.tensor([16, 16]), [[], []], ["head", "tail"]), tokenizer)
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.0)
+        args = SimpleNamespace(
+            config={
+                "training": {
+                    "dtype": "bfloat16",
+                    "clip_value": 0.0,
+                    "max_epochs": 2,
+                    "max_steps": 10,
+                    "backprop_every": 1,
+                    "shuffle_chunks": False,
+                    "scheduler_total_steps": 2,
+                    "ordered_chunk_training": {"enabled": False},
+                    "debug_generation": {"enabled": False},
+                },
+                "streaming": {"delay_seconds": 0.08, "buffer_seconds": 0.0},
+                "audio_chunking": {"size": 16, "overlap": 0},
+                "checkpointing": {"save_every_n_steps": 0, "dir": ".tmp/rob209-test-checkpoints"},
+                "wandb": {"use": False},
+            }
+        )
+        factory_seen_ids = []
+
+        def dataloader_factory(seen_ids):
+            factory_seen_ids.append(list(seen_ids))
+            return full_loader
+
+        with mock.patch("torch.cuda.is_available", return_value=False), mock.patch(
+            "exp.train_streaming_decoder_asr.save_model"
+        ) as save_model_mock:
+            train(
+                args,
+                model,
+                tail_loader,
+                optimizer,
+                NoopScheduler(),
+                torch.device("cpu"),
+                seen_ids=["head"],
+                epoch=0,
+                dataloader_factory=dataloader_factory,
+            )
+
+        self.assertEqual(factory_seen_ids, [["epoch_0_head", "epoch_0_tail"]])
+        final_seen_ids = save_model_mock.call_args.kwargs["seen_ids"]
+        self.assertIn("epoch_1_head", final_seen_ids)
+        self.assertIn("epoch_1_tail", final_seen_ids)
+
     def test_cached_training_path_matches_uncached_without_previous_cache(self):
         torch.manual_seed(0)
         model = StreamingDecoderASR(**tiny_streaming_config())
