@@ -218,6 +218,33 @@ class Rob319EggrollDeletionTests(unittest.TestCase):
         self.assertEqual(config.model.checkpoint_every_n_layers, 0)
         self.assertFalse(config.model.checkpoint_subsampling)
 
+    def test_windowed_eval_chunks_at_model_sequence_length(self):
+        config = OmegaConf.create(
+            {
+                "model": {
+                    "checkpoint_every_n_layers": 0,
+                    "checkpoint_subsampling": False,
+                    "subsampling_factor": 8,
+                }
+            }
+        )
+        spec = rob319.ModelSpec(
+            label="long",
+            seq_len=16384,
+            repeat=1,
+            path="/checkpoint.pt",
+        )
+
+        args = rob319.prepare_eval_args(
+            config,
+            spec,
+            {"evaluation_mode": "windowed_attention", "max_sequence_length": 3_600_000},
+        )
+
+        self.assertEqual(args.seq_len, 16384)
+        self.assertEqual(args.max_sequence_length, 3_600_000)
+        self.assertEqual(config.model.attention_window_size, 1024)
+
 
 if __name__ == "__main__":
     unittest.main()

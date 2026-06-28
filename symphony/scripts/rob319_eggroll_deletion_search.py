@@ -580,7 +580,7 @@ def prepare_eval_args(
         if window_size is None:
             window_size = seq_len // subsample_factor // 2
         config.model.attention_window_size = int(window_size)
-        eval_seq_len = max_sequence_length
+        eval_seq_len = seq_len
     else:
         eval_seq_len = seq_len
 
