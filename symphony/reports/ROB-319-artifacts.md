@@ -82,6 +82,23 @@ that path with `ROB319_CHECKPOINT_ROOT` or `--checkpoint-root` for Mimas runs.
   `rob319-gpu-smoke-18l-windowed-fa2-cap32768-20260628T000000Z` was manually
   interrupted after the high-overlap short-model decode proved too slow for a
   quick smoke.
+- Successful uncapped full-recording fp16 smoke:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-gpu-smoke-18l-windowed-fa2-fp16-fullrec-1pair-20260628T000000Z`
+  completed one full Earnings search block with one antithetic pair using
+  `windowed_decode_strategy=full_recording` and `autocast_dtype=float16`, while
+  leaving model weights in fp32 for the low-rank perturbations. W&B run:
+  `https://wandb.ai/wobrob101/long-context-asr/runs/z4wabrbg`. The clean
+  block WERs were `short=0.3219`, `medium=0.2845`, and `long=0.2810`, giving a
+  clean long-context gain of `0.0408`; both candidate signs preserved nearly
+  all of that gain (`context_score` about `0.996` to `0.998`).
+- Full 32-pair run in progress:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-full-18l-windowed-fa2-fp16-32pairs-20260628T1520Z`
+  was launched in detached screen
+  `3477642.rob319-full-fa2-fp16-20260628T1520Z` on Mimas with
+  `with-gpu any --num 2`, exact copied checkpoints, artifact-local
+  FlashAttention v2, `windowed_decode_strategy=full_recording`, and
+  `autocast_dtype=float16`. W&B run:
+  `https://wandb.ai/wobrob101/long-context-asr/runs/twnmunja`.
 
 Each run writes a run-local `ARTIFACT_INDEX.md`, resolved config, target tensor
 list, block manifest, clean/candidate/validation metrics, pair weights, and
