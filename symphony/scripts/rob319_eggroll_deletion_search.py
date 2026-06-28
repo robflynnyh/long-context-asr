@@ -636,7 +636,7 @@ def load_model_specs(config: Mapping[str, Any], checkpoint_root_override: Option
     models = []
     checkpoint_root = Path(str(checkpoint_root_override or config.get("paths", {}).get("checkpoint_root", "")))
     for item in config.get("models", []):
-        path = str(item.get("path", ""))
+        path = "" if checkpoint_root_override else str(item.get("path", ""))
         if not path:
             path = str(checkpoint_root / f"n_seq_sched_{int(item['seq_len'])}_rp_{int(item['repeat'])}" / "step_105360.pt")
         models.append(

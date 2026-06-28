@@ -25,6 +25,15 @@ mirror exists, pass it with `ROB319_CHECKPOINT_ROOT` or `--checkpoint-root`.
   `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-callback-dryrun-20260628T000000Z`
   verifies the Mimas wrapper summary/callback path without launching GPUs or
   loading checkpoints.
+- Exact 18L checkpoint copies:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/source_checkpoints_18l_1024D`
+  contains the copied repeat-1 `1024`, `8192`, and `16384` `step_105360.pt`
+  files from Stanage. Local and remote byte sizes match at `7139994645` bytes
+  per file.
+- Exact-copy target smoke:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-targets-smoke-18l-copy-20260628T000000Z`
+  loaded the copied checkpoints as 445.7M-parameter 18L models and matched 126
+  shared target tensors: 54 convolution, 36 `ff1`, and 36 `ff2`.
 
 Each run writes a run-local `ARTIFACT_INDEX.md`, resolved config, target tensor
 list, block manifest, clean/candidate/validation metrics, pair weights, and

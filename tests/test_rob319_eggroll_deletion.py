@@ -142,6 +142,43 @@ class Rob319EggrollDeletionTests(unittest.TestCase):
         self.assertEqual([record.id for record in records], ["exact", "long-audio-name"])
         self.assertEqual(metadata["transcript_aliases"]["long-audio-name"], "long-audio")
 
+    def test_checkpoint_root_override_rewrites_resolved_model_paths(self):
+        config = {
+            "paths": {"checkpoint_root": "/mnt/original"},
+            "search": {"overlap_ratio": 0.875},
+            "models": [
+                {
+                    "label": "short",
+                    "seq_len": 1024,
+                    "repeat": 1,
+                    "path": "/mnt/original/n_seq_sched_1024_rp_1/step_105360.pt",
+                },
+                {
+                    "label": "medium",
+                    "seq_len": 8192,
+                    "repeat": 1,
+                    "path": "/mnt/original/n_seq_sched_8192_rp_1/step_105360.pt",
+                },
+                {
+                    "label": "long",
+                    "seq_len": 16384,
+                    "repeat": 1,
+                    "path": "/mnt/original/n_seq_sched_16384_rp_1/step_105360.pt",
+                },
+            ],
+        }
+
+        specs = rob319.load_model_specs(config, "/store/copied")
+
+        self.assertEqual(
+            [spec.path for spec in specs],
+            [
+                "/store/copied/n_seq_sched_1024_rp_1/step_105360.pt",
+                "/store/copied/n_seq_sched_8192_rp_1/step_105360.pt",
+                "/store/copied/n_seq_sched_16384_rp_1/step_105360.pt",
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
