@@ -570,6 +570,9 @@ def prepare_eval_args(
 
     if run_cfg.get("disable_flash_attention", False):
         config.model.flash_attn = False
+    if run_cfg.get("disable_activation_checkpointing", True):
+        config.model.checkpoint_every_n_layers = 0
+        config.model.checkpoint_subsampling = False
 
     if eval_mode == "windowed_attention":
         subsample_factor = int(config.model.get("subsampling_factor", 8))
@@ -592,6 +595,7 @@ def prepare_eval_args(
         model_class=model_spec.model_class,
         evaluation_mode=eval_mode,
         max_sequence_length=max_sequence_length,
+        max_audio_frames=run_cfg.get("max_audio_frames"),
         verbose=bool(run_cfg.get("verbose", False)),
         transcribe_kwargs=dict(run_cfg.get("transcribe_kwargs", {}) or {}),
     )
@@ -655,12 +659,15 @@ def load_model_specs(config: Mapping[str, Any], checkpoint_root_override: Option
     return models
 
 
-def process_record(record: EarningsRecord) -> Tuple[torch.Tensor, str]:
-    return processing_chain(record.audio), preprocess_transcript(record.text)
+def process_record(record: EarningsRecord, max_audio_frames: Optional[int] = None) -> Tuple[torch.Tensor, str]:
+    audio_spec = processing_chain(record.audio)
+    if max_audio_frames is not None:
+        audio_spec = audio_spec[:, :, : int(max_audio_frames)]
+    return audio_spec, preprocess_transcript(record.text)
 
 
 def decode_record(bundle: ModelBundle, record: EarningsRecord, use_tqdm: bool) -> Tuple[str, str]:
-    audio_spec, gold_text = process_record(record)
+    audio_spec, gold_text = process_record(record, getattr(bundle.eval_args, "max_audio_frames", None))
     if hasattr(bundle.model, "transcribe"):
         kwargs = dict(getattr(bundle.eval_args, "transcribe_kwargs", {}) or {})
         kwargs.setdefault("verbose", False)
@@ -890,6 +897,10 @@ def apply_overrides(config: Dict[str, Any], args: argparse.Namespace) -> Dict[st
         search["sigma"] = args.sigma
     if args.eta is not None:
         search["eta"] = args.eta
+    if args.evaluation_mode is not None:
+        config.setdefault("evaluation", {})["evaluation_mode"] = args.evaluation_mode
+    if args.max_audio_frames is not None:
+        config.setdefault("evaluation", {})["max_audio_frames"] = args.max_audio_frames
     if args.max_search_blocks is not None:
         search["max_search_blocks"] = args.max_search_blocks
     if args.max_validation_blocks is not None:
@@ -1349,6 +1360,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rank", type=int, default=None)
     parser.add_argument("--sigma", type=float, default=None)
     parser.add_argument("--eta", type=float, default=None)
+    parser.add_argument("--evaluation-mode", choices=["averaged_moving_window", "windowed_attention", "buffered"], default=None)
+    parser.add_argument("--max-audio-frames", type=int, default=None)
     parser.add_argument("--max-search-blocks", type=int, default=None)
     parser.add_argument("--max-validation-blocks", type=int, default=None)
     parser.add_argument("--list-targets", action="store_true")

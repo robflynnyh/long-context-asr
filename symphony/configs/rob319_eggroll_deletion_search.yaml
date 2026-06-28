@@ -33,7 +33,9 @@ dataset:
 evaluation:
   evaluation_mode: windowed_attention
   max_sequence_length: 3600000
+  max_audio_frames: null
   disable_flash_attention: false
+  disable_activation_checkpointing: true
   verbose: false
   use_tqdm: false
 

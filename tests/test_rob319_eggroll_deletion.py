@@ -1,10 +1,12 @@
 import importlib.util
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import torch
+from omegaconf import OmegaConf
 
 from lcasr.models.sconformer_xl import SCConformerXL
 
@@ -178,6 +180,43 @@ class Rob319EggrollDeletionTests(unittest.TestCase):
                 "/store/copied/n_seq_sched_16384_rp_1/step_105360.pt",
             ],
         )
+
+    def test_process_record_can_cap_audio_frames_for_smoke(self):
+        record = rob319.EarningsRecord(
+            id="rec",
+            audio="audio.mp3",
+            text="Hello world.",
+            transcript_key="rec",
+        )
+        audio = torch.arange(1 * 2 * 10, dtype=torch.float32).reshape(1, 2, 10)
+
+        with mock.patch.object(rob319, "processing_chain", return_value=audio):
+            capped, text = rob319.process_record(record, max_audio_frames=4)
+
+        self.assertEqual(capped.shape, (1, 2, 4))
+        self.assertEqual(text, "hello world")
+
+    def test_prepare_eval_args_disables_activation_checkpointing_by_default(self):
+        config = OmegaConf.create(
+            {
+                "model": {
+                    "checkpoint_every_n_layers": 1,
+                    "checkpoint_subsampling": True,
+                    "subsampling_factor": 8,
+                }
+            }
+        )
+        spec = rob319.ModelSpec(
+            label="medium",
+            seq_len=8192,
+            repeat=1,
+            path="/checkpoint.pt",
+        )
+
+        rob319.prepare_eval_args(config, spec, {"evaluation_mode": "averaged_moving_window"})
+
+        self.assertEqual(config.model.checkpoint_every_n_layers, 0)
+        self.assertFalse(config.model.checkpoint_subsampling)
 
 
 if __name__ == "__main__":
