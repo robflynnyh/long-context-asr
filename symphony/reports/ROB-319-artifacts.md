@@ -61,6 +61,27 @@ that path with `ROB319_CHECKPOINT_ROOT` or `--checkpoint-root` for Mimas runs.
   mechanics-only smoke: it used `evaluation_mode=averaged_moving_window` and
   `max_audio_frames=256`, so WERs near `0.9997` reflect cropped audio against
   full references and are not a scientific deletion-search result.
+- Artifact-local FlashAttention v2 build:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/flash_attn_v2_build_20260628T1445Z`
+  contains a local build of `flash_attn-2.5.9.post1` for Python 3.9,
+  PyTorch 2.0.1, CUDA 11.7, and RTX A4500 compute capability 8.6. The wheel
+  and target `site` directory are kept outside the shared conda environment;
+  pass the target site path through `ROB319_EXTRA_PYTHONPATH` for Mimas runs.
+- Windowed FlashAttention v2 smokes:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-gpu-smoke-18l-windowed-fa2-20260628T000000Z`
+  imported the artifact-local FlashAttention v2 build but failed on the first
+  clean block with CUDA OOM in subsampling when the whole Earnings recording
+  was decoded as one chunk. After changing the runner to decode windowed mode
+  in each checkpoint's trained context-length chunks,
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-gpu-smoke-18l-windowed-fa2-cap2048-20260628T000000Z`
+  completed with `evaluation_mode=windowed_attention`, `max_audio_frames=2048`,
+  one antithetic pair, one search block, and W&B run
+  `https://wandb.ai/wobrob101/long-context-asr/runs/xl4hz23b`. This is also a
+  mechanics-only smoke because the audio was capped against full references.
+  The larger capped probe
+  `rob319-gpu-smoke-18l-windowed-fa2-cap32768-20260628T000000Z` was manually
+  interrupted after the high-overlap short-model decode proved too slow for a
+  quick smoke.
 
 Each run writes a run-local `ARTIFACT_INDEX.md`, resolved config, target tensor
 list, block manifest, clean/candidate/validation metrics, pair weights, and
