@@ -50,9 +50,9 @@ def load_short_sample(manifest_path: str, max_frames: int, max_candidates: int):
     raise RuntimeError(f"no usable sample found in first {max_candidates} entries of {manifest_path}")
 
 
-def build_smoke_config(vocab_size: int, checkpoint_dir: str):
-    return OmegaConf.create({
-        "model": {
+def build_smoke_config(vocab_size: int, checkpoint_dir: str, model_size: str):
+    if model_size == "tiny":
+        model = {
             "vocab_size": vocab_size,
             "feat_in": 80,
             "subsampling": "dw_striding",
@@ -80,6 +80,45 @@ def build_smoke_config(vocab_size: int, checkpoint_dir: str):
             "gru_num_layers": 1,
             "gru_dropout": 0.0,
             "gru_bidirectional": False,
+        }
+    elif model_size == "final":
+        model = {
+            "vocab_size": vocab_size,
+            "feat_in": 80,
+            "subsampling": "dw_striding",
+            "subsampling_factor": 8,
+            "subsampling_conv_channels": 256,
+            "subsampling_act": "silu",
+            "subsampling_norm_out": False,
+            "n_layers": 18,
+            "d_model": 1024,
+            "n_heads": 8,
+            "head_dim": 128,
+            "dropout_ff": 0.0,
+            "dropout_conv": 0.0,
+            "dropout_attn": 0.0,
+            "conv_kernel_size": 9,
+            "conv_expansion_factor": 1,
+            "decoder_norm": True,
+            "use_rotary": True,
+            "rotary_base_freq": 1500000,
+            "self_conditioning": True,
+            "default_norm": "layer_norm",
+            "bias_in_ff": False,
+            "checkpoint_every_n_layers": 1,
+            "ff_checkpoint_lvl": 2,
+            "gru_module": True,
+            "gru_hidden_size": None,
+            "gru_num_layers": 1,
+            "gru_dropout": 0.0,
+            "gru_bidirectional": False,
+        }
+    else:
+        raise ValueError(f"unknown model size: {model_size}")
+
+    return OmegaConf.create({
+        "model": {
+            **model,
         },
         "checkpointing": {"dir": checkpoint_dir},
     })
@@ -91,38 +130,45 @@ def main(argv=None):
     parser.add_argument("--artifact-root", default="/mnt/parscratch/users/acp21rjf/symphony-job-artifacts/ROB-320")
     parser.add_argument("--max-frames", type=int, default=1024)
     parser.add_argument("--max-candidates", type=int, default=5000)
+    parser.add_argument("--model-size", choices=("tiny", "final"), default="tiny")
+    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--checkpoint-dir", default="")
     parser.add_argument("--summary-json", default="")
     args = parser.parse_args(argv)
 
     torch.set_num_threads(2)
+    if args.device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA smoke requested but torch.cuda.is_available() is false")
+    device = torch.device(args.device)
 
     smoke_id = os.environ.get("SLURM_JOB_ID", "local")
-    checkpoint_dir = args.checkpoint_dir or os.path.join(args.artifact_root, "checkpoints", f"cpu_smoke_{smoke_id}")
-    summary_json = args.summary_json or os.path.join(args.artifact_root, "cpu_smoke", f"summary_{smoke_id}.json")
+    smoke_prefix = f"{args.device}_{args.model_size}_smoke"
+    checkpoint_dir = args.checkpoint_dir or os.path.join(args.artifact_root, "checkpoints", f"{smoke_prefix}_{smoke_id}")
+    summary_json = args.summary_json or os.path.join(args.artifact_root, smoke_prefix, f"summary_{smoke_id}.json")
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(os.path.dirname(summary_json), exist_ok=True)
 
     log("loading tokenizer")
     tokenizer = lcasr.utils.audio_tools.load_tokenizer()
     sample_id, audio, text, manifest_count = load_short_sample(args.manifest, args.max_frames, args.max_candidates)
-    config = build_smoke_config(tokenizer.vocab_size(), checkpoint_dir)
+    config = build_smoke_config(tokenizer.vocab_size(), checkpoint_dir, args.model_size)
 
     log("building GRU smoke model")
-    model = SCConformerXL(**config.model)
+    model = SCConformerXL(**config.model).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     model.train()
 
     log("running forward/backward")
-    lengths = torch.LongTensor([audio.shape[-1]])
+    audio = audio.to(device)
+    lengths = torch.LongTensor([audio.shape[-1]]).to(device)
     out = model(audio_signal=audio, length=lengths)
     output_length = int(out["length"][0].item())
     token_ids = tokenizer.encode(text)
     if not token_ids:
         raise RuntimeError(f"selected sample has no tokenizer output: {sample_id}")
     target_length = max(1, min(len(token_ids), max(1, output_length // 2)))
-    targets = torch.LongTensor(token_ids[:target_length]).unsqueeze(0)
-    target_lengths = torch.LongTensor([target_length])
+    targets = torch.LongTensor(token_ids[:target_length]).unsqueeze(0).to(device)
+    target_lengths = torch.LongTensor([target_length]).to(device)
 
     ctc_loss = torch.nn.CTCLoss(blank=model.decoder.num_classes - 1, reduction="mean", zero_infinity=True)
     loss = ctc_loss(out["final_posteriors"].transpose(0, 1), targets, out["length"], target_lengths)
@@ -145,6 +191,10 @@ def main(argv=None):
     )
 
     log("loading checkpoint")
+    del model, optimizer
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     loaded_model = SCConformerXL(**config.model)
     loaded_optimizer = torch.optim.Adam(loaded_model.parameters(), lr=1e-4)
     seen_ids, step, epoch = load_checkpoint(
@@ -168,6 +218,8 @@ def main(argv=None):
         "output_length": output_length,
         "target_length": target_length,
         "loss": float(loss.item()),
+        "device": args.device,
+        "model_size": args.model_size,
         "checkpoint_dir": checkpoint_dir,
         "summary_json": summary_json,
     }
