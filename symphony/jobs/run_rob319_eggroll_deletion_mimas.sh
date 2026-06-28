@@ -58,6 +58,7 @@ on_exit() {
     echo "artifact_root=${ARTIFACT_ROOT}"
     echo "run_dir=${RUN_DIR}"
     echo "devices=${DEVICES}"
+    echo "extra_pythonpath=${ROB319_EXTRA_PYTHONPATH:-unset}"
     echo "num_pairs=${ROB319_NUM_PAIRS:-config_default}"
     echo "rank=${ROB319_RANK:-config_default}"
     echo "sigma=${ROB319_SIGMA:-config_default}"
@@ -121,7 +122,11 @@ if [[ "${ROB319_CALLBACK_ONLY:-0}" == "1" ]]; then
 fi
 
 cd "$REPO_DIR"
-export PYTHONPATH="$PWD"
+if [[ -n "${ROB319_EXTRA_PYTHONPATH:-}" ]]; then
+  export PYTHONPATH="${ROB319_EXTRA_PYTHONPATH}:$PWD${PYTHONPATH:+:$PYTHONPATH}"
+else
+  export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+fi
 
 runner_args=(
   --config "$CONFIG"
