@@ -105,7 +105,7 @@ class SCConformerXL(BaseModel):
         self.subsampling_conv_channels = subsampling_conv_channels if subsampling_conv_channels != -1 else d_model
 
         self.whitelist_weight_decay_modules = (nn.LayerNorm, RMSNorm, LayerNorm, convolution.BatchRenorm1d, nn.GroupNorm) # don't decay
-        self.blacklist_weight_decay_modules = (nn.Linear, ConformerFeedForward, nn.Conv1d, nn.Conv2d, RotaryPositionalEmbedding)
+        self.blacklist_weight_decay_modules = (nn.Linear, nn.GRU, ConformerFeedForward, nn.Conv1d, nn.Conv2d, RotaryPositionalEmbedding)
 
         self.decoder_norm = decoder_norm
 
@@ -257,6 +257,52 @@ class SCConformerXL(BaseModel):
         return output_dict
 
 
+class ConformerGRUModule(nn.Module):
+    def __init__(
+        self,
+        d_model,
+        hidden_size = None,
+        num_layers = 1,
+        dropout = 0.0,
+        bidirectional = False,
+    ):
+        super().__init__()
+        hidden_size = d_model if hidden_size is None else hidden_size
+        self.gru = nn.GRU(
+            input_size = d_model,
+            hidden_size = hidden_size,
+            num_layers = num_layers,
+            dropout = dropout if num_layers > 1 else 0.0,
+            bidirectional = bidirectional,
+            batch_first = True,
+        )
+        output_size = hidden_size * (2 if bidirectional else 1)
+        self.out_proj = nn.Identity() if output_size == d_model else nn.Linear(output_size, d_model, bias = False)
+
+    def forward(self, x, length = None, pad_mask = None):
+        if length is not None and bool((length.max() != length.min()).item()):
+            lengths_cpu = length.detach().to(device = 'cpu', dtype = torch.long)
+            packed = nn.utils.rnn.pack_padded_sequence(
+                x,
+                lengths_cpu,
+                batch_first = True,
+                enforce_sorted = False,
+            )
+            out, _ = self.gru(packed)
+            out, _ = nn.utils.rnn.pad_packed_sequence(
+                out,
+                batch_first = True,
+                total_length = x.size(1),
+            )
+        else:
+            out, _ = self.gru(x)
+
+        out = self.out_proj(out)
+        if pad_mask is not None:
+            out = out.masked_fill(pad_mask.unsqueeze(-1), 0)
+        return out
+
+
 class ConformerLayer(nn.Module):
     def __init__(
         self,
@@ -286,6 +332,7 @@ class ConformerLayer(nn.Module):
         self.bias_in_ff = bias_in_ff
         self.trasformer = transformer
 
+        self.gru_module = kwargs.get('gru_module', False)
         
         if not self.trasformer:
         
@@ -347,6 +394,21 @@ class ConformerLayer(nn.Module):
             self.attn_norm_out = default_norm(d_model) if sandwich_norm else lambda x: x
             self.do_attn_out = nn.Dropout(min(dropout_ff, 0.1)) # don't wan't this too large
 
+        if self.gru_module:
+            self.gru = PreNorm(
+                d_model = d_model,
+                fn = ConformerGRUModule(
+                    d_model = d_model,
+                    hidden_size = kwargs.get('gru_hidden_size', None),
+                    num_layers = kwargs.get('gru_num_layers', 1),
+                    dropout = kwargs.get('gru_dropout', 0.0),
+                    bidirectional = kwargs.get('gru_bidirectional', False),
+                ),
+                norm = default_norm,
+                sandwich_norm = sandwich_norm,
+            )
+            self.do_gru = nn.Dropout(kwargs.get('gru_dropout', 0.0))
+
         self.norm_out = default_norm(d_model)
 
             
@@ -374,6 +436,9 @@ class ConformerLayer(nn.Module):
         
         if not self.trasformer:
             x = self.do_conv(self.conv(x, pad_mask = pad_mask)) + x
+
+        if self.gru_module:
+            x = self.do_gru(self.gru(x, length = length, pad_mask = pad_mask)) + x
     
         x = self.do_ff(self.ff2(x)) + x
 
