@@ -608,6 +608,8 @@ def load_model_bundle(
     tokenizer: Any,
     run_cfg: Mapping[str, Any],
 ) -> ModelBundle:
+    if device.type == "cuda":
+        torch.cuda.set_device(device)
     checkpoint = torch.load(spec.path, map_location="cpu", weights_only=False)
     model_config = checkpoint["config"]
     eval_args = prepare_eval_args(model_config, spec, run_cfg)
@@ -700,6 +702,8 @@ def decode_record(bundle: ModelBundle, record: EarningsRecord, use_tqdm: bool) -
 
 
 def evaluate_model_on_block(bundle: ModelBundle, block: Block, use_tqdm: bool) -> Dict[str, Any]:
+    if bundle.device.type == "cuda":
+        torch.cuda.set_device(bundle.device)
     all_texts: List[str] = []
     all_golds: List[str] = []
     per_recording: List[Dict[str, Any]] = []
