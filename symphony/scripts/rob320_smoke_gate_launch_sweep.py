@@ -23,8 +23,14 @@ FAILED_SLURM_PREFIXES = (
     "REVOKED",
     "TIMEOUT",
 )
-ERROR_RE = re.compile(
-    r"(Traceback|RuntimeError|Exception|CUDA out of memory|OutOfMemory|slurmstepd: error|srun: error)",
+ERROR_LINE_RE = re.compile(
+    r"^\s*(Traceback \(most recent call last\):|"
+    r"(?:[A-Za-z_][\w.]*Error|[A-Za-z_][\w.]*Exception|RuntimeError|Exception):|"
+    r"(?:slurmstepd|srun): error:)",
+    re.IGNORECASE,
+)
+OOM_RE = re.compile(
+    r"(CUDA out of memory|OutOfMemory)",
     re.IGNORECASE,
 )
 
@@ -37,6 +43,13 @@ def tail_text(path: str, max_chars: int = 12000) -> str:
         size = handle.tell()
         handle.seek(max(0, size - max_chars), os.SEEK_SET)
         return handle.read().decode("utf-8", errors="replace")
+
+
+def text_has_error(text: str) -> bool:
+    for line in text.splitlines():
+        if ERROR_LINE_RE.search(line) or OOM_RE.search(line):
+            return True
+    return False
 
 
 def sacct_state(job_id: str) -> str:
@@ -104,7 +117,7 @@ def smoke_passed(args):
     summary = read_smoke_summary(args.smoke_summary_json)
     stdout_tail = tail_text(args.smoke_log_out)
     stderr_tail = tail_text(args.smoke_log_err)
-    log_error = bool(ERROR_RE.search(stdout_tail) or ERROR_RE.search(stderr_tail))
+    log_error = text_has_error(stdout_tail) or text_has_error(stderr_tail)
     passed = (
         state.startswith("COMPLETED 0:0")
         and summary.get("status") == "success"

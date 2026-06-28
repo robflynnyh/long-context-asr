@@ -23,8 +23,14 @@ FAILED_SLURM_PREFIXES = (
     "REVOKED",
     "TIMEOUT",
 )
-ERROR_RE = re.compile(
-    r"(Traceback|RuntimeError|Exception|CUDA out of memory|OutOfMemory|slurmstepd: error|srun: error)",
+ERROR_LINE_RE = re.compile(
+    r"^\s*(Traceback \(most recent call last\):|"
+    r"(?:[A-Za-z_][\w.]*Error|[A-Za-z_][\w.]*Exception|RuntimeError|Exception):|"
+    r"(?:slurmstepd|srun): error:)",
+    re.IGNORECASE,
+)
+OOM_RE = re.compile(
+    r"(CUDA out of memory|OutOfMemory)",
     re.IGNORECASE,
 )
 
@@ -82,6 +88,13 @@ def tail_text(path: str, max_chars: int = 8192) -> str:
         return handle.read().decode("utf-8", errors="replace")
 
 
+def text_has_error(text: str) -> bool:
+    for line in text.splitlines():
+        if ERROR_LINE_RE.search(line) or OOM_RE.search(line):
+            return True
+    return False
+
+
 def log_paths(log_dir: str, name: str, job_id: str):
     return {
         "stdout": os.path.join(log_dir, f"{name}-{job_id}.out"),
@@ -91,7 +104,7 @@ def log_paths(log_dir: str, name: str, job_id: str):
 
 def log_has_error(paths) -> bool:
     for path in paths.values():
-        if ERROR_RE.search(tail_text(path)):
+        if text_has_error(tail_text(path)):
             return True
     return False
 
