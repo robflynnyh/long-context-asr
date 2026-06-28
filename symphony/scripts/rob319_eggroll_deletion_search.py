@@ -564,6 +564,7 @@ def prepare_eval_args(
     run_cfg: Mapping[str, Any],
 ) -> SimpleNamespace:
     eval_mode = str(run_cfg.get("evaluation_mode", "windowed_attention"))
+    windowed_decode_strategy = str(run_cfg.get("windowed_decode_strategy", "model_context"))
     seq_len = int(model_spec.seq_len)
     overlap = int(seq_len * float(model_spec.overlap_ratio))
     max_sequence_length = int(run_cfg.get("max_sequence_length", 3_600_000))
@@ -580,9 +581,21 @@ def prepare_eval_args(
         if window_size is None:
             window_size = seq_len // subsample_factor // 2
         config.model.attention_window_size = int(window_size)
-        eval_seq_len = seq_len
+        if windowed_decode_strategy == "full_recording":
+            eval_seq_len = max_sequence_length
+            eval_overlap = 0
+        elif windowed_decode_strategy == "model_context":
+            eval_seq_len = seq_len
+            eval_overlap = overlap
+        else:
+            raise ValueError(
+                "windowed_decode_strategy must be one of "
+                "['full_recording', 'model_context'], got "
+                f"{windowed_decode_strategy!r}"
+            )
     else:
         eval_seq_len = seq_len
+        eval_overlap = overlap
 
     return SimpleNamespace(
         config=config,
@@ -590,15 +603,28 @@ def prepare_eval_args(
         split=run_cfg.get("split", "train"),
         seq_len=eval_seq_len,
         training_seq_len=seq_len,
-        overlap=overlap,
+        overlap=eval_overlap,
         dataset="earnings22",
         model_class=model_spec.model_class,
         evaluation_mode=eval_mode,
+        windowed_decode_strategy=windowed_decode_strategy,
         max_sequence_length=max_sequence_length,
         max_audio_frames=run_cfg.get("max_audio_frames"),
+        autocast_dtype=run_cfg.get("autocast_dtype"),
         verbose=bool(run_cfg.get("verbose", False)),
         transcribe_kwargs=dict(run_cfg.get("transcribe_kwargs", {}) or {}),
     )
+
+
+def eval_autocast_context(device: torch.device, autocast_dtype: Optional[str]) -> contextlib.AbstractContextManager[Any]:
+    dtype_name = str(autocast_dtype or "float32").lower()
+    if device.type != "cuda" or dtype_name in {"", "none", "float32", "fp32"}:
+        return contextlib.nullcontext()
+    if dtype_name in {"float16", "fp16"}:
+        return torch.cuda.amp.autocast(dtype=torch.float16)
+    if dtype_name in {"bfloat16", "bf16"}:
+        return torch.cuda.amp.autocast(dtype=torch.bfloat16)
+    raise ValueError(f"Unsupported autocast dtype: {autocast_dtype!r}")
 
 
 def load_model_bundle(
@@ -673,7 +699,7 @@ def decode_record(bundle: ModelBundle, record: EarningsRecord, use_tqdm: bool) -
     if hasattr(bundle.model, "transcribe"):
         kwargs = dict(getattr(bundle.eval_args, "transcribe_kwargs", {}) or {})
         kwargs.setdefault("verbose", False)
-        with torch.no_grad():
+        with torch.no_grad(), eval_autocast_context(bundle.device, bundle.eval_args.autocast_dtype):
             all_text = bundle.model.transcribe(
                 audio_spec,
                 bundle.tokenizer,
@@ -686,15 +712,16 @@ def decode_record(bundle: ModelBundle, record: EarningsRecord, use_tqdm: bool) -
         eval_fn = moving_average_eval
         if bundle.eval_args.evaluation_mode == "buffered":
             eval_fn = buffered_eval
-        logits = eval_fn(
-            args=bundle.eval_args,
-            model=bundle.model,
-            spec=audio_spec,
-            seq_len=bundle.eval_args.seq_len,
-            overlap=bundle.eval_args.overlap,
-            tokenizer=bundle.tokenizer,
-            use_tqdm=use_tqdm,
-        )
+        with eval_autocast_context(bundle.device, bundle.eval_args.autocast_dtype):
+            logits = eval_fn(
+                args=bundle.eval_args,
+                model=bundle.model,
+                spec=audio_spec,
+                seq_len=bundle.eval_args.seq_len,
+                overlap=bundle.eval_args.overlap,
+                tokenizer=bundle.tokenizer,
+                use_tqdm=use_tqdm,
+            )
         assert bundle.decoder is not None
         out_text = bundle.decoder(torch.as_tensor(logits))
         out = NORMALIZE(out_text).lower().strip()
@@ -903,6 +930,10 @@ def apply_overrides(config: Dict[str, Any], args: argparse.Namespace) -> Dict[st
         search["eta"] = args.eta
     if args.evaluation_mode is not None:
         config.setdefault("evaluation", {})["evaluation_mode"] = args.evaluation_mode
+    if args.windowed_decode_strategy is not None:
+        config.setdefault("evaluation", {})["windowed_decode_strategy"] = args.windowed_decode_strategy
+    if args.autocast_dtype is not None:
+        config.setdefault("evaluation", {})["autocast_dtype"] = args.autocast_dtype
     if args.max_audio_frames is not None:
         config.setdefault("evaluation", {})["max_audio_frames"] = args.max_audio_frames
     if args.max_search_blocks is not None:
@@ -1365,6 +1396,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sigma", type=float, default=None)
     parser.add_argument("--eta", type=float, default=None)
     parser.add_argument("--evaluation-mode", choices=["averaged_moving_window", "windowed_attention", "buffered"], default=None)
+    parser.add_argument("--windowed-decode-strategy", choices=["full_recording", "model_context"], default=None)
+    parser.add_argument("--autocast-dtype", choices=["float32", "float16", "bfloat16"], default=None)
     parser.add_argument("--max-audio-frames", type=int, default=None)
     parser.add_argument("--max-search-blocks", type=int, default=None)
     parser.add_argument("--max-validation-blocks", type=int, default=None)

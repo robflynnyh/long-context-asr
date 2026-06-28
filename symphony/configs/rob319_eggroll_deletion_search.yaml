@@ -32,8 +32,10 @@ dataset:
 
 evaluation:
   evaluation_mode: windowed_attention
+  windowed_decode_strategy: full_recording
   max_sequence_length: 3600000
   max_audio_frames: null
+  autocast_dtype: float16
   disable_flash_attention: false
   disable_activation_checkpointing: true
   verbose: false

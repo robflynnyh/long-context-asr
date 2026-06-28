@@ -238,12 +238,50 @@ class Rob319EggrollDeletionTests(unittest.TestCase):
         args = rob319.prepare_eval_args(
             config,
             spec,
-            {"evaluation_mode": "windowed_attention", "max_sequence_length": 3_600_000},
+            {
+                "evaluation_mode": "windowed_attention",
+                "windowed_decode_strategy": "model_context",
+                "max_sequence_length": 3_600_000,
+            },
         )
 
         self.assertEqual(args.seq_len, 16384)
         self.assertEqual(args.max_sequence_length, 3_600_000)
         self.assertEqual(config.model.attention_window_size, 1024)
+
+    def test_windowed_full_recording_eval_uses_max_sequence_without_overlap(self):
+        config = OmegaConf.create(
+            {
+                "model": {
+                    "checkpoint_every_n_layers": 0,
+                    "checkpoint_subsampling": False,
+                    "subsampling_factor": 8,
+                }
+            }
+        )
+        spec = rob319.ModelSpec(
+            label="short",
+            seq_len=1024,
+            repeat=1,
+            path="/checkpoint.pt",
+            overlap_ratio=0.875,
+        )
+
+        args = rob319.prepare_eval_args(
+            config,
+            spec,
+            {
+                "evaluation_mode": "windowed_attention",
+                "windowed_decode_strategy": "full_recording",
+                "max_sequence_length": 3_600_000,
+                "autocast_dtype": "float16",
+            },
+        )
+
+        self.assertEqual(args.seq_len, 3_600_000)
+        self.assertEqual(args.overlap, 0)
+        self.assertEqual(args.autocast_dtype, "float16")
+        self.assertEqual(config.model.attention_window_size, 64)
 
 
 if __name__ == "__main__":

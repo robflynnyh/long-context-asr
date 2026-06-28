@@ -64,6 +64,8 @@ on_exit() {
     echo "sigma=${ROB319_SIGMA:-config_default}"
     echo "eta=${ROB319_ETA:-config_default}"
     echo "evaluation_mode=${ROB319_EVALUATION_MODE:-config_default}"
+    echo "windowed_decode_strategy=${ROB319_WINDOWED_DECODE_STRATEGY:-config_default}"
+    echo "autocast_dtype=${ROB319_AUTOCAST_DTYPE:-config_default}"
     echo "max_audio_frames=${ROB319_MAX_AUDIO_FRAMES:-config_default}"
     echo "max_search_blocks=${ROB319_MAX_SEARCH_BLOCKS:-all_configured}"
     echo "max_validation_blocks=${ROB319_MAX_VALIDATION_BLOCKS:-all_configured}"
@@ -152,6 +154,12 @@ fi
 if [[ -n "${ROB319_EVALUATION_MODE:-}" ]]; then
   runner_args+=(--evaluation-mode "$ROB319_EVALUATION_MODE")
 fi
+if [[ -n "${ROB319_WINDOWED_DECODE_STRATEGY:-}" ]]; then
+  runner_args+=(--windowed-decode-strategy "$ROB319_WINDOWED_DECODE_STRATEGY")
+fi
+if [[ -n "${ROB319_AUTOCAST_DTYPE:-}" ]]; then
+  runner_args+=(--autocast-dtype "$ROB319_AUTOCAST_DTYPE")
+fi
 if [[ -n "${ROB319_MAX_AUDIO_FRAMES:-}" ]]; then
   runner_args+=(--max-audio-frames "$ROB319_MAX_AUDIO_FRAMES")
 fi
@@ -188,6 +196,7 @@ if [[ "${ROB319_SMOKE:-0}" == "1" ]]; then
     --max-search-blocks "${ROB319_SMOKE_SEARCH_BLOCKS:-1}"
     --max-validation-blocks "${ROB319_SMOKE_VALIDATION_BLOCKS:-1}"
     --evaluation-mode "${ROB319_SMOKE_EVALUATION_MODE:-averaged_moving_window}"
+    --windowed-decode-strategy "${ROB319_SMOKE_WINDOWED_DECODE_STRATEGY:-model_context}"
     --max-audio-frames "${ROB319_SMOKE_MAX_AUDIO_FRAMES:-1024}"
   )
 fi
