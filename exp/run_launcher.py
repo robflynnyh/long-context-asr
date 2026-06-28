@@ -110,6 +110,21 @@ def parse_sbatch_job_id(stdout):
     match = re.search(r'Submitted batch job (\d+)', stdout)
     return match.group(1) if match else None
 
+def prepare_job_ids_file(path):
+    if not path:
+        return
+    out_dir = os.path.dirname(path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    with open(path, 'w'):
+        pass
+
+def append_job_id(path, job_id, name, config_path, script_path):
+    if not path:
+        return
+    with open(path, 'a') as f:
+        f.write(f'{job_id}\t{name}\t{config_path}\t{script_path}\n')
+
 def main(args):
     template = OmegaConf.load(args.template)
     copies = [OmegaConf.create({k:template[k].copy() if not isinstance(template[k], str) else template[k] for k in template['template_info']['include_keys']}) for i in range(template['template_info']['create'])]
@@ -131,6 +146,9 @@ def main(args):
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
+    if not args.dry_run:
+        prepare_job_ids_file(args.job_ids_out)
+
     launched_jobs = []
     for i in range(len(copies)):
         config_path = os.path.join(save_dir, f'{names[i]}.yaml')
@@ -148,13 +166,8 @@ def main(args):
         if job_id is None:
             raise RuntimeError(f'Could not parse sbatch job id from output: {result.stdout}')
         launched_jobs.append((job_id, names[i], config_path, script_path))
+        append_job_id(args.job_ids_out, job_id, names[i], config_path, script_path)
         print(f'Launched {names[i]} as {job_id} - {run_string_cmd} - mode: {args.mode}')
-
-    if args.job_ids_out and launched_jobs:
-        os.makedirs(os.path.dirname(args.job_ids_out), exist_ok=True)
-        with open(args.job_ids_out, 'w') as f:
-            for job_id, name, config_path, script_path in launched_jobs:
-                f.write(f'{job_id}\t{name}\t{config_path}\t{script_path}\n')
         
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
