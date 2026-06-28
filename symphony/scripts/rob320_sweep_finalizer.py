@@ -118,6 +118,7 @@ def write_summary(args, jobs, job_rows, checkpoint_rows, total_checkpoints, succ
         "",
         f"overall_status: {'success' if success else 'failure'}",
         f"sweep_jobs: {len(jobs)}",
+        f"expected_jobs: {args.expected_jobs}",
         f"checkpoint_root: {args.checkpoint_root}",
         f"total_checkpoints_seen: {total_checkpoints}",
         f"generated_config_manifest: {args.jobs_file}",
@@ -194,12 +195,13 @@ def main(argv=None):
     parser.add_argument("--config-template", required=True)
     parser.add_argument("--branch", required=True)
     parser.add_argument("--commit", required=True)
+    parser.add_argument("--expected-jobs", type=int, default=27)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
     jobs = read_job_manifest(args.jobs_file)
     job_rows = []
-    success = bool(jobs)
+    success = len(jobs) == args.expected_jobs
     for job in jobs:
         paths = log_paths(args.log_dir, job["name"], job["job_id"])
         state = sacct_state(job["job_id"])

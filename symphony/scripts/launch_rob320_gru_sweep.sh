@@ -69,11 +69,18 @@ cd "${REPO_DIR}"
 module load Anaconda3/2022.10
 source activate /mnt/parscratch/users/acp21rjf/conda/main
 
-if [[ -f "${REPO_DIR}/symphony/.env" ]]; then
-  set -a
-  source "${REPO_DIR}/symphony/.env"
-  set +a
-fi
+for env_file in \
+  "${REPO_DIR}/symphony/.env" \
+  "/users/acp21rjf/long-context-asr/symphony/.env" \
+  "\${HOME}/.config/long-context-asr/linear.env" \
+  "\${HOME}/.config/sap-longcontext/linear.env"; do
+  if [[ -f "\${env_file}" ]]; then
+    set -a
+    source "\${env_file}"
+    set +a
+    break
+  fi
+done
 
 export PYTHONPATH="${REPO_DIR}:\${PYTHONPATH:-}"
 python "${REPO_DIR}/symphony/scripts/rob320_sweep_finalizer.py" \
@@ -86,7 +93,8 @@ python "${REPO_DIR}/symphony/scripts/rob320_sweep_finalizer.py" \
   --log-dir "${LOG_DIR}" \
   --config-template "${TEMPLATE}" \
   --branch "${BRANCH}" \
-  --commit "${COMMIT}"
+  --commit "${COMMIT}" \
+  --expected-jobs 27
 SBATCH
 
 finalizer_output="$(sbatch --dependency=afterany:${dependency_jobs} "${finalizer_sbatch}")"
