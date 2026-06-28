@@ -1,16 +1,14 @@
 # ROB-319 Artifact Notes
 
-The ROB-319 deletion-search runner is configured to require the issue's 18L
-1024D checkpoint family by default. On the current Mimas host,
-`/mnt/parscratch/users/acp21rjf/...` was not mounted. The exact repeat-1
-checkpoints were copied to the Mimas-local artifact root listed below; pass
-that path with `ROB319_CHECKPOINT_ROOT` or `--checkpoint-root` for Mimas runs.
+The ROB-319 deletion-search runner now defaults to the 6L SAP_LCASR
+sequence-scheduler checkpoint family after Rob's 2026-06-28 Linear correction
+to use the SAP models rather than the earlier 18L family.
 
 - Default artifact root:
   `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search`
 - Default checkpoint root:
-  `/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D`
-- Mimas-local copied checkpoint root:
+  `/store/store5/data/acp21rjf_checkpoints/SAP_LCASR`
+- Superseded Mimas-local copied 18L checkpoint root:
   `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/source_checkpoints_18l_1024D`
 - Default Earnings root:
   `/store/store4/data/earnings-22`
@@ -18,12 +16,18 @@ that path with `ROB319_CHECKPOINT_ROOT` or `--checkpoint-root` for Mimas runs.
   `n_seq_sched_1024_rp_1/step_105360.pt`,
   `n_seq_sched_8192_rp_1/step_105360.pt`,
   `n_seq_sched_16384_rp_1/step_105360.pt`
-  were verified read-only on Stanage under the default checkpoint root.
-- Rejected setup-smoke artifact:
+  exist under the SAP_LCASR default root; each repeat-1 file is about 1.45 GB.
+- Early SAP setup-smoke artifact:
   `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-targets-smoke-20260628T000000Z`
-  was produced while checking `/store/store5/data/acp21rjf_checkpoints/SAP_LCASR`;
-  it is evidence that this mirror is the wrong 6-layer 768D family, not a real
-  ROB-319 search result.
+  was produced while checking `/store/store5/data/acp21rjf_checkpoints/SAP_LCASR`.
+  It was initially treated as the wrong family only because the issue text
+  emphasized 18L checkpoints; after the latest Linear correction, SAP_LCASR is
+  the intended family.
+- SAP target smoke:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-targets-smoke-sap6l-20260628T1730Z`
+  loaded repeat-1 SAP_LCASR `1024`, `8192`, and `16384` checkpoints as
+  89.9M-parameter 6L models and matched 42 shared target tensors: 18
+  convolution, 12 `ff1`, and 12 `ff2`.
 - Callback dry-run artifact:
   `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-callback-dryrun-20260628T000000Z`
   verifies the Mimas wrapper summary/callback path without launching GPUs or
@@ -129,6 +133,26 @@ that path with `ROB319_CHECKPOINT_ROOT` or `--checkpoint-root` for Mimas runs.
   loaded the smoke's `deletion_state_latest.json`, replayed the accumulated
   update into freshly loaded model copies, skipped completed search block 0,
   and exited with the same `cumulative_delta_norm=0.0035689119835015846`.
+- Superseded 18L blockwise full launch:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-full-18l-blockwise-fa2-fp16-32pairs-20260628T1725Z`
+  was launched after the blockwise fix but before the 2026-06-28 17:18 UTC
+  Linear correction was incorporated. It was stopped with exit code 130 and is
+  not a ROB-319 result. The corrected run should use the SAP_LCASR checkpoint
+  root.
+- Successful SAP blockwise 2-GPU smoke:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-gpu-smoke-sap6l-blockwise-fa2-fp16-fullrec-1pair-20260628T1731Z`
+  used the SAP_LCASR repeat-1 checkpoints, artifact-local FlashAttention v2,
+  `windowed_decode_strategy=full_recording`, `autocast_dtype=float16`, one
+  search block, one antithetic pair, and skipped held-out validation. W&B run:
+  `https://wandb.ai/wobrob101/long-context-asr/runs/lcg6xwbg`. Clean/current
+  block WERs were `short=0.4007`, `medium=0.3145`, and `long=0.3108`, giving a
+  clean long-context gain of `0.0899`. It wrote the expected candidate,
+  pair-weight, block-update, and deletion-state artifacts.
+- Successful SAP resume check:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-gpu-smoke-sap6l-blockwise-resume-check-20260628T1741Z`
+  loaded the SAP smoke's `deletion_state_latest.json`, replayed the accumulated
+  update into fresh SAP model copies, skipped completed search block 0, and
+  exited with the same `cumulative_delta_norm=4.678250729025346e-05`.
 
 Each run writes a run-local `ARTIFACT_INDEX.md`, resolved config, target tensor
 list, block manifest, clean/current/candidate/validation metrics, pair weights,
@@ -137,7 +161,7 @@ checkpoints are loaded read-only; low-rank perturbations and persistent
 blockwise deletion updates are applied only to in-memory model copies unless
 `ROB319_SAVE_COMBINED_CHECKPOINTS=1` is explicitly set for the launcher.
 
-Validation note: `/store/store5/data/acp21rjf_checkpoints/SAP_LCASR` contains
-matching `n_seq_sched_*` paths but loaded as a 6-layer 768D family (~90M
-parameters), so it is not a valid default for this issue's requested 18L 1024D
-comparison.
+Validation note: the earlier 18L checkpoint-copy and smoke artifacts remain
+recorded for provenance, but current ROB-319 runs should use the default
+`/store/store5/data/acp21rjf_checkpoints/SAP_LCASR` root unless Rob changes
+that instruction again.

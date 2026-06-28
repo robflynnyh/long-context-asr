@@ -1,7 +1,6 @@
 paths:
-  # Required 18L 1024D checkpoint family from the issue. This root may need a
-  # Mimas-local override if /mnt/parscratch is not mounted on the launch host.
-  checkpoint_root: /mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D
+  # Latest Linear guidance asks for the 6L SAP_LCASR sequence-scheduler family.
+  checkpoint_root: /store/store5/data/acp21rjf_checkpoints/SAP_LCASR
   artifact_root: /store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search
   tokenizer_path: null
 
