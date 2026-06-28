@@ -62,6 +62,8 @@ on_exit() {
     echo "rank=${ROB319_RANK:-config_default}"
     echo "sigma=${ROB319_SIGMA:-config_default}"
     echo "eta=${ROB319_ETA:-config_default}"
+    echo "evaluation_mode=${ROB319_EVALUATION_MODE:-config_default}"
+    echo "max_audio_frames=${ROB319_MAX_AUDIO_FRAMES:-config_default}"
     echo "max_search_blocks=${ROB319_MAX_SEARCH_BLOCKS:-all_configured}"
     echo "max_validation_blocks=${ROB319_MAX_VALIDATION_BLOCKS:-all_configured}"
     echo "wandb_mode=${ROB319_WANDB_MODE:-config_default}"
@@ -142,6 +144,12 @@ fi
 if [[ -n "${ROB319_ETA:-}" ]]; then
   runner_args+=(--eta "$ROB319_ETA")
 fi
+if [[ -n "${ROB319_EVALUATION_MODE:-}" ]]; then
+  runner_args+=(--evaluation-mode "$ROB319_EVALUATION_MODE")
+fi
+if [[ -n "${ROB319_MAX_AUDIO_FRAMES:-}" ]]; then
+  runner_args+=(--max-audio-frames "$ROB319_MAX_AUDIO_FRAMES")
+fi
 if [[ -n "${ROB319_MAX_SEARCH_BLOCKS:-}" ]]; then
   runner_args+=(--max-search-blocks "$ROB319_MAX_SEARCH_BLOCKS")
 fi
@@ -174,6 +182,8 @@ if [[ "${ROB319_SMOKE:-0}" == "1" ]]; then
     --num-pairs "${ROB319_SMOKE_NUM_PAIRS:-2}"
     --max-search-blocks "${ROB319_SMOKE_SEARCH_BLOCKS:-1}"
     --max-validation-blocks "${ROB319_SMOKE_VALIDATION_BLOCKS:-1}"
+    --evaluation-mode "${ROB319_SMOKE_EVALUATION_MODE:-averaged_moving_window}"
+    --max-audio-frames "${ROB319_SMOKE_MAX_AUDIO_FRAMES:-1024}"
   )
 fi
 
