@@ -42,6 +42,7 @@ evaluation:
   use_tqdm: false
 
 search:
+  update_mode: blockwise
   num_pairs: 32
   rank: 4
   sigma: 1.0e-4

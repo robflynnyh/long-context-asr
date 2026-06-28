@@ -91,20 +91,51 @@ that path with `ROB319_CHECKPOINT_ROOT` or `--checkpoint-root` for Mimas runs.
   block WERs were `short=0.3219`, `medium=0.2845`, and `long=0.2810`, giving a
   clean long-context gain of `0.0408`; both candidate signs preserved nearly
   all of that gain (`context_score` about `0.996` to `0.998`).
-- Full 32-pair run in progress:
+- Superseded full 32-pair batch/offline run:
   `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-full-18l-windowed-fa2-fp16-32pairs-20260628T1520Z`
   was launched in detached screen
   `3477642.rob319-full-fa2-fp16-20260628T1520Z` on Mimas with
   `with-gpu any --num 2`, exact copied checkpoints, artifact-local
   FlashAttention v2, `windowed_decode_strategy=full_recording`, and
   `autocast_dtype=float16`. W&B run:
-  `https://wandb.ai/wobrob101/long-context-asr/runs/twnmunja`.
+  `https://wandb.ai/wobrob101/long-context-asr/runs/twnmunja`. Rob stopped
+  this run after identifying that it used a batch/offline search shape: it
+  evaluated temporary candidates from the clean/current weights and deferred
+  the combined perturbation until all search blocks. Its partial block-0
+  candidate files are retained for provenance only and are not a final
+  ROB-319 result.
+- Current blockwise runner behavior:
+  `symphony/scripts/rob319_eggroll_deletion_search.py` now defaults to
+  `search.update_mode: blockwise`. For each 5-recording search block it
+  evaluates the 64 antithetic candidates around the current in-memory damaged
+  weights, computes pair weights from that block's `context_score` only,
+  permanently applies `W <- W + eta * combined_delta_block`, logs
+  `block_update_metrics.jsonl` and `pair_weights.jsonl`, then writes
+  `deletion_state_latest.json`. Resume uses `--resume-state` or
+  `ROB319_RESUME_STATE` to replay the compact accumulated pair-weight state
+  into freshly loaded clean checkpoint copies.
+- Successful blockwise 2-GPU smoke:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-gpu-smoke-18l-blockwise-fa2-fp16-fullrec-1pair-20260628T1711Z`
+  used the exact copied 18L checkpoints, artifact-local FlashAttention v2,
+  `windowed_decode_strategy=full_recording`, `autocast_dtype=float16`, one
+  search block, one antithetic pair, and skipped held-out validation. W&B run:
+  `https://wandb.ai/wobrob101/long-context-asr/runs/fm01ghef`. It wrote one
+  clean/current row, two candidate rows, one pair-weight row, one block-update
+  row, and compact deletion state. The block update had nonzero
+  `pair_weight=0.0018844221105529524`, `combined_delta_norm=35.68911983501585`,
+  and `cumulative_delta_norm=0.0035689119835015846`.
+- Successful resume check:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-gpu-smoke-18l-blockwise-resume-check-20260628T1721Z`
+  loaded the smoke's `deletion_state_latest.json`, replayed the accumulated
+  update into freshly loaded model copies, skipped completed search block 0,
+  and exited with the same `cumulative_delta_norm=0.0035689119835015846`.
 
 Each run writes a run-local `ARTIFACT_INDEX.md`, resolved config, target tensor
-list, block manifest, clean/candidate/validation metrics, pair weights, and
-summary JSON. Source checkpoints are loaded read-only; low-rank perturbations
-are applied in memory and restored unless `ROB319_SAVE_COMBINED_CHECKPOINTS=1`
-is explicitly set for the launcher.
+list, block manifest, clean/current/candidate/validation metrics, pair weights,
+block-update diagnostics, compact deletion state, and summary JSON. Source
+checkpoints are loaded read-only; low-rank perturbations and persistent
+blockwise deletion updates are applied only to in-memory model copies unless
+`ROB319_SAVE_COMBINED_CHECKPOINTS=1` is explicitly set for the launcher.
 
 Validation note: `/store/store5/data/acp21rjf_checkpoints/SAP_LCASR` contains
 matching `n_seq_sched_*` paths but loaded as a 6-layer 768D family (~90M

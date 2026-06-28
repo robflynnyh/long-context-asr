@@ -22,7 +22,7 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Set, Tuple
 
 import torch
 from whisper.normalizers import EnglishTextNormalizer
@@ -395,6 +395,10 @@ def combined_delta(
     return output.to(dtype=dtype)
 
 
+def has_nonzero_pair_weights(pair_weights: Mapping[int, float]) -> bool:
+    return any(abs(float(weight)) > 0.0 for weight in pair_weights.values())
+
+
 @contextlib.contextmanager
 def applied_combined_perturbation(
     model: torch.nn.Module,
@@ -439,6 +443,246 @@ def applied_combined_perturbation(
                     dtype=dtype,
                 )
                 parameter.sub_(delta, alpha=float(eta))
+
+
+def apply_combined_update_in_place(
+    model: torch.nn.Module,
+    targets: Sequence[TargetTensor],
+    pair_weights: Mapping[int, float],
+    *,
+    rank: int,
+    eta: float,
+    base_seed: int,
+    eta_scale: float = 1.0,
+    track_norm: bool = True,
+) -> Dict[str, float]:
+    if eta == 0 or not pair_weights or not has_nonzero_pair_weights(pair_weights):
+        return {"combined_delta_norm": 0.0, "applied_update_norm": 0.0}
+
+    parameter_map = get_parameter_map(model)
+    combined_sq = 0.0
+    alpha = float(eta * eta_scale)
+    with torch.no_grad():
+        for target in targets:
+            parameter = parameter_map[target.name]
+            delta = combined_delta(
+                target,
+                pair_weights,
+                rank=rank,
+                base_seed=base_seed,
+                device=parameter.device,
+                dtype=torch.float32,
+            )
+            if track_norm:
+                combined_sq += float(delta.pow(2).sum().item())
+            parameter.add_(delta.to(dtype=parameter.dtype), alpha=alpha)
+            del delta
+    combined_norm = math.sqrt(combined_sq) if track_norm else 0.0
+    return {
+        "combined_delta_norm": float(combined_norm),
+        "applied_update_norm": float(abs(alpha) * combined_norm),
+    }
+
+
+def apply_combined_update_to_bundles(
+    bundles: Mapping[str, ModelBundle],
+    targets: Sequence[TargetTensor],
+    pair_weights: Mapping[int, float],
+    *,
+    rank: int,
+    eta: float,
+    base_seed: int,
+    eta_scale: float = 1.0,
+) -> Dict[str, float]:
+    stats = {"combined_delta_norm": 0.0, "applied_update_norm": 0.0}
+    for index, bundle in enumerate(bundles.values()):
+        if bundle.device.type == "cuda":
+            torch.cuda.set_device(bundle.device)
+        cur_stats = apply_combined_update_in_place(
+            bundle.model,
+            targets,
+            pair_weights,
+            rank=rank,
+            eta=eta,
+            base_seed=base_seed,
+            eta_scale=eta_scale,
+            track_norm=index == 0,
+        )
+        if index == 0:
+            stats = cur_stats
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    return stats
+
+
+def combined_update_norm_for_model(
+    model: torch.nn.Module,
+    targets: Sequence[TargetTensor],
+    pair_weights: Mapping[int, float],
+    *,
+    rank: int,
+    eta: float,
+    base_seed: int,
+) -> float:
+    if eta == 0 or not pair_weights or not has_nonzero_pair_weights(pair_weights):
+        return 0.0
+
+    parameter_map = get_parameter_map(model)
+    combined_sq = 0.0
+    with torch.no_grad():
+        for target in targets:
+            parameter = parameter_map[target.name]
+            delta = combined_delta(
+                target,
+                pair_weights,
+                rank=rank,
+                base_seed=base_seed,
+                device=parameter.device,
+                dtype=torch.float32,
+            )
+            combined_sq += float(delta.pow(2).sum().item())
+            del delta
+    return float(abs(eta) * math.sqrt(combined_sq))
+
+
+def accumulate_pair_weights(
+    cumulative: Mapping[int, float],
+    pair_weights: Mapping[int, float],
+    *,
+    num_pairs: int,
+) -> Dict[int, float]:
+    updated = {pair_id: float(cumulative.get(pair_id, 0.0)) for pair_id in range(num_pairs)}
+    for pair_id, weight in pair_weights.items():
+        updated[int(pair_id)] = updated.get(int(pair_id), 0.0) + float(weight)
+    return updated
+
+
+def pair_rows_from_block_scores(
+    scores_by_pair_sign: Mapping[Tuple[int, int], Sequence[float]],
+    *,
+    num_pairs: int,
+    block: Block,
+) -> Tuple[Dict[int, float], List[Dict[str, Any]]]:
+    pair_weights: Dict[int, float] = {}
+    pair_rows: List[Dict[str, Any]] = []
+    for pair_id in range(num_pairs):
+        pos_scores = list(scores_by_pair_sign.get((pair_id, 1), []))
+        neg_scores = list(scores_by_pair_sign.get((pair_id, -1), []))
+        if not pos_scores or not neg_scores:
+            raise ValueError(f"Missing scores for antithetic pair {pair_id} on block {block.block_id}")
+        pos_mean = sum(pos_scores) / len(pos_scores)
+        neg_mean = sum(neg_scores) / len(neg_scores)
+        pair_weight = pos_mean - neg_mean
+        pair_weights[pair_id] = pair_weight
+        pair_rows.append(
+            {
+                "phase": "block_pair_weight",
+                "block_id": block.block_id,
+                "recording_ids": block.recording_ids,
+                "pair_id": pair_id,
+                "positive_score_mean": pos_mean,
+                "negative_score_mean": neg_mean,
+                "pair_weight": pair_weight,
+                "num_positive_scores": len(pos_scores),
+                "num_negative_scores": len(neg_scores),
+            }
+        )
+    return pair_weights, pair_rows
+
+
+def cumulative_pair_weights_from_updates(
+    updates: Sequence[Mapping[str, Any]],
+    *,
+    num_pairs: int,
+) -> Dict[int, float]:
+    cumulative = {pair_id: 0.0 for pair_id in range(num_pairs)}
+    for update in updates:
+        raw_weights = update.get("pair_weights", {})
+        if isinstance(raw_weights, list):
+            pair_weights = {int(row["pair_id"]): float(row["pair_weight"]) for row in raw_weights}
+        else:
+            pair_weights = {int(pair_id): float(weight) for pair_id, weight in dict(raw_weights).items()}
+        cumulative = accumulate_pair_weights(cumulative, pair_weights, num_pairs=num_pairs)
+    return cumulative
+
+
+def load_deletion_state(path: Path) -> Dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        state = json.load(handle)
+    if not isinstance(state, dict):
+        raise TypeError(f"Deletion state must be a JSON object: {path}")
+    return state
+
+
+def validate_resume_state(
+    state: Mapping[str, Any],
+    *,
+    rank: int,
+    sigma: float,
+    eta: float,
+    base_seed: int,
+    num_pairs: int,
+    target_summary: Mapping[str, Any],
+) -> None:
+    if state.get("mode") != "blockwise":
+        raise ValueError(f"Cannot resume non-blockwise deletion state: mode={state.get('mode')!r}")
+    expected = {
+        "rank": rank,
+        "base_seed": base_seed,
+        "num_pairs": num_pairs,
+    }
+    for key, value in expected.items():
+        if int(state.get(key, -1)) != int(value):
+            raise ValueError(f"Resume state {key}={state.get(key)!r} does not match current {value!r}")
+    for key, value in {"sigma": sigma, "eta": eta}.items():
+        if not math.isclose(float(state.get(key, float("nan"))), float(value), rel_tol=1e-12, abs_tol=1e-12):
+            raise ValueError(f"Resume state {key}={state.get(key)!r} does not match current {value!r}")
+    saved_summary = state.get("target_summary", {})
+    for key in ("count", "numel"):
+        if int(saved_summary.get(key, -1)) != int(target_summary.get(key, -2)):
+            raise ValueError(
+                f"Resume target summary {key}={saved_summary.get(key)!r} "
+                f"does not match current {target_summary.get(key)!r}"
+            )
+
+
+def save_deletion_state(
+    run_dir: Path,
+    *,
+    run_id: str,
+    config_path: Path,
+    rank: int,
+    sigma: float,
+    eta: float,
+    base_seed: int,
+    num_pairs: int,
+    target_summary: Mapping[str, Any],
+    completed_search_block_ids: Sequence[int],
+    updates: Sequence[Mapping[str, Any]],
+    cumulative_pair_weights: Mapping[int, float],
+    latest_block_id: Optional[int],
+) -> Dict[str, Any]:
+    state = {
+        "version": 1,
+        "mode": "blockwise",
+        "run_id": run_id,
+        "config_path": str(config_path),
+        "updated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "rank": rank,
+        "sigma": sigma,
+        "eta": eta,
+        "base_seed": base_seed,
+        "num_pairs": num_pairs,
+        "target_summary": target_summary,
+        "completed_search_block_ids": list(completed_search_block_ids),
+        "updates": list(to_jsonable(updates)),
+        "cumulative_pair_weights": {str(pair_id): float(weight) for pair_id, weight in cumulative_pair_weights.items()},
+        "latest_block_id": latest_block_id,
+    }
+    write_json(run_dir / "deletion_state_latest.json", state)
+    if latest_block_id is not None:
+        write_json(run_dir / f"deletion_state_block_{int(latest_block_id):04d}.json", state)
+    return state
 
 
 def preprocess_transcript(text: str) -> str:
@@ -1087,6 +1331,12 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
     num_pairs = int(search_cfg.get("num_pairs", 32))
     if num_pairs < 1:
         raise ValueError("num_pairs must be positive")
+    update_mode = str(search_cfg.get("update_mode", "blockwise"))
+    if update_mode != "blockwise":
+        raise ValueError(
+            "ROB-319 now uses sequential blockwise deletion training; "
+            f"unsupported search.update_mode={update_mode!r}"
+        )
 
     determinism = run_determinism_check(targets, rank=rank, base_seed=base_seed)
     write_json(run_dir / "determinism_check.json", determinism)
@@ -1098,6 +1348,8 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
 
     candidate_writer = JsonlWriter(run_dir / "candidate_metrics.jsonl")
     clean_writer = JsonlWriter(run_dir / "clean_metrics.jsonl")
+    pair_weight_writer = JsonlWriter(run_dir / "pair_weights.jsonl")
+    block_update_writer = JsonlWriter(run_dir / "block_update_metrics.jsonl")
     validation_writer = JsonlWriter(run_dir / "validation_metrics.jsonl")
     candidate_csv = CsvWriter(
         run_dir / "candidate_metrics.csv",
@@ -1106,6 +1358,7 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
             "candidate_id",
             "pair_id",
             "sign",
+            "update_index",
             "context_score",
             "clean_gain",
             "damaged_gain",
@@ -1117,6 +1370,9 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
             "short_clean_wer",
             "medium_clean_wer",
             "long_clean_wer",
+            "short_current_wer",
+            "medium_current_wer",
+            "long_current_wer",
             "short_candidate_wer",
             "medium_candidate_wer",
             "long_candidate_wer",
@@ -1130,12 +1386,55 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
     logger = WandbLogger(config, run_dir, disabled=args.disable_wandb)
 
     clean_by_block: Dict[int, BlockWers] = {}
-    scores_by_pair_sign: Dict[Tuple[int, int], List[float]] = {}
+    completed_search_block_ids: Set[int] = set()
+    block_updates: List[Dict[str, Any]] = []
+    cumulative_pair_weights = {pair_id: 0.0 for pair_id in range(num_pairs)}
+    all_pair_rows: List[Dict[str, Any]] = []
+
+    if args.resume_state is not None:
+        resume_state_path = Path(args.resume_state)
+        print(f"Resuming accumulated deletion state from {resume_state_path}")
+        state = load_deletion_state(resume_state_path)
+        validate_resume_state(
+            state,
+            rank=rank,
+            sigma=sigma,
+            eta=eta,
+            base_seed=base_seed,
+            num_pairs=num_pairs,
+            target_summary=target_summary,
+        )
+        completed_search_block_ids = {int(block_id) for block_id in state.get("completed_search_block_ids", [])}
+        block_updates = list(state.get("updates", []))
+        raw_cumulative = state.get("cumulative_pair_weights")
+        if isinstance(raw_cumulative, dict) and raw_cumulative:
+            cumulative_pair_weights = {
+                pair_id: float(raw_cumulative.get(str(pair_id), raw_cumulative.get(pair_id, 0.0)))
+                for pair_id in range(num_pairs)
+            }
+        else:
+            cumulative_pair_weights = cumulative_pair_weights_from_updates(block_updates, num_pairs=num_pairs)
+        for update in block_updates:
+            all_pair_rows.extend(list(update.get("pair_weights", [])))
+        apply_combined_update_to_bundles(
+            bundles,
+            targets,
+            cumulative_pair_weights,
+            rank=rank,
+            eta=eta,
+            base_seed=base_seed,
+        )
+        print(f"Replayed {len(block_updates)} completed block updates into the loaded model copies")
 
     try:
         for block in search_blocks:
-            print(f"Evaluating clean search block {block.block_id}: {block.recording_ids}")
-            clean_wers, clean_diagnostics = evaluate_block_for_models(
+            if block.block_id in completed_search_block_ids:
+                print(f"Skipping completed search block {block.block_id} from resume state")
+                continue
+
+            update_index = len(block_updates)
+            print(f"Evaluating current search block {block.block_id}: {block.recording_ids}")
+            current_wers, current_diagnostics = evaluate_block_for_models(
                 bundles,
                 block,
                 use_tqdm=bool(config.get("evaluation", {}).get("use_tqdm", False)),
@@ -1143,17 +1442,28 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
             clean_by_block[block.block_id] = BlockWers(
                 block_id=block.block_id,
                 recording_ids=tuple(block.recording_ids),
-                wers=clean_wers,
+                wers=current_wers,
             )
             clean_row = {
-                "phase": "search_clean",
+                "phase": "search_current",
                 "block_id": block.block_id,
                 "recording_ids": block.recording_ids,
-                **{f"{label}_clean_wer": value for label, value in clean_wers.items()},
-                "diagnostics": clean_diagnostics,
+                "update_index": update_index,
+                "cumulative_delta_norm": combined_update_norm_for_model(
+                    next(iter(bundles.values())).model,
+                    targets,
+                    cumulative_pair_weights,
+                    rank=rank,
+                    eta=eta,
+                    base_seed=base_seed,
+                ),
+                **{f"{label}_current_wer": value for label, value in current_wers.items()},
+                **{f"{label}_clean_wer": value for label, value in current_wers.items()},
+                "diagnostics": current_diagnostics,
             }
             clean_writer.write(clean_row)
 
+            scores_by_pair_sign: Dict[Tuple[int, int], List[float]] = {}
             for candidate in iter_candidates(num_pairs):
                 print(
                     f"Evaluating block={block.block_id} candidate={candidate.candidate_id} "
@@ -1180,7 +1490,7 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
 
-                score = score_candidate(clean_wers, damaged_wers, score_cfg)
+                score = score_candidate(current_wers, damaged_wers, score_cfg)
                 scores_by_pair_sign.setdefault((candidate.pair_id, candidate.sign), []).append(
                     float(score["context_score"])
                 )
@@ -1191,12 +1501,16 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
                     "candidate_id": candidate.candidate_id,
                     "pair_id": candidate.pair_id,
                     "sign": candidate.sign,
+                    "update_index": update_index,
                     "sigma": sigma,
                     "rank": rank,
                     "base_seed": base_seed,
                     "target_group": "ff1_ff2_conv",
+                    "current_gain": score["clean_gain"],
+                    "candidate_gain": score["damaged_gain"],
                     **score,
-                    **{f"{label}_clean_wer": clean_wers[label] for label in ("short", "medium", "long")},
+                    **{f"{label}_current_wer": current_wers[label] for label in ("short", "medium", "long")},
+                    **{f"{label}_clean_wer": current_wers[label] for label in ("short", "medium", "long")},
                     **{
                         f"{label}_candidate_wer": damaged_wers[label]
                         for label in ("short", "medium", "long")
@@ -1210,30 +1524,145 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
                 candidate_csv.write({**row, "recording_ids": ",".join(block.recording_ids)})
                 logger.log(row)
 
-        pair_weights: Dict[int, float] = {}
-        pair_rows: List[Dict[str, Any]] = []
-        for pair_id in range(num_pairs):
-            pos_scores = scores_by_pair_sign.get((pair_id, 1), [])
-            neg_scores = scores_by_pair_sign.get((pair_id, -1), [])
-            if not pos_scores or not neg_scores:
-                raise ValueError(f"Missing scores for antithetic pair {pair_id}")
-            pos_mean = sum(pos_scores) / len(pos_scores)
-            neg_mean = sum(neg_scores) / len(neg_scores)
-            pair_weight = pos_mean - neg_mean
-            pair_weights[pair_id] = pair_weight
-            pair_rows.append(
-                {
-                    "pair_id": pair_id,
-                    "positive_score_mean": pos_mean,
-                    "negative_score_mean": neg_mean,
-                    "pair_weight": pair_weight,
-                    "num_blocks": len(pos_scores),
-                }
+            pair_weights, pair_rows = pair_rows_from_block_scores(
+                scores_by_pair_sign,
+                num_pairs=num_pairs,
+                block=block,
             )
-        write_json(run_dir / "pair_weights.json", pair_rows)
+            all_pair_rows.extend(pair_rows)
+            for pair_row in pair_rows:
+                pair_log_row = {
+                    **pair_row,
+                    "update_index": update_index,
+                    "sigma": sigma,
+                    "rank": rank,
+                    "base_seed": base_seed,
+                    "target_group": "ff1_ff2_conv",
+                }
+                pair_weight_writer.write(pair_log_row)
+                logger.log(pair_log_row)
+
+            update_stats = apply_combined_update_to_bundles(
+                bundles,
+                targets,
+                pair_weights,
+                rank=rank,
+                eta=eta,
+                base_seed=base_seed,
+            )
+            cumulative_pair_weights = accumulate_pair_weights(
+                cumulative_pair_weights,
+                pair_weights,
+                num_pairs=num_pairs,
+            )
+            cumulative_delta_norm = combined_update_norm_for_model(
+                next(iter(bundles.values())).model,
+                targets,
+                cumulative_pair_weights,
+                rank=rank,
+                eta=eta,
+                base_seed=base_seed,
+            )
+
+            print(f"Evaluating post-update search block {block.block_id}: {block.recording_ids}")
+            post_update_wers, post_update_diagnostics = evaluate_block_for_models(
+                bundles,
+                block,
+                use_tqdm=bool(config.get("evaluation", {}).get("use_tqdm", False)),
+            )
+            update_score = score_candidate(current_wers, post_update_wers, score_cfg)
+            block_update_row = {
+                "phase": "block_update",
+                "block_id": block.block_id,
+                "recording_ids": block.recording_ids,
+                "update_index": update_index,
+                "eta": eta,
+                "sigma": sigma,
+                "rank": rank,
+                "base_seed": base_seed,
+                "target_group": "ff1_ff2_conv",
+                "pair_weight_mean": sum(float(value) for value in pair_weights.values()) / len(pair_weights),
+                "pair_weight_abs_mean": sum(abs(float(value)) for value in pair_weights.values())
+                / len(pair_weights),
+                "pair_weight_abs_max": max(abs(float(value)) for value in pair_weights.values()),
+                "combined_delta_norm": update_stats["combined_delta_norm"],
+                "applied_update_norm": update_stats["applied_update_norm"],
+                "cumulative_delta_norm": cumulative_delta_norm,
+                "current_gain": update_score["clean_gain"],
+                "post_update_gain": update_score["damaged_gain"],
+                **update_score,
+                **{f"{label}_current_wer": current_wers[label] for label in ("short", "medium", "long")},
+                **{f"{label}_clean_wer": current_wers[label] for label in ("short", "medium", "long")},
+                **{
+                    f"{label}_post_update_wer": post_update_wers[label]
+                    for label in ("short", "medium", "long")
+                },
+                **{
+                    f"{label}_candidate_wer": post_update_wers[label]
+                    for label in ("short", "medium", "long")
+                },
+                "current_diagnostics": current_diagnostics,
+                "post_update_diagnostics": post_update_diagnostics,
+            }
+            block_update_writer.write(block_update_row)
+            logger.log(block_update_row)
+
+            state_update = {
+                key: value
+                for key, value in block_update_row.items()
+                if key
+                not in {
+                    "current_diagnostics",
+                    "post_update_diagnostics",
+                }
+            }
+            state_update["pair_weights"] = pair_rows
+            block_updates.append(state_update)
+            completed_search_block_ids.add(block.block_id)
+            save_deletion_state(
+                run_dir,
+                run_id=run_id,
+                config_path=config_path,
+                rank=rank,
+                sigma=sigma,
+                eta=eta,
+                base_seed=base_seed,
+                num_pairs=num_pairs,
+                target_summary=target_summary,
+                completed_search_block_ids=sorted(completed_search_block_ids),
+                updates=block_updates,
+                cumulative_pair_weights=cumulative_pair_weights,
+                latest_block_id=block.block_id,
+            )
+
+        write_json(run_dir / "pair_weights.json", all_pair_rows)
+        final_cumulative_delta_norm = (
+            combined_update_norm_for_model(
+                next(iter(bundles.values())).model,
+                targets,
+                cumulative_pair_weights,
+                rank=rank,
+                eta=eta,
+                base_seed=base_seed,
+            )
+            if completed_search_block_ids
+            else 0.0
+        )
 
         validation_results: List[Dict[str, Any]] = []
         if not args.skip_validation:
+            has_accumulated_update = any(abs(float(value)) > 0.0 for value in cumulative_pair_weights.values())
+            if has_accumulated_update:
+                apply_combined_update_to_bundles(
+                    bundles,
+                    targets,
+                    cumulative_pair_weights,
+                    rank=rank,
+                    eta=eta,
+                    base_seed=base_seed,
+                    eta_scale=-1.0,
+                )
+            validation_clean_by_block: Dict[int, Tuple[Dict[str, float], Dict[str, Any]]] = {}
             for block in validation_blocks:
                 print(f"Evaluating clean validation block {block.block_id}: {block.recording_ids}")
                 clean_wers, clean_diagnostics = evaluate_block_for_models(
@@ -1241,22 +1670,39 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
                     block,
                     use_tqdm=bool(config.get("evaluation", {}).get("use_tqdm", False)),
                 )
+                validation_clean_by_block[block.block_id] = (clean_wers, clean_diagnostics)
+                validation_writer.write(
+                    {
+                        "phase": "validation_clean",
+                        "block_id": block.block_id,
+                        "recording_ids": block.recording_ids,
+                        **{f"{label}_clean_wer": clean_wers[label] for label in ("short", "medium", "long")},
+                        "clean_diagnostics": clean_diagnostics,
+                    }
+                )
+
+            if has_accumulated_update:
+                apply_combined_update_to_bundles(
+                    bundles,
+                    targets,
+                    cumulative_pair_weights,
+                    rank=rank,
+                    eta=eta,
+                    base_seed=base_seed,
+                    eta_scale=1.0,
+                )
+
+            for block in validation_blocks:
+                print(f"Evaluating final damaged validation block {block.block_id}: {block.recording_ids}")
+                clean_wers, clean_diagnostics = validation_clean_by_block[block.block_id]
                 damaged_wers: Dict[str, float] = {}
                 damaged_diagnostics: Dict[str, Any] = {}
                 for label, bundle in bundles.items():
-                    with applied_combined_perturbation(
-                        bundle.model,
-                        targets,
-                        pair_weights,
-                        rank=rank,
-                        eta=eta,
-                        base_seed=base_seed,
-                    ):
-                        result = evaluate_model_on_block(
-                            bundle,
-                            block,
-                            use_tqdm=bool(config.get("evaluation", {}).get("use_tqdm", False)),
-                        )
+                    result = evaluate_model_on_block(
+                        bundle,
+                        block,
+                        use_tqdm=bool(config.get("evaluation", {}).get("use_tqdm", False)),
+                    )
                     damaged_wers[label] = float(result["wer"])
                     damaged_diagnostics[label] = result
                     if torch.cuda.is_available():
@@ -1264,7 +1710,7 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
 
                 score = score_candidate(clean_wers, damaged_wers, score_cfg)
                 row = {
-                    "phase": "validation_combined",
+                    "phase": "validation_final_damaged",
                     "block_id": block.block_id,
                     "recording_ids": block.recording_ids,
                     "eta": eta,
@@ -1272,6 +1718,8 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
                     "rank": rank,
                     "base_seed": base_seed,
                     "target_group": "ff1_ff2_conv",
+                    "updates_applied": len(block_updates),
+                    "cumulative_delta_norm": final_cumulative_delta_norm,
                     **score,
                     **{f"{label}_clean_wer": clean_wers[label] for label in ("short", "medium", "long")},
                     **{
@@ -1288,28 +1736,43 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
         if bool(search_cfg.get("save_combined_checkpoints", False)):
             checkpoint_dir = run_dir / "damaged_checkpoints"
             for label, bundle in bundles.items():
-                with applied_combined_perturbation(
-                    bundle.model,
-                    targets,
-                    pair_weights,
-                    rank=rank,
-                    eta=eta,
-                    base_seed=base_seed,
-                ):
-                    save_combined_checkpoint(
-                        bundle,
-                        bundle.spec.path,
-                        checkpoint_dir / f"{label}_combined_eta{eta:g}.pt",
-                        {
-                            "pair_weights": pair_rows,
-                            "eta": eta,
-                            "sigma": sigma,
-                            "rank": rank,
-                            "base_seed": base_seed,
-                        },
-                    )
+                save_combined_checkpoint(
+                    bundle,
+                    bundle.spec.path,
+                    checkpoint_dir / f"{label}_blockwise_eta{eta:g}.pt",
+                    {
+                        "mode": "blockwise",
+                        "updates": block_updates,
+                        "cumulative_pair_weights": cumulative_pair_weights,
+                        "eta": eta,
+                        "sigma": sigma,
+                        "rank": rank,
+                        "base_seed": base_seed,
+                    },
+                )
 
-        summary = summarise_results(clean_by_block, pair_rows, validation_results)
+        save_deletion_state(
+            run_dir,
+            run_id=run_id,
+            config_path=config_path,
+            rank=rank,
+            sigma=sigma,
+            eta=eta,
+            base_seed=base_seed,
+            num_pairs=num_pairs,
+            target_summary=target_summary,
+            completed_search_block_ids=sorted(completed_search_block_ids),
+            updates=block_updates,
+            cumulative_pair_weights=cumulative_pair_weights,
+            latest_block_id=max(completed_search_block_ids) if completed_search_block_ids else None,
+        )
+
+        summary = summarise_results(clean_by_block, all_pair_rows, validation_results)
+        summary["update_mode"] = update_mode
+        summary["search_blocks_completed"] = len(completed_search_block_ids)
+        summary["updates_applied"] = len(block_updates)
+        summary["deletion_state_latest"] = str(run_dir / "deletion_state_latest.json")
+        summary["cumulative_delta_norm"] = final_cumulative_delta_norm
         write_json(run_dir / "summary.json", summary)
         write_artifact_index(
             run_dir / "ARTIFACT_INDEX.md",
@@ -1322,12 +1785,16 @@ def run_search(config: Mapping[str, Any], config_path: Path, args: argparse.Name
                 run_dir / "candidate_metrics.csv",
                 run_dir / "candidate_metrics.jsonl",
                 run_dir / "pair_weights.json",
+                run_dir / "pair_weights.jsonl",
+                run_dir / "block_update_metrics.jsonl",
+                run_dir / "deletion_state_latest.json",
                 run_dir / "validation_metrics.jsonl",
                 run_dir / "summary.json",
             ],
             notes=[
                 "Mimas-local Earnings train split is used when configured with /store/store4/data/earnings-22.",
-                "The source checkpoints are loaded read-only; perturbations are applied in memory and restored.",
+                "The source checkpoints are loaded read-only; blockwise deletion updates are applied only to in-memory model copies.",
+                "deletion_state_latest.json stores compact accumulated pair weights and can be replayed with --resume-state.",
             ],
         )
         print(json.dumps(summary, indent=2, sort_keys=True))
@@ -1408,6 +1875,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--disable-wandb", action="store_true")
     parser.add_argument("--wandb-mode", default=None)
     parser.add_argument("--save-combined-checkpoints", action="store_true")
+    parser.add_argument(
+        "--resume-state",
+        type=Path,
+        default=None,
+        help="Replay a compact blockwise deletion state before continuing search blocks.",
+    )
     return parser
 
 

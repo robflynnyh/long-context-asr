@@ -69,6 +69,8 @@ on_exit() {
     echo "max_audio_frames=${ROB319_MAX_AUDIO_FRAMES:-config_default}"
     echo "max_search_blocks=${ROB319_MAX_SEARCH_BLOCKS:-all_configured}"
     echo "max_validation_blocks=${ROB319_MAX_VALIDATION_BLOCKS:-all_configured}"
+    echo "update_mode=blockwise"
+    echo "resume_state=${ROB319_RESUME_STATE:-unset}"
     echo "wandb_mode=${ROB319_WANDB_MODE:-config_default}"
   } >> "$SUMMARY_FILE"
   if [[ "${ROB319_ENABLE_CALLBACK:-1}" == "1" ]]; then
@@ -189,6 +191,9 @@ if [[ "${ROB319_SKIP_VALIDATION:-0}" == "1" ]]; then
 fi
 if [[ "${ROB319_SAVE_COMBINED_CHECKPOINTS:-0}" == "1" ]]; then
   runner_args+=(--save-combined-checkpoints)
+fi
+if [[ -n "${ROB319_RESUME_STATE:-}" ]]; then
+  runner_args+=(--resume-state "$ROB319_RESUME_STATE")
 fi
 if [[ "${ROB319_SMOKE:-0}" == "1" ]]; then
   runner_args+=(

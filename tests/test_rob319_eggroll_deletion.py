@@ -91,6 +91,79 @@ class Rob319EggrollDeletionTests(unittest.TestCase):
 
         torch.testing.assert_close(parameter, before)
 
+    def test_combined_update_persists_until_inverse_update(self):
+        model = tiny_sconformer()
+        target = rob319.select_target_tensors(model)[0]
+        parameter = dict(model.named_parameters())[target.name]
+        before = parameter.detach().clone()
+        pair_weights = {0: 0.75, 1: -0.25}
+
+        stats = rob319.apply_combined_update_in_place(
+            model,
+            [target],
+            pair_weights,
+            rank=2,
+            eta=1e-3,
+            base_seed=319,
+        )
+
+        self.assertGreater(stats["combined_delta_norm"], 0.0)
+        self.assertFalse(torch.equal(parameter, before))
+
+        rob319.apply_combined_update_in_place(
+            model,
+            [target],
+            pair_weights,
+            rank=2,
+            eta=1e-3,
+            base_seed=319,
+            eta_scale=-1.0,
+        )
+
+        torch.testing.assert_close(parameter, before)
+
+    def test_cumulative_pair_weights_match_sequential_block_updates(self):
+        model_seq = tiny_sconformer()
+        model_replay = tiny_sconformer()
+        model_replay.load_state_dict(model_seq.state_dict())
+        target = rob319.select_target_tensors(model_seq)[0]
+        block_a = {0: 0.5, 1: -0.25}
+        block_b = {0: -0.125, 1: 0.75}
+
+        rob319.apply_combined_update_in_place(
+            model_seq,
+            [target],
+            block_a,
+            rank=2,
+            eta=1e-3,
+            base_seed=319,
+        )
+        rob319.apply_combined_update_in_place(
+            model_seq,
+            [target],
+            block_b,
+            rank=2,
+            eta=1e-3,
+            base_seed=319,
+        )
+
+        cumulative = {0: 0.0, 1: 0.0}
+        cumulative = rob319.accumulate_pair_weights(cumulative, block_a, num_pairs=2)
+        cumulative = rob319.accumulate_pair_weights(cumulative, block_b, num_pairs=2)
+        rob319.apply_combined_update_in_place(
+            model_replay,
+            [target],
+            cumulative,
+            rank=2,
+            eta=1e-3,
+            base_seed=319,
+        )
+
+        torch.testing.assert_close(
+            dict(model_seq.named_parameters())[target.name],
+            dict(model_replay.named_parameters())[target.name],
+        )
+
     def test_blocks_use_full_groups_of_five_and_hold_out_validation(self):
         records = [
             rob319.EarningsRecord(id=str(i), audio=f"{i}.mp3", text="hello", transcript_key=str(i))
