@@ -2,13 +2,16 @@
 
 The ROB-319 deletion-search runner is configured to require the issue's 18L
 1024D checkpoint family by default. On the current Mimas host,
-`/mnt/parscratch/users/acp21rjf/...` was not mounted; if an exact Mimas-local
-mirror exists, pass it with `ROB319_CHECKPOINT_ROOT` or `--checkpoint-root`.
+`/mnt/parscratch/users/acp21rjf/...` was not mounted. The exact repeat-1
+checkpoints were copied to the Mimas-local artifact root listed below; pass
+that path with `ROB319_CHECKPOINT_ROOT` or `--checkpoint-root` for Mimas runs.
 
 - Default artifact root:
   `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search`
 - Default checkpoint root:
   `/mnt/parscratch/users/acp21rjf/spotify/checkpoints_seq_scheduler_rb_18l_1024D`
+- Mimas-local copied checkpoint root:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/source_checkpoints_18l_1024D`
 - Default Earnings root:
   `/store/store4/data/earnings-22`
 - Default checkpoints:
@@ -34,6 +37,30 @@ mirror exists, pass it with `ROB319_CHECKPOINT_ROOT` or `--checkpoint-root`.
   `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-targets-smoke-18l-copy-20260628T000000Z`
   loaded the copied checkpoints as 445.7M-parameter 18L models and matched 126
   shared target tensors: 54 convolution, 36 `ff1`, and 36 `ff2`.
+- Failed windowed GPU smoke:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-gpu-smoke-18l-copy-20260628T000000Z`
+  used the exact copied 18L checkpoints and failed before clean block
+  completion because the current Mimas environment has `flash_attn==1.0.8`
+  and does not expose the `flash_attn_qkvpacked_func` API required by the
+  repo's local-window attention path. The model fell back to the non-flash
+  branch, which asserts that windowed attention is unsupported there.
+- Failed capped GPU smokes:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-gpu-smoke-18l-capped-20260628T000000Z`,
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-gpu-smoke-18l-cap256-blocking-20260628T000000Z`,
+  and
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-gpu-smoke-18l-capped-ckptoff-20260628T000000Z`
+  were intermediate Mimas debugging runs for averaged-moving-window capped
+  smoke evaluation. They exposed CUDA device/allocator state issues before the
+  runner was changed to set each model bundle's CUDA device explicitly.
+- Successful capped 2-GPU smoke:
+  `/store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search/rob319-gpu-smoke-18l-cap256-setdevice-20260628T000000Z`
+  ran under `with-gpu any --num 2`, loaded the exact copied 18L checkpoints,
+  evaluated 2 antithetic pairs on one search block and one validation block,
+  and logged `context_score` diagnostics to W&B run
+  `https://wandb.ai/wobrob101/long-context-asr/runs/d8sxxzd2`. This is a
+  mechanics-only smoke: it used `evaluation_mode=averaged_moving_window` and
+  `max_audio_frames=256`, so WERs near `0.9997` reflect cropped audio against
+  full references and are not a scientific deletion-search result.
 
 Each run writes a run-local `ARTIFACT_INDEX.md`, resolved config, target tensor
 list, block manifest, clean/candidate/validation metrics, pair weights, and
