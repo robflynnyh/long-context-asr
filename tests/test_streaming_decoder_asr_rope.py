@@ -1,9 +1,13 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import mock
 
 import torch
 
+from exp.train_streaming_decoder_asr import load_pretrained_model_state
 from lcasr.models.streaming_decoder_asr import CausalDecoderLayer, StreamingDecoderASR
+from symphony.scripts.rob192_tedlium_independent_chunk_eval import decode_with_kv_cache_state, subsampled_span
 
 
 def tiny_streaming_config():
@@ -107,6 +111,39 @@ class StreamingDecoderASRRoPETest(unittest.TestCase):
 
         self.assertEqual(sdpa.call_count, 1)
 
+    def test_carried_kv_decode_matches_single_sequence_decode(self):
+        torch.manual_seed(0)
+        model = StreamingDecoderASR(**tiny_streaming_config())
+        model.eval()
+        features = torch.randn(1, 7, 32)
+
+        full = model._decode_with_kv_cache(
+            x=features,
+            max_cache_length=None,
+            sample=False,
+            temperature=1.0,
+            sample_silence_only=False,
+        )
+        first, state = decode_with_kv_cache_state(
+            model=model,
+            x=features[:, :3],
+            max_cache_length=None,
+            sample=False,
+            temperature=1.0,
+            sample_silence_only=False,
+        )
+        second, _ = decode_with_kv_cache_state(
+            model=model,
+            x=features[:, 3:],
+            max_cache_length=None,
+            sample=False,
+            temperature=1.0,
+            sample_silence_only=False,
+            decoder_state=state,
+        )
+
+        self.assertTrue(torch.equal(full, torch.cat([first, second], dim=1)))
+
     def test_kv_cache_spectrogram_length_uses_subsampled_frame_count(self):
         model = StreamingDecoderASR(**tiny_streaming_config())
 
@@ -115,6 +152,16 @@ class StreamingDecoderASRRoPETest(unittest.TestCase):
             int(model.output_lengths(torch.tensor([64]))[0].item()),
         )
         self.assertLess(model.kv_cache_length_from_spectrogram_length(64), 64)
+
+    def test_history_subsampled_span_keeps_first_chunk_start(self):
+        class OffsetLengthModel:
+            def output_lengths(self, lengths):
+                return torch.div(lengths, 8, rounding_mode="floor") + 1
+
+        model = OffsetLengthModel()
+
+        self.assertEqual(subsampled_span(model, 0, 2048, 513), (0, 257))
+        self.assertEqual(subsampled_span(model, 2048, 4096, 769), (256, 513))
 
     def test_combined_logits_are_normalized_joint_distribution(self):
         model = StreamingDecoderASR(**tiny_streaming_config())
@@ -174,6 +221,20 @@ class StreamingDecoderASRRoPETest(unittest.TestCase):
 
         expected = torch.tensor([[5, model.get_silence_id()]])
         self.assertTrue(torch.equal(prediction, expected))
+
+    def test_pretrained_loader_accepts_checkpoint_directory(self):
+        torch.manual_seed(0)
+        source_model = StreamingDecoderASR(**tiny_streaming_config())
+        target_model = StreamingDecoderASR(**tiny_streaming_config())
+        scratch_dir = Path(".tmp")
+        scratch_dir.mkdir(exist_ok=True)
+
+        with TemporaryDirectory(dir=scratch_dir) as checkpoint_dir:
+            torch.save({"model": source_model.state_dict()}, f"{checkpoint_dir}/step_7.pt")
+            load_pretrained_model_state(target_model, checkpoint_dir, torch.device("cpu"))
+
+        for key, value in source_model.state_dict().items():
+            torch.testing.assert_close(target_model.state_dict()[key], value)
 
 
 if __name__ == "__main__":

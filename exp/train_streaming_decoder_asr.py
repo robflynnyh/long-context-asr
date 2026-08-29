@@ -4,7 +4,8 @@ import os
 import random
 import sys
 import time
-from typing import Any, List, Union
+import warnings
+from typing import Any, Dict, List, Union
 
 import lcasr
 import torch
@@ -16,7 +17,14 @@ from tqdm import tqdm
 
 from lcasr.utils.dataloading import VariableBatchSimpleDataloader, reset_seen_ids
 from lcasr.utils.audio_tools import total_frames
-from lcasr.utils.general import get_model_class, load_checkpoint, load_model, load_optimizer, save_model
+from lcasr.utils.general import (
+    find_latest_checkpoint,
+    get_model_class,
+    load_checkpoint,
+    load_model,
+    load_optimizer,
+    save_model,
+)
 from lcasr.utils.streaming_targets import (
     build_streaming_frame_targets,
     filter_words_by_end_frame,
@@ -56,6 +64,41 @@ class SyntheticStreamingDataloader:
                 )
                 ids.append(f"synthetic-{batch_idx}-{item_idx}")
             yield audio, audio_lengths, text, ids
+
+
+def resolve_checkpoint_path(path: str) -> str:
+    if os.path.isdir(path):
+        latest = find_latest_checkpoint(path)
+        if latest is None:
+            raise FileNotFoundError(f"no .pt checkpoints found in {path}")
+        return os.path.join(path, latest)
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    return path
+
+
+def remap_legacy_state_dict_keys(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    remapped = {}
+    for key, value in state_dict.items():
+        new_key = key
+        if new_key.endswith(".norm.scale"):
+            new_key = new_key[: -len(".scale")] + ".weight"
+        elif new_key.endswith(".out_proj.0.scale"):
+            new_key = new_key[: -len(".scale")] + ".weight"
+        remapped[new_key] = value
+    return remapped
+
+
+def load_pretrained_model_state(model: torch.nn.Module, path: str, device: torch.device) -> None:
+    checkpoint_path = resolve_checkpoint_path(path)
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    state_dict = checkpoint["model"] if "model" in checkpoint else checkpoint
+    try:
+        model.load_state_dict(remap_legacy_state_dict_keys(state_dict))
+    except RuntimeError:
+        warnings.warn("loading pretrained model with strict=False")
+        model.load_state_dict(remap_legacy_state_dict_keys(state_dict), strict=False)
+    print(f"loaded pretrained model from {checkpoint_path}")
 
 
 def get_dtype(dtype: str) -> torch.dtype:
@@ -437,16 +480,28 @@ def main(args):
         wandb.config.update({"total_params": total_params}, allow_val_change=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
+    pretrained_path = args.config["checkpointing"].get("pretrained", None)
+    output_checkpoint_dir = args.config["checkpointing"]["dir"]
+    should_initialize_from_pretrained = (
+        pretrained_path is not None
+        and find_latest_checkpoint(output_checkpoint_dir) is None
+    )
+    if should_initialize_from_pretrained:
+        load_pretrained_model_state(model=model, path=pretrained_path, device=device)
+
     optimizer, scheduler = load_optimizer(args.config, model)
 
-    seen_ids, step, epoch = load_checkpoint(
-        args=args,
-        model=model,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        path=args.config["checkpointing"]["dir"],
-        device=device,
-    )
+    if should_initialize_from_pretrained:
+        seen_ids, step, epoch = [], 0, 0
+    else:
+        seen_ids, step, epoch = load_checkpoint(
+            args=args,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            path=output_checkpoint_dir,
+            device=device,
+        )
     if args.reset_step:
         seen_ids, step, epoch = [], 0, 0
 
