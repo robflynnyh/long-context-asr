@@ -125,26 +125,27 @@ class BestRQ(BaseModel):
         else:
             sample_lens = (valid_stacked.to(device) if device is not None else valid_stacked).long().sum(dim=1)
 
-        min_sample_len = int(sample_lens.min().item()) if sample_lens.numel() > 0 else 0
-        if min_sample_len <= 0:
-            return mask
-
         mask_length = int(self.mask_length)
         if mask_length <= 0:
             raise ValueError(f"mask_length must be positive, got {mask_length}")
 
-        num_blocks = min_sample_len // mask_length
-        if num_blocks <= 0:
-            return mask
-
-        num_mask = int(float(self.mask_prob) * min_sample_len + torch.rand((), **device_kwargs).item())
-        num_mask = max(1, min(num_mask, num_blocks))
-
-        selected_blocks = torch.randperm(num_blocks, **device_kwargs)[:num_mask] * mask_length
         selected_offsets = torch.arange(mask_length, **device_kwargs)
-        selected_indices = (selected_blocks[:, None] + selected_offsets[None, :]).reshape(-1)
-        selected_indices = selected_indices[selected_indices < T]
-        mask[:, selected_indices] = True
+        for batch_idx, sample_len_tensor in enumerate(sample_lens):
+            sample_len = int(sample_len_tensor.item())
+            if sample_len <= 0:
+                continue
+
+            num_blocks = sample_len // mask_length
+            if num_blocks <= 0:
+                continue
+
+            num_mask = int(float(self.mask_prob) * sample_len + torch.rand((), **device_kwargs).item())
+            num_mask = max(1, min(num_mask, num_blocks))
+
+            selected_blocks = torch.randperm(num_blocks, **device_kwargs)[:num_mask] * mask_length
+            selected_indices = (selected_blocks[:, None] + selected_offsets[None, :]).reshape(-1)
+            selected_indices = selected_indices[selected_indices < sample_len]
+            mask[batch_idx, selected_indices] = True
         return mask
 
     def select_mask(
