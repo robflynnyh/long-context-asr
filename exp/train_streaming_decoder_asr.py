@@ -4,10 +4,12 @@ import os
 import random
 import sys
 import time
-from typing import Any, List, Union
+import warnings
+from typing import Any, Iterable, List, Optional, Tuple, Union
 
 import lcasr
 import torch
+import torch.nn.functional as F
 import wandb
 from contextlib import nullcontext
 from omegaconf import OmegaConf
@@ -16,11 +18,21 @@ from tqdm import tqdm
 
 from lcasr.utils.dataloading import VariableBatchSimpleDataloader, reset_seen_ids
 from lcasr.utils.audio_tools import total_frames
-from lcasr.utils.general import get_model_class, load_checkpoint, load_model, load_optimizer, save_model
+from lcasr.utils.general import (
+    find_latest_checkpoint,
+    get_model_class,
+    load_checkpoint,
+    load_model,
+    load_optimizer,
+    save_model,
+)
 from lcasr.utils.streaming_targets import (
     build_streaming_frame_targets,
+    build_streaming_frame_targets_from_events,
+    build_streaming_target_events,
     filter_words_by_end_frame,
     pad_audio_for_streaming_delay,
+    streaming_padding_frames,
 )
 
 
@@ -83,6 +95,12 @@ def make_dataloader(config, tokenizer, args, seen_ids):
     max_records = config["data"].get("max_records", None)
     if max_records is not None:
         paired_data = dict(list(paired_data.items())[: int(max_records)])
+    subgroup_shuffle_size = int(
+        config["training"].get(
+            "subgroup_shuffle_size",
+            config["data"].get("subgroup_shuffle_size", 2000),
+        )
+    )
 
     return VariableBatchSimpleDataloader(
         pairs=paired_data,
@@ -93,6 +111,7 @@ def make_dataloader(config, tokenizer, args, seen_ids):
         num_workers=args.num_workers,
         pin_memory=args.pin_memory,
         prefetch=args.prefetch_factor,
+        subgroup_shuffle_size=subgroup_shuffle_size,
         seen_ids=seen_ids,
         random_seed=config["training"].get("random_seed", 1234),
     )
@@ -123,6 +142,102 @@ def estimate_streaming_optimizer_steps(dataloader, chunk_size: int, chunk_overla
         if batch_lengths:
             per_epoch_steps += max(math.ceil(max(batch_lengths) / stride), 1)
     return max(per_epoch_steps * max_epochs, 1)
+
+
+def chunk_starts_for_batch(
+    audio_lengths: torch.Tensor,
+    stride: int,
+    shuffle_chunks: bool,
+    rng=random,
+) -> List[int]:
+    starts = list(range(0, int(audio_lengths.max().item()), stride))
+    if shuffle_chunks and len(starts) > 1:
+        rng.shuffle(starts)
+    return starts
+
+
+def positive_output_length(model, frames: int) -> int:
+    if frames <= 0:
+        return 0
+    length = torch.tensor([int(frames)], dtype=torch.long)
+    return int(model.output_lengths(length)[0].item())
+
+
+def build_chunk_with_subsampling_history(
+    audio: torch.Tensor,
+    audio_lengths: torch.Tensor,
+    active: torch.Tensor,
+    chunk_start: int,
+    chunk_size: int,
+    history_frames: int,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
+    history_start = max(0, int(chunk_start) - int(history_frames))
+    history_len = int(chunk_start) - history_start
+    chunk_end = int(chunk_start) + int(chunk_size)
+    segment = audio[active, :, history_start:chunk_end]
+    active_lengths = audio_lengths[active]
+    segment_lengths = torch.clamp(active_lengths - history_start, min=0, max=segment.size(-1))
+    current_lengths = torch.clamp(active_lengths - int(chunk_start), min=0, max=int(chunk_size))
+    return segment, segment_lengths, current_lengths, history_len
+
+
+def add_final_flush_padding(
+    chunk: torch.Tensor,
+    chunk_lengths: torch.Tensor,
+    final_chunks: torch.Tensor,
+    flush_frames: int,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    flush_frames = int(flush_frames)
+    if flush_frames <= 0:
+        return chunk, chunk_lengths
+    final_chunks = final_chunks.to(device=chunk_lengths.device, dtype=torch.bool)
+    if not bool(final_chunks.any().item()):
+        return chunk, chunk_lengths
+    chunk = F.pad(chunk, (0, flush_frames), value=0.0)
+    chunk_lengths = chunk_lengths + final_chunks.to(dtype=chunk_lengths.dtype) * flush_frames
+    return chunk, chunk_lengths
+
+
+def select_kv_caches_for_active(
+    caches: Optional[Iterable[torch.Tensor]],
+    cached_batch_indices: Optional[torch.Tensor],
+    active_indices: torch.Tensor,
+) -> Optional[List[torch.Tensor]]:
+    if caches is None or cached_batch_indices is None:
+        return None
+    index_lookup = {int(batch_idx): pos for pos, batch_idx in enumerate(cached_batch_indices.tolist())}
+    positions = [index_lookup[int(batch_idx)] for batch_idx in active_indices.tolist()]
+    selected = torch.tensor(positions, dtype=torch.long)
+    return [cache.index_select(0, selected.to(cache.device)) for cache in caches]
+
+
+def final_targets_for_lengths(frame_targets: torch.Tensor, lengths: torch.Tensor, silence_id: int) -> torch.Tensor:
+    final_targets = torch.full((frame_targets.size(0),), silence_id, dtype=torch.long)
+    for idx, length in enumerate(lengths.tolist()):
+        length = int(length)
+        if length <= 0:
+            continue
+        target = int(frame_targets[idx, length - 1].item())
+        final_targets[idx] = silence_id if target < 0 else target
+    return final_targets
+
+
+def load_streaming_pretrained_checkpoint(model, pretrained_path: str, device) -> None:
+    if os.path.isdir(pretrained_path):
+        latest = find_latest_checkpoint(pretrained_path)
+        if latest is None:
+            raise FileNotFoundError(f"no .pt checkpoints found in pretrained directory: {pretrained_path}")
+        pretrained_path = os.path.join(pretrained_path, latest)
+    if not os.path.exists(pretrained_path):
+        raise FileNotFoundError(f"pretrained checkpoint does not exist: {pretrained_path}")
+    checkpoint = torch.load(pretrained_path, map_location=device)
+    state_dict = checkpoint["model"] if isinstance(checkpoint, dict) and "model" in checkpoint else checkpoint
+    try:
+        model.load_state_dict(state_dict)
+    except Exception:
+        warnings.warn("loading pretrained model with strict=False")
+        model.load_state_dict(state_dict, strict=False)
+    print(f"loaded pretrained model from {pretrained_path}")
 
 
 def decode_prediction_ids(tokenizer, prediction_ids, silence_id: int, max_tokens: int = 256) -> str:
@@ -233,7 +348,7 @@ def maybe_log_debug_generation(
         )
 
 
-def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_ids=None, epoch=0):
+def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_ids=None, epoch=0, dataloader_factory=None):
     seen_ids = [] if seen_ids is None else seen_ids
     scaler = GradScaler(enabled=torch.cuda.is_available())
     dtype = get_dtype(args.config["training"].get("dtype", "bfloat16"))
@@ -243,9 +358,19 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     backprop_every = args.config["training"].get("backprop_every", 1)
     delay_seconds = args.config["streaming"].get("delay_seconds", 2.0)
     buffer_seconds = args.config["streaming"].get("buffer_seconds", 0.25)
+    final_flush_frames = streaming_padding_frames(delay_seconds, buffer_seconds)
     chunk_size = args.config["audio_chunking"]["size"]
     chunk_overlap = args.config["audio_chunking"].get("overlap", 0)
     shuffle_chunks = bool(args.config["training"].get("shuffle_chunks", True))
+    ordered_chunk_training = args.config["training"].get("ordered_chunk_training", {})
+    ordered_history_enabled = bool(ordered_chunk_training.get("enabled", False))
+    subsampling_history_frames = int(ordered_chunk_training.get("subsampling_history_frames", chunk_size))
+    decoder_history_frames = int(ordered_chunk_training.get("decoder_history_frames", chunk_size))
+    detach_decoder_cache = bool(ordered_chunk_training.get("detach_cache", True))
+    if ordered_history_enabled and shuffle_chunks:
+        raise ValueError("training.ordered_chunk_training.enabled requires training.shuffle_chunks=false")
+    if ordered_history_enabled and not detach_decoder_cache:
+        raise ValueError("ROB-209 ordered chunk training only supports detached decoder cache")
     assert chunk_size > chunk_overlap, "audio_chunking.size must be greater than overlap"
     scheduler_total_steps = args.config["training"].get("scheduler_total_steps")
     if scheduler_total_steps is None:
@@ -268,13 +393,26 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
     print(f"Scheduler total optimizer steps: {scheduler_total_steps}")
     print("Prediction heads: binary silence + conditional text")
     print(f"Shuffle chunks: {shuffle_chunks}")
+    if ordered_history_enabled:
+        print(
+            "Ordered chunk training: enabled "
+            f"(subsampling_history_frames={subsampling_history_frames}, "
+            f"decoder_history_frames={decoder_history_frames}, detach_cache={detach_decoder_cache}, "
+            f"final_flush_frames={final_flush_frames})"
+        )
+    else:
+        print("Ordered chunk training: disabled")
     if checkpoint_every_records > 0:
         print(f"Checkpoint save interval: {checkpoint_every_records} recordings")
     else:
         print("Checkpoint save interval: disabled")
+    subgroup_shuffle_size = args.config["training"].get("subgroup_shuffle_size", None)
+    if subgroup_shuffle_size is not None:
+        print(f"Duration subgroup shuffle size: {int(subgroup_shuffle_size)}")
 
+    current_dataloader = dataloader
     for cur_epoch in range(epoch, max_epochs):
-        pbar = tqdm(dataloader, desc=f"Streaming decoder training - Epoch {cur_epoch}")
+        pbar = tqdm(current_dataloader, desc=f"Streaming decoder training - Epoch {cur_epoch}")
         for batch in pbar:
             audio, audio_lengths, transcripts, ids = batch
             seen_ids.extend(ids)
@@ -283,48 +421,125 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
             should_save_checkpoint = checkpoint_every_records > 0 and records_seen >= next_checkpoint_record
             processed_chunk = False
             stride = chunk_size - chunk_overlap
-            chunk_starts_for_batch = list(range(0, int(audio_lengths.max().item()), stride))
-            if shuffle_chunks and len(chunk_starts_for_batch) > 1:
-                random.shuffle(chunk_starts_for_batch)
-            for chunk_start in chunk_starts_for_batch:
+            batch_chunk_starts = chunk_starts_for_batch(
+                audio_lengths=audio_lengths,
+                stride=stride,
+                shuffle_chunks=shuffle_chunks,
+            )
+            decoder_caches = None
+            decoder_cache_indices = None
+            previous_frame_targets = torch.full((audio.size(0),), model.get_silence_id(), dtype=torch.long)
+            target_events = None
+            target_event_offsets = None
+            if ordered_history_enabled:
+                target_events = [
+                    build_streaming_target_events(
+                        transcript,
+                        tokenizer=dataloader.tokenizer,
+                        subsampling_factor=model.subsampling_factor,
+                        output_length_fn=model.output_lengths,
+                        delay_seconds=delay_seconds,
+                    )
+                    for transcript in transcripts
+                ]
+                target_event_offsets = [0] * len(target_events)
+            for chunk_start in batch_chunk_starts:
                 active = audio_lengths > chunk_start
                 if active.sum().item() == 0:
                     continue
                 processed_chunk = True
-                chunk = audio[active, :, chunk_start : chunk_start + chunk_size]
-                chunk_lengths = torch.clamp(audio_lengths[active] - chunk_start, min=0, max=chunk.size(-1))
+                active_indices = active.nonzero(as_tuple=False).flatten()
                 chunk_transcripts = [
                     filter_words_by_end_frame(transcripts[i], chunk_start, chunk_start + chunk_size)
                     for i, keep in enumerate(active.tolist())
                     if keep
                 ]
                 chunk_starts = torch.full((active.sum().item(),), chunk_start, dtype=torch.long)
-                chunk, chunk_lengths = pad_audio_for_streaming_delay(
-                    chunk,
-                    chunk_lengths,
-                    delay_seconds=delay_seconds,
-                    buffer_seconds=buffer_seconds,
-                )
+                if ordered_history_enabled:
+                    chunk, chunk_lengths, current_raw_lengths, history_frames = build_chunk_with_subsampling_history(
+                        audio=audio,
+                        audio_lengths=audio_lengths,
+                        active=active,
+                        chunk_start=chunk_start,
+                        chunk_size=chunk_size,
+                        history_frames=subsampling_history_frames,
+                    )
+                    raw_chunk_lengths = chunk_lengths.clone()
+                    final_chunks = audio_lengths[active] <= chunk_start + chunk_size
+                    chunk, chunk_lengths = add_final_flush_padding(
+                        chunk,
+                        chunk_lengths,
+                        final_chunks=final_chunks,
+                        flush_frames=final_flush_frames,
+                    )
+                    history_output_len = positive_output_length(model, history_frames)
+                    output_lengths = torch.clamp(model.output_lengths(chunk_lengths) - history_output_len, min=0)
+                    raw_output_lengths = torch.clamp(model.output_lengths(raw_chunk_lengths) - history_output_len, min=0)
+                else:
+                    chunk = audio[active, :, chunk_start : chunk_start + chunk_size]
+                    chunk_lengths = torch.clamp(audio_lengths[active] - chunk_start, min=0, max=chunk.size(-1))
+                    chunk, chunk_lengths = pad_audio_for_streaming_delay(
+                        chunk,
+                        chunk_lengths,
+                        delay_seconds=delay_seconds,
+                        buffer_seconds=buffer_seconds,
+                    )
+                    output_lengths = model.output_lengths(chunk_lengths)
+                    raw_output_lengths = output_lengths
+                    history_output_len = 0
+
+                if ordered_history_enabled:
+                    active_event_offsets = [target_event_offsets[int(i)] for i in active_indices.tolist()]
+                    frame_targets, updated_event_offsets = build_streaming_frame_targets_from_events(
+                        event_sequences=[target_events[int(i)] for i in active_indices.tolist()],
+                        output_lengths=output_lengths.cpu(),
+                        chunk_start_frames=chunk_starts,
+                        tokenizer=dataloader.tokenizer,
+                        subsampling_factor=model.subsampling_factor,
+                        output_length_fn=model.output_lengths,
+                        delay_seconds=delay_seconds,
+                        silence_id=model.get_silence_id(),
+                        event_offsets=active_event_offsets,
+                        return_event_offsets=True,
+                    )
+                    for batch_idx, event_offset in zip(active_indices.tolist(), updated_event_offsets):
+                        target_event_offsets[int(batch_idx)] = int(event_offset)
+                    frame_targets = frame_targets.to(device)
+                else:
+                    frame_targets = build_streaming_frame_targets(
+                        transcripts=chunk_transcripts,
+                        output_lengths=output_lengths.cpu(),
+                        tokenizer=dataloader.tokenizer,
+                        subsampling_factor=model.subsampling_factor,
+                        output_length_fn=model.output_lengths,
+                        delay_seconds=delay_seconds,
+                        chunk_start_frames=chunk_starts,
+                        silence_id=model.get_silence_id(),
+                    ).to(device)
+
                 chunk = chunk.to(device=device, dtype=model_dtype)
                 chunk_lengths = chunk_lengths.to(device)
-                output_lengths = model.output_lengths(chunk_lengths)
-                frame_targets = build_streaming_frame_targets(
-                    transcripts=chunk_transcripts,
-                    output_lengths=output_lengths.cpu(),
-                    tokenizer=dataloader.tokenizer,
-                    subsampling_factor=model.subsampling_factor,
-                    delay_seconds=delay_seconds,
-                    chunk_start_frames=chunk_starts,
-                    silence_id=model.get_silence_id(),
-                ).to(device)
 
                 if should_log_generation:
+                    debug_chunk = chunk
+                    debug_chunk_lengths = chunk_lengths
+                    if ordered_history_enabled:
+                        debug_chunk = audio[active, :, chunk_start : chunk_start + chunk_size]
+                        debug_chunk_lengths = current_raw_lengths.clone()
+                        debug_chunk, debug_chunk_lengths = add_final_flush_padding(
+                            debug_chunk,
+                            debug_chunk_lengths,
+                            final_chunks=final_chunks,
+                            flush_frames=final_flush_frames,
+                        )
+                        debug_chunk = debug_chunk.to(device=device, dtype=model_dtype)
+                        debug_chunk_lengths = debug_chunk_lengths.to(device)
                     maybe_log_debug_generation(
                         args=args,
                         model=model,
                         tokenizer=dataloader.tokenizer,
-                        chunk=chunk,
-                        chunk_lengths=chunk_lengths,
+                        chunk=debug_chunk,
+                        chunk_lengths=debug_chunk_lengths,
                         chunk_transcripts=chunk_transcripts,
                         frame_targets=frame_targets,
                         ids=[ids[i] for i, keep in enumerate(active.tolist()) if keep],
@@ -336,11 +551,40 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                     should_log_generation = False
 
                 with torch.autocast(device.type, dtype=dtype) if torch.cuda.is_available() else nullcontext():
-                    out = model.calc_loss(
-                        audio_signal=chunk,
-                        length=chunk_lengths,
-                        frame_targets=frame_targets,
-                    )
+                    if ordered_history_enabled:
+                        selected_caches = select_kv_caches_for_active(
+                            decoder_caches,
+                            cached_batch_indices=decoder_cache_indices,
+                            active_indices=active_indices,
+                        )
+                        decoder_cache_cap = model.kv_cache_length_from_spectrogram_length(decoder_history_frames)
+                        retain_end = int(raw_output_lengths.max().item()) if raw_output_lengths.numel() else 0
+                        retain_end = min(retain_end, frame_targets.size(1))
+                        retain_start = max(0, retain_end - decoder_cache_cap)
+                        out = model.calc_loss_with_cache(
+                            audio_signal=chunk,
+                            length=chunk_lengths,
+                            frame_targets=frame_targets,
+                            cached_kvs=selected_caches,
+                            feature_start=history_output_len,
+                            feature_length=frame_targets.size(1),
+                            initial_frame_targets=previous_frame_targets[active].to(device),
+                            return_cache_slice=(retain_start, retain_end),
+                            detach_cache=detach_decoder_cache,
+                        )
+                        decoder_caches = out["cache"]
+                        decoder_cache_indices = active_indices.detach().cpu()
+                        previous_frame_targets[active_indices] = final_targets_for_lengths(
+                            frame_targets.detach().cpu(),
+                            raw_output_lengths.detach().cpu(),
+                            model.get_silence_id(),
+                        )
+                    else:
+                        out = model.calc_loss(
+                            audio_signal=chunk,
+                            length=chunk_lengths,
+                            frame_targets=frame_targets,
+                        )
                     loss = out["loss"] / backprop_every
 
                 scaler.scale(loss).backward()
@@ -385,6 +629,8 @@ def train(args, model, dataloader, optimizer, scheduler, device, step=0, seen_id
                 while next_checkpoint_record <= records_seen:
                     next_checkpoint_record += checkpoint_every_records
         seen_ids = reset_seen_ids(seen_ids, epoch=cur_epoch)
+        if dataloader_factory is not None and cur_epoch + 1 < max_epochs:
+            current_dataloader = dataloader_factory(seen_ids)
 
     if last_saved_step != global_step:
         save_model(model, optimizer, scheduler, global_step, args.config, seen_ids=seen_ids, epoch=max_epochs)
@@ -439,21 +685,41 @@ def main(args):
     model = model.to(device)
     optimizer, scheduler = load_optimizer(args.config, model)
 
-    seen_ids, step, epoch = load_checkpoint(
-        args=args,
-        model=model,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        path=args.config["checkpointing"]["dir"],
-        device=device,
-    )
+    checkpoint_dir = args.config["checkpointing"]["dir"]
+    pretrained = args.config["checkpointing"].get("pretrained", None)
+    if find_latest_checkpoint(checkpoint_dir) is not None:
+        seen_ids, step, epoch = load_checkpoint(
+            args=args,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            path=checkpoint_dir,
+            device=device,
+        )
+    elif pretrained is not None:
+        load_streaming_pretrained_checkpoint(model, str(pretrained), device=device)
+        seen_ids, step, epoch = [], 0, 0
+    else:
+        seen_ids, step, epoch = [], 0, 0
     if args.reset_step:
         seen_ids, step, epoch = [], 0, 0
 
-    dataloader = make_dataloader(args.config, tokenizer, args, seen_ids)
+    dataloader_factory = lambda filtered_seen_ids: make_dataloader(args.config, tokenizer, args, filtered_seen_ids)
+    dataloader = dataloader_factory(seen_ids)
     print(f"Streaming decoder ASR params: {total_params / 1e6:.2f}M")
     print(f"Starting from step: {step}")
-    train(args, model, dataloader, optimizer, scheduler, device, step=step, seen_ids=seen_ids, epoch=epoch)
+    train(
+        args,
+        model,
+        dataloader,
+        optimizer,
+        scheduler,
+        device,
+        step=step,
+        seen_ids=seen_ids,
+        epoch=epoch,
+        dataloader_factory=dataloader_factory,
+    )
 
 
 if __name__ == "__main__":
