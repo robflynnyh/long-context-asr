@@ -1,0 +1,72 @@
+paths:
+  # Latest Linear guidance asks for the 6L SAP_LCASR sequence-scheduler family.
+  checkpoint_root: /store/store5/data/acp21rjf_checkpoints/SAP_LCASR
+  artifact_root: /store/store5/data/acp21rjf/symphony-job-artifacts/ROB-319/eggroll_deletion_context_search
+  tokenizer_path: null
+
+models:
+  - label: short
+    seq_len: 1024
+    repeat: 1
+    overlap_ratio: 0.875
+    path: ${paths.checkpoint_root}/n_seq_sched_1024_rp_1/step_105360.pt
+  - label: medium
+    seq_len: 8192
+    repeat: 1
+    overlap_ratio: 0.875
+    path: ${paths.checkpoint_root}/n_seq_sched_8192_rp_1/step_105360.pt
+  - label: long
+    seq_len: 16384
+    repeat: 1
+    overlap_ratio: 0.875
+    path: ${paths.checkpoint_root}/n_seq_sched_16384_rp_1/step_105360.pt
+
+dataset:
+  root: /store/store4/data/earnings-22
+  split: train
+  transcripts: ${dataset.root}/full_transcripts.json
+  block_size: 5
+  search_fraction: 0.8
+  expected_recordings: 113
+
+evaluation:
+  evaluation_mode: windowed_attention
+  windowed_decode_strategy: full_recording
+  max_sequence_length: 3600000
+  max_audio_frames: null
+  autocast_dtype: float16
+  disable_flash_attention: false
+  disable_activation_checkpointing: true
+  verbose: false
+  use_tqdm: false
+
+search:
+  update_mode: blockwise
+  num_pairs: 32
+  rank: 4
+  sigma: 1.0e-4
+  eta: 1.0e-4
+  base_seed: 319
+  save_combined_checkpoints: false
+
+score:
+  eps: 1.0e-6
+  beta: 0.25
+  gamma: 1.0
+  lambda: 1.0
+  useful_damage_cap: 0.15
+  collapse_wer: 0.95
+  collapse_damage: 0.45
+  penalize_medium_ordering: true
+
+wandb:
+  enabled: true
+  project: long-context-asr
+  entity: null
+  name: rob319_eggroll_deletion_context_search
+  group: ROB-319
+  mode: online
+  tags:
+    - ROB-319
+    - eggroll-deletion
+    - long-context-asr
